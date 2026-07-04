@@ -33,6 +33,6 @@ public class GlobalExceptionHandler {
         // ErrorCode의 HTTP 상태와 ApiResponse의 공통 실패 본문을 함께 반환.
         return ResponseEntity
                 .status(errorCode.getStatus())
-                .body(ApiResponse.error(errorCode));
+                .body(ApiResponse.error(errorCode, exception.getErrors()));
     }
 }

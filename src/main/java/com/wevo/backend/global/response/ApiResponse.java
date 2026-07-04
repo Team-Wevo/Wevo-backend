@@ -39,15 +39,4 @@ public class ApiResponse<T> {
     public static ApiResponse<Void> error(ErrorCode errorCode) {
         return error(errorCode, null);
     }
-
-    @Getter
-    public static class FieldError {
-        private final String field;
-        private final String reason;
-
-        public FieldError(String field, String reason) {
-            this.field = field;
-            this.reason = reason;
-        }
-    }
 }
