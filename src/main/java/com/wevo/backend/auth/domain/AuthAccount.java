@@ -2,15 +2,7 @@ package com.wevo.backend.auth.domain;
 
 import com.wevo.backend.global.common.BaseTimeEntity;
 import com.wevo.backend.user.domain.User;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -30,14 +22,18 @@ public class AuthAccount extends BaseTimeEntity {
     @JoinColumn(name = "user_id")
     private User user;
 
+    @Enumerated(EnumType.STRING)
     @Column(length = 30)
-    private String provider;
+    private AuthProvider provider;
 
     @Column(name = "provider_user_id", length = 100)
     private String providerUserId;
 
     @Builder
-    private AuthAccount(User user, String provider, String providerUserId) {
+    private AuthAccount(
+            User user,
+            AuthProvider provider,
+            String providerUserId) {
         this.user = user;
         this.provider = provider;
         this.providerUserId = providerUserId;
