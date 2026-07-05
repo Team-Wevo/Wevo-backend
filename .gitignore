@@ -38,3 +38,18 @@ out/
 
 ### Generated documentation ###
 /docs/
+
+### Environment variables ###
+.env
+.env.*
+!.env.example
+
+### Local secrets and certificates ###
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+src/main/resources/application-secret.yml
+src/main/resources/application-*-secret.yml
