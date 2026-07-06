@@ -1,1 +1,87 @@
-# Wevo-backend
+# Wevo Backend
+
+> 팀원들의 흩어진 의견을 AI가 정리하고 조율해 하나의 결과물로 완성하는 협업 워크스페이스
+
+Wevo는 제안서와 발표 자료를 만드는 과정에서 팀원들의 의견을 실시간으로 수집하고,
+AI가 의견 사이의 충돌과 공백을 찾아 근거가 추적되는 초안을 생성하도록 돕습니다.
+팀 검토와 확정 과정을 거쳐 최종 결과물까지 하나의 흐름으로 관리하는 것이 목표입니다.
+
+## 핵심 흐름
+
+`프로젝트 생성` → `의견 수집` → `AI 퍼실리테이션` → `검토·확정` → `결과물 출력`
+
+## 주요 기능
+
+| 도메인 | 주요 역할 |
+| --- | --- |
+| 인증·팀·프로젝트 | Google·Kakao 로그인, 회원 및 팀 관리, 프로젝트와 섹션 생성 |
+| 의견 수집·실시간 협업 | 의견 작성·제출, 수집 상태 관리, 상태 변화 실시간 공유 |
+| AI 퍼실리테이터 | Claude API 기반 쟁점 감지, 의견 종합, 근거가 포함된 초안 생성 |
+| 검토·확정·결과물 | 팀·외부 검토, 수정 요청, 섹션 확정, 결과물 내보내기 |
+| 인프라·공통·DevOps | 공통 응답, 전역 예외 처리, API 문서, 로컬·배포 환경 관리 |
+
+> 대표 기능과 API는 MVP 개발 과정에서 변경될 수 있습니다.
+
+## 기술 스택
+
+- Java 21
+- Spring Boot, Spring Data JPA
+- PostgreSQL 17, Redis 7
+- Docker Compose
+- Swagger / Springdoc OpenAPI
+- Gradle, JUnit
+
+구현 단계에서는 Spring Security·JWT·Google/Kakao OAuth, SSE 또는 WebSocket/STOMP,
+Claude API의 JSON 구조화 출력을 적용할 예정입니다.
+
+## 패키지 구조
+
+기능 단위의 도메인형 패키지 구조를 사용하며, 여러 도메인이 공유하는 코드는 `global`에서 관리합니다.
+
+```text
+com.wevo.backend
+├── global
+│   ├── config
+│   ├── security
+│   ├── exception
+│   └── response
+├── auth
+├── user
+├── project
+├── section
+├── opinion
+├── ai
+├── review
+└── export
+```
+
+## API 공통 규칙
+
+- Base URL: `/api`
+- 인증 방식: `Bearer JWT`
+- Content-Type: `application/json`
+- 모든 응답은 `ApiResponse<T>` 형식으로 통일
+- 테이블과 컬럼은 `snake_case`, Enum은 문자열로 저장
+
+## BE 역할
+
+| 담당자 | 담당 도메인 |
+| --- | --- |
+| 한호석 | 인증·팀·프로젝트 기반 |
+| 이윤호 | 의견 수집·실시간 협업 |
+| 이종원 | AI 퍼실리테이터 |
+| 조은솔 | 검토·확정·결과물 |
+| 신진용 | 인프라·공통·DevOps |
+
+## 협업 규칙
+
+- `dev` 브랜치에서 작업 브랜치를 생성하고 Pull Request로 병합합니다.
+- 브랜치명은 `타입/이슈번호-기능명` 형식을 사용합니다.
+- 커밋 메시지는 `타입: 설명 (#이슈번호)` 형식을 사용합니다.
+- Pull Request는 두 명 이상의 승인을 받은 뒤 Merge commit 방식으로 병합합니다.
+
+## 관련 링크
+
+- [Wevo Notion](https://app.notion.com/p/Wevo-34d400ecb7298049a641f56b59666de3)
+- [Team Wevo GitHub](https://github.com/Team-Wevo)
+- [Wevo Frontend](https://wevo-front.vercel.app/)
