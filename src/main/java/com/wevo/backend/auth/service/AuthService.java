@@ -15,6 +15,9 @@ import com.wevo.backend.user.domain.UserStatus;
 import com.wevo.backend.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.util.Objects;
 
 /**
  * 소셜 로그인, 토큰 재발급, 로그아웃을 담당하는 서비스.
@@ -30,31 +33,33 @@ public class AuthService {
     private final AuthAccountRepository authAccountRepository;
     private final JwtProvider jwtProvider;
     private final RefreshTokenService refreshTokenService;
+    private final TransactionTemplate transactionTemplate;
 
     public AuthService(OAuthClientRouter oAuthClientRouter,
                        UserRepository userRepository,
                        AuthAccountRepository authAccountRepository,
                        JwtProvider jwtProvider,
-                       RefreshTokenService refreshTokenService) {
+                       RefreshTokenService refreshTokenService,
+                       TransactionTemplate transactionTemplate) {
         this.oAuthClientRouter = oAuthClientRouter;
         this.userRepository = userRepository;
         this.authAccountRepository = authAccountRepository;
         this.jwtProvider = jwtProvider;
         this.refreshTokenService = refreshTokenService;
+        this.transactionTemplate = transactionTemplate;
     }
 
     /**
      * 소셜 인가코드로 로그인한다. 신규 사용자는 자동 가입 후 토큰을 발급한다.
      */
-    @Transactional
     public TokenResponse login(AuthProvider provider, String code, String redirectUri) {
         OAuthUserInfo userInfo = oAuthClientRouter.getClient(provider)
                 .fetchUserInfo(code, redirectUri);
 
-        User user = authAccountRepository
+        User user = Objects.requireNonNull(transactionTemplate.execute(status -> authAccountRepository
                 .findByProviderAndProviderUserId(userInfo.provider(), userInfo.providerUserId())
                 .map(AuthAccount::getUser)
-                .orElseGet(() -> register(userInfo));
+                .orElseGet(() -> register(userInfo))));
 
         return issueTokens(user.getId());
     }

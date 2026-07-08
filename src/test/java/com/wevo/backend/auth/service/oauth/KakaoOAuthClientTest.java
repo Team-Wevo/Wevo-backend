@@ -4,6 +4,7 @@ import com.wevo.backend.auth.domain.AuthProvider;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -13,7 +14,8 @@ class KakaoOAuthClientTest {
 
     private final KakaoOAuthClient client = new KakaoOAuthClient(new OAuthProperties(
             null,
-            new OAuthProperties.Provider("client-id", "client-secret", "token-uri", "user-info-uri")));
+            new OAuthProperties.Provider("client-id", "client-secret", "token-uri", "user-info-uri"),
+            new OAuthProperties.Timeout(Duration.ofSeconds(3), Duration.ofSeconds(5))));
 
     @Test
     @DisplayName("전체 프로필이 있으면 id/email/닉네임/프로필이미지를 모두 매핑한다")

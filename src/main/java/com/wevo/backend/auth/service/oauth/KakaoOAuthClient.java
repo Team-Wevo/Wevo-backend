@@ -28,7 +28,7 @@ public class KakaoOAuthClient implements OAuthClient {
 
     public KakaoOAuthClient(OAuthProperties properties) {
         this.config = properties.kakao();
-        this.restClient = RestClient.create();
+        this.restClient = OAuthRestClientFactory.create(properties.timeout());
     }
 
     @Override

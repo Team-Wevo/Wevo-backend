@@ -22,6 +22,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Optional;
 
@@ -30,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -47,10 +51,20 @@ class AuthServiceTest {
     @Mock
     private RefreshTokenService refreshTokenService;
     @Mock
+    private TransactionTemplate transactionTemplate;
+    @Mock
     private OAuthClient oAuthClient;
 
     @InjectMocks
     private AuthService authService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(org.mockito.Mockito.mock(TransactionStatus.class));
+        });
+    }
 
     @Test
     @DisplayName("기존 계정으로 로그인하면 새 User 를 만들지 않고 토큰을 발급한다")

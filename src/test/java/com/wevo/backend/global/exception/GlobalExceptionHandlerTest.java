@@ -3,6 +3,7 @@ package com.wevo.backend.global.exception;
 import com.wevo.backend.global.response.FieldError;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -50,6 +51,18 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.timestamp").exists());
     }
 
+    @Test
+    void dataIntegrityViolationReturnsConflictResponse() throws Exception {
+        mockMvc.perform(get("/test/data-integrity-violation"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("C003"))
+                .andExpect(jsonPath("$.message").value("요청이 현재 상태와 충돌합니다."))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.errors").doesNotExist())
+                .andExpect(jsonPath("$.timestamp").exists());
+    }
+
     @RestController
     static class TestController {
 
@@ -64,6 +77,11 @@ class GlobalExceptionHandlerTest {
                     ErrorCode.INVALID_INPUT,
                     List.of(new FieldError("name", "프로젝트 이름은 필수입니다."))
             );
+        }
+
+        @GetMapping("/test/data-integrity-violation")
+        void throwDataIntegrityViolation() {
+            throw new DataIntegrityViolationException("duplicate key");
         }
     }
 }

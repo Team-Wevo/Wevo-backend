@@ -3,6 +3,7 @@ package com.wevo.backend.global.exception;
 import com.wevo.backend.auth.domain.AuthProvider;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.response.FieldError;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -81,6 +82,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(errorCode.getStatus())
                 .body(ApiResponse.error(errorCode));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(
+            DataIntegrityViolationException exception
+    ) {
+        return ResponseEntity
+                .status(ErrorCode.CONFLICT.getStatus())
+                .body(ApiResponse.error(ErrorCode.CONFLICT));
     }
 
     private boolean isUnsupportedAuthProvider(HttpMessageNotReadableException exception) {

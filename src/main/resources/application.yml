@@ -9,6 +9,9 @@ jwt:
 
 # 소셜 제공자 공개 엔드포인트 (client-id/secret 은 프로파일별 설정에서 주입)
 oauth:
+  timeout:
+    connect: 3s
+    read: 5s
   google:
     token-uri: https://oauth2.googleapis.com/token
     user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo

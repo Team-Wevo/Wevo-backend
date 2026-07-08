@@ -3,6 +3,8 @@ package com.wevo.backend.auth.service.oauth;
 import com.wevo.backend.auth.domain.AuthProvider;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.time.Duration;
+
 /**
  * 소셜 제공자별 OAuth2 설정 값.
  *
@@ -10,7 +12,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * 공개 엔드포인트(token-uri/user-info-uri)는 {@code application.yml} 에 둔다.
  */
 @ConfigurationProperties(prefix = "oauth")
-public record OAuthProperties(Provider google, Provider kakao) {
+public record OAuthProperties(Provider google, Provider kakao, Timeout timeout) {
+
+    public OAuthProperties {
+        timeout = timeout == null ? new Timeout(null, null) : timeout;
+    }
 
     public Provider get(AuthProvider provider) {
         return switch (provider) {
@@ -31,5 +37,16 @@ public record OAuthProperties(Provider google, Provider kakao) {
             String tokenUri,
             String userInfoUri
     ) {
+    }
+
+    public record Timeout(Duration connect, Duration read) {
+
+        private static final Duration DEFAULT_CONNECT = Duration.ofSeconds(3);
+        private static final Duration DEFAULT_READ = Duration.ofSeconds(5);
+
+        public Timeout {
+            connect = connect == null ? DEFAULT_CONNECT : connect;
+            read = read == null ? DEFAULT_READ : read;
+        }
     }
 }

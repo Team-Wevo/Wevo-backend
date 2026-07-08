@@ -25,7 +25,7 @@ public class GoogleOAuthClient implements OAuthClient {
 
     public GoogleOAuthClient(OAuthProperties properties) {
         this.config = properties.google();
-        this.restClient = RestClient.create();
+        this.restClient = OAuthRestClientFactory.create(properties.timeout());
     }
 
     @Override
