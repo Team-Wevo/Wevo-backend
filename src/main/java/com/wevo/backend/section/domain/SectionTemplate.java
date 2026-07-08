@@ -1,8 +1,11 @@
 package com.wevo.backend.section.domain;
 
 import com.wevo.backend.global.common.BaseTimeEntity;
+import com.wevo.backend.project.domain.OutputType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -25,8 +28,9 @@ public class SectionTemplate extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "result_type", length = 50)
-    private String resultType;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "result_type", length = 30)
+    private OutputType resultType;
 
     @Column(name = "section_key", length = 100)
     private String sectionKey;
@@ -47,7 +51,7 @@ public class SectionTemplate extends BaseTimeEntity {
     private Boolean isRequired;
 
     @Builder
-    private SectionTemplate(String resultType, String sectionKey, String title, String description,
+    private SectionTemplate(OutputType resultType, String sectionKey, String title, String description,
                             String guideText, Integer orderNo, Boolean isRequired) {
         this.resultType = resultType;
         this.sectionKey = sectionKey;
