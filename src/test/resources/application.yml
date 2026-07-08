@@ -13,3 +13,26 @@ spring:
     redis:
       repositories:
         enabled: false
+
+# 테스트용 더미 값 (컨텍스트 로딩용, 실제 외부 호출 없음)
+jwt:
+  secret: test-secret-key-for-wevo-backend-that-is-long-enough-000000
+  access-token-validity-ms: 1800000
+  refresh-token-validity-ms: 1209600000
+
+oauth:
+  google:
+    client-id: test-google-client-id
+    client-secret: test-google-client-secret
+    token-uri: http://localhost/google/token
+    user-info-uri: http://localhost/google/userinfo
+  kakao:
+    client-id: test-kakao-client-id
+    client-secret: test-kakao-client-secret
+    token-uri: http://localhost/kakao/token
+    user-info-uri: http://localhost/kakao/userinfo
+
+app:
+  cors:
+    allowed-origins:
+      - http://localhost:3000
