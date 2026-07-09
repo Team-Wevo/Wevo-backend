@@ -209,21 +209,48 @@ Content-Type: application/json
 | `422 Unprocessable Entity` | 업무 규칙 위반 |
 | `500 Internal Server Error` | 서버 오류 |
 
-### 5.7 공통 Enum 초안
+### 5.7 공통 Enum
 
 문자열 Enum 저장 원칙을 따릅니다. (타입명은 UpperCamelCase, 상수는 UPPER_SNAKE_CASE — §2 참고)
 
-| Enum | 값 |
-| --- | --- |
-| `UserStatus` | `ACTIVE`, `INACTIVE`, `WITHDRAWN` |
-| `ProjectStatus` | `DRAFT`, `ACTIVE`, `COMPLETED`, `ARCHIVED` |
-| `ProjectMemberRole` | `OWNER`, `EDITOR`, `VIEWER` |
-| `ProjectSectionStatus` | `NOT_STARTED`, `COLLECTING_OPINIONS`, `DRAFTING`, `IN_REVIEW`, `CONFIRMED` |
-| `TemplateDependencyType` | `REQUIRES`, `BLOCKS`, `RECOMMENDS` |
-| `ReviewType` | `INTERNAL`, `EXTERNAL` |
-| `UnderstandingSignal` | `CLEAR`, `PARTIAL`, `UNCLEAR` |
-| `AiRequestStatus` | `REQUESTED`, `SUCCEEDED`, `FAILED` |
-| `AuthProvider` | `GOOGLE`, `KAKAO` |
+> **기준**: 제품 "동작"에 해당하는 값은 **제품 정책서(§8 상태값)가 단일 기준(source of truth)** 입니다.
+> 아래 표는 정책서에 맞춰 확정한 코드 enum 이름이며, 정책과 코드가 갈리면 **정책서 의미를 따릅니다.**
+> 정책이 규정하지 않는 **BE 내부 상태**(계정·AI 호출 로그 등)는 BE 재량으로 관리합니다.
+> 이 표가 코드 enum의 **단일 정본**입니다. 상태 추가·변경 시 여기와 엔티티를 함께 갱신하세요.
+> (⏳ = 해당 도메인 구현 시 도메인 오너가 생성)
+
+**제품 상태 Enum (정책서 §8 기준)**
+
+| Enum | 값 | 비고 |
+| --- | --- | --- |
+| `ProjectStatus` | `DRAFT`, `ACTIVE`, `COMPLETED`, `ARCHIVED` | |
+| `OutputType` | `PROPOSAL`, `PRESENTATION` | 결과물 유형 → 고정 섹션 구성 결정 (§2.3) |
+| `ProjectMemberRole` | `OWNER`, `MEMBER` | MVP 2역할. 팀장 위임·변경 불가. 외부 검토자는 role 아님 — 링크 기반 별도 (§1.3) |
+| `ProjectSectionStatus` | `COLLECTING`, `SYNTHESIZING`, `DRAFTING`, `REVIEWING`, `CONFIRMED` | 섹션 내부 5단계(단일 값). 화면 4단계(시작전/작성중/작성완료/문제있음)는 저장 X → 파생 |
+| `OpinionStatus` ⏳ | `DRAFT`, `SUBMITTED` | 의견 임시/제출 |
+| `CollectGate` ⏳ | `OPEN`, `CLOSED` | 의견 수집 게이트 |
+| `IssueType` ⏳ | `CONFLICT`, `GAP` | 쟁점 유형 |
+| `IssueStatus` ⏳ | `PENDING`, `RESOLVED` | 쟁점 처리 |
+| `TeamReviewStatus` ⏳ | `PENDING`, `APPROVED`, `CHANGES_REQUESTED` | 팀(내부) 검토 |
+| `ReviewType` | `INTERNAL`, `EXTERNAL` | 내부/외부 검토 구분 |
+| `UnderstandingSignal` | `CLEAR`, `PARTIAL`, `UNCLEAR` | 외부 검토 결과. **UI 라벨**: 이해됨/애매함/이해 어려움 (코드=영문, 화면=한글 매핑) |
+
+**섹션 오버레이 플래그** — `sectionStatus`와 **독립**이며 한 섹션이 동시에 여러 개 가질 수 있음 (§8). `sectionStatus` 안에 넣지 말 것.
+
+| 플래그 | 값 | 의미 |
+| --- | --- | --- |
+| `driftStatus` ⏳ | `NONE`, `REVIEW_REQUIRED` | 상위 섹션 변경으로 재검토 필요 (§6.4) |
+| `aiCheckStatus` ⏳ | `CURRENT`, `OUTDATED` | AI 사전 검토가 현재 본문 기준 최신인지 (확정 필수 조건) |
+| `synthesisStale` ⏳ | `boolean` | 재정리 필요(기존 AI 정리·초안이 헌 것이 됨). **enum 아님** |
+
+**BE 내부 상태 Enum (정책 무관 — BE 재량으로 유지)**
+
+| Enum | 값 | 비고 |
+| --- | --- | --- |
+| `UserStatus` | `ACTIVE`, `INACTIVE`, `WITHDRAWN` | 계정 상태 |
+| `AuthProvider` | `GOOGLE`, `KAKAO` | 소셜 제공자 |
+| `AiRequestStatus` | `REQUESTED`, `SUCCEEDED`, `FAILED` | AI 호출 로그·재시도 |
+| `TemplateDependencyType` | `REQUIRES`, `BLOCKS`, `RECOMMENDS` | ⚠️ **단순화 검토 대상** — 우리 의존(`dependsOn`)은 드리프트 단일 종류라 타입 구분이 불필요할 수 있음 |
 
 ### 5.8 ApiResponse / ErrorCode 구현
 
