@@ -19,7 +19,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 섹션 상태 전이 이력 (NOT_STARTED → ... → CONFIRMED 등).
+ * 섹션 상태 전이 이력 (COLLECTING → ... → CONFIRMED 등).
  */
 @Entity
 @Table(name = "section_status_histories")

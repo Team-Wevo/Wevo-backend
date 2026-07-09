@@ -1,3 +1,27 @@
 spring:
   application:
     name: Wevo-backend
+
+# JWT 유효 시간 (비밀 키(jwt.secret)는 프로파일별 설정에서 주입)
+jwt:
+  access-token-validity-ms: 1800000       # 30분
+  refresh-token-validity-ms: 1209600000   # 14일
+
+# 소셜 제공자 공개 엔드포인트 (client-id/secret 은 프로파일별 설정에서 주입)
+oauth:
+  timeout:
+    connect: 3s
+    read: 5s
+  google:
+    token-uri: https://oauth2.googleapis.com/token
+    user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+  kakao:
+    token-uri: https://kauth.kakao.com/oauth/token
+    user-info-uri: https://kapi.kakao.com/v2/user/me
+
+# CORS 허용 Origin (프론트엔드 개발 서버)
+app:
+  cors:
+    allowed-origins:
+      - http://localhost:3000
+      - http://localhost:5173

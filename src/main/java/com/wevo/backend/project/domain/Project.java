@@ -33,8 +33,9 @@ public class Project extends BaseTimeEntity {
     @Column(name = "idea_text", columnDefinition = "TEXT")
     private String ideaText;
 
-    @Column(name = "result_type", length = 50)
-    private String resultType;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "result_type", length = 30)
+    private OutputType resultType;
 
     @Column(length = 200)
     private String audience;
@@ -45,7 +46,7 @@ public class Project extends BaseTimeEntity {
 
     @Builder
     private Project(String title, String description, String ideaText,
-                    String resultType, String audience, ProjectStatus status) {
+                    OutputType resultType, String audience, ProjectStatus status) {
         this.title = title;
         this.description = description;
         this.ideaText = ideaText;

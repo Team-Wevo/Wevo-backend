@@ -9,7 +9,13 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "auth_accounts")
+@Table(
+        name = "auth_accounts",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_auth_accounts_provider_user",
+                columnNames = {"provider", "provider_user_id"}
+        )
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AuthAccount extends BaseTimeEntity {
@@ -23,10 +29,10 @@ public class AuthAccount extends BaseTimeEntity {
     private User user;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 30)
+    @Column(nullable = false, length = 30)
     private AuthProvider provider;
 
-    @Column(name = "provider_user_id", length = 100)
+    @Column(name = "provider_user_id", nullable = false, length = 100)
     private String providerUserId;
 
     @Builder
