@@ -28,7 +28,14 @@ public enum ErrorCode {
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "U002", "이미 다른 방식으로 가입된 이메일입니다."),
 
     // Project
-    PROJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "P001", "프로젝트를 찾을 수 없습니다.");
+    PROJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "P001", "프로젝트를 찾을 수 없습니다."),
+    NOT_PROJECT_MEMBER(HttpStatus.FORBIDDEN, "P002", "프로젝트 멤버가 아닙니다."),
+
+    // Section
+    SECTION_NOT_FOUND(HttpStatus.NOT_FOUND, "S001", "섹션을 찾을 수 없습니다."),
+
+    // Review
+    REVIEW_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "R001", "검토 링크를 찾을 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;

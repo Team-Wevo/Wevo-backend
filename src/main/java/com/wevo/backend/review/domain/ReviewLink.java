@@ -5,8 +5,6 @@ import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -21,7 +19,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 섹션 검토용 공유 링크. 내부(INTERNAL)/외부(EXTERNAL) 검토자에게 토큰으로 발급된다.
+ * 섹션 외부 검토용 공유 링크. 외부 검토자에게 토큰으로 발급된다.
+ *
+ * <p>내부(팀) 검토는 멤버십 기반(§6.1)이라 링크를 쓰지 않으므로, 이 링크는 외부 검토 전용이다.
  */
 @Entity
 @Table(name = "review_links")
@@ -44,10 +44,6 @@ public class ReviewLink extends BaseTimeEntity {
     @Column(length = 255)
     private String token;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "review_type", length = 20)
-    private ReviewType reviewType;
-
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
 
@@ -56,11 +52,10 @@ public class ReviewLink extends BaseTimeEntity {
 
     @Builder
     private ReviewLink(ProjectSection projectSection, User createdBy, String token,
-                       ReviewType reviewType, LocalDateTime expiresAt, Boolean isActive) {
+                       LocalDateTime expiresAt, Boolean isActive) {
         this.projectSection = projectSection;
         this.createdBy = createdBy;
         this.token = token;
-        this.reviewType = reviewType;
         this.expiresAt = expiresAt;
         this.isActive = isActive;
     }
