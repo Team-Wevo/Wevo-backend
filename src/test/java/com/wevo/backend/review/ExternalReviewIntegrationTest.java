@@ -63,7 +63,7 @@ class ExternalReviewIntegrationTest {
     @DisplayName("발급→열람→제출 전 경로가 정상 동작한다")
     void externalReviewFullFlow() throws Exception {
         User owner = persistUser("owner@wevo.com", "팀장");
-        ProjectSection section = persistSectionWithDraft(persistProject(), owner);
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
         persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
         em.flush();
 
@@ -112,7 +112,8 @@ class ExternalReviewIntegrationTest {
     @Test
     @DisplayName("팀원(MEMBER)이 링크를 발급하면 403 을 반환한다")
     void memberCannotIssueLink() throws Exception {
-        Project project = persistProject();
+        User owner = persistUser("owner-m1@wevo.com", "팀장");
+        Project project = persistProject(owner);
         ProjectSection section = persistSectionWithDraft(project, null);
         User member = persistUser("member@wevo.com", "팀원");
         persistMember(project, member, ProjectMemberRole.MEMBER);
@@ -136,7 +137,7 @@ class ExternalReviewIntegrationTest {
     @DisplayName("팀장이 외부 검토 결과(이해도 집계 + 개별 코멘트)를 조회한다")
     void ownerViewsExternalReviewResults() throws Exception {
         User owner = persistUser("owner2@wevo.com", "팀장");
-        ProjectSection section = persistSectionWithDraft(persistProject(), owner);
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
         persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
         em.flush();
 
@@ -160,7 +161,8 @@ class ExternalReviewIntegrationTest {
     @Test
     @DisplayName("팀원(MEMBER)이 외부 검토 결과를 조회하면 403 을 반환한다")
     void memberCannotViewResults() throws Exception {
-        Project project = persistProject();
+        User owner = persistUser("owner-m2@wevo.com", "팀장");
+        Project project = persistProject(owner);
         ProjectSection section = persistSectionWithDraft(project, null);
         User member = persistUser("member2@wevo.com", "팀원");
         persistMember(project, member, ProjectMemberRole.MEMBER);
@@ -203,8 +205,9 @@ class ExternalReviewIntegrationTest {
         return user;
     }
 
-    private Project persistProject() {
+    private Project persistProject(User owner) {
         Project project = Project.builder()
+                .owner(owner)
                 .title("위보 기획")
                 .resultType(OutputType.PRESENTATION)
                 .status(ProjectStatus.ACTIVE)

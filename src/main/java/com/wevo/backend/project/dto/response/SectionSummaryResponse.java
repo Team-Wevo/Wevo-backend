@@ -1,0 +1,38 @@
+package com.wevo.backend.project.dto.response;
+
+import com.wevo.backend.section.domain.ProjectSection;
+import com.wevo.backend.section.domain.ProjectSectionStatus;
+
+/**
+ * 섹션 요약 응답. (프로젝트 생성/조회 시 섹션 목록에 사용 — B/프론트 계약)
+ *
+ * <p>{@code keyQuestion}/{@code guide} 는 연결된 SectionTemplate 의 baseline 에서 온다.
+ * ({@code description} = 기본 핵심 질문, {@code guideText} = 작성 가이드 — ERD 준수)
+ *
+ * @param sectionId   섹션 ID (의견·초안 등이 매달리는 기준)
+ * @param order       섹션 순서
+ * @param title       섹션명
+ * @param status      섹션 상태 (초기값 COLLECTING)
+ * @param keyQuestion 기본 핵심 질문
+ * @param guide       작성 가이드
+ */
+public record SectionSummaryResponse(
+        Long sectionId,
+        Integer order,
+        String title,
+        ProjectSectionStatus status,
+        String keyQuestion,
+        String guide
+) {
+
+    public static SectionSummaryResponse from(ProjectSection section) {
+        return new SectionSummaryResponse(
+                section.getId(),
+                section.getSectionOrder(),
+                section.getTitle(),
+                section.getStatus(),
+                section.getTemplate() != null ? section.getTemplate().getDescription() : null,
+                section.getTemplate() != null ? section.getTemplate().getGuideText() : null
+        );
+    }
+}

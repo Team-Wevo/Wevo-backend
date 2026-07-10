@@ -38,7 +38,7 @@ public class SectionAccessGuard {
                 .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_NOT_FOUND));
 
         ProjectMember member = projectMemberRepository
-                .findByProject_IdAndUser_Id(section.getProject().getId(), userId)
+                .findByProjectIdAndUserId(section.getProject().getId(), userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_PROJECT_MEMBER));
         if (member.getRole() != ProjectMemberRole.OWNER) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
