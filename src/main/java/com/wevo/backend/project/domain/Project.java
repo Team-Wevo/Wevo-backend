@@ -1,13 +1,17 @@
 package com.wevo.backend.project.domain;
 
 import com.wevo.backend.global.common.BaseTimeEntity;
+import com.wevo.backend.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -23,6 +27,10 @@ public class Project extends BaseTimeEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "owner_user_id")
+    private User owner;
 
     @Column(length = 200)
     private String title;
@@ -45,8 +53,9 @@ public class Project extends BaseTimeEntity {
     private ProjectStatus status;
 
     @Builder
-    private Project(String title, String description, String ideaText,
+    private Project(User owner, String title, String description, String ideaText,
                     OutputType resultType, String audience, ProjectStatus status) {
+        this.owner = owner;
         this.title = title;
         this.description = description;
         this.ideaText = ideaText;
