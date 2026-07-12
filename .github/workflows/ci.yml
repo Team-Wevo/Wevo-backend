@@ -1,0 +1,38 @@
+name: Backend CI
+
+
+# 실행 조건 - dev를 대상으로 PR 생성시
+on:
+  pull_request:
+    branches:
+      - dev
+
+# Github Actions에 저장소 코드를 읽을 권한만 줌
+permissions:
+  contents: read
+
+# build-and-test라는 작업 정의
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    # PR의 코드를 Github Actions 가상 머신으로 내려 받음
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for Gradle wrapper
+        run: chmod +x gradlew
+
+        # 빌드 및 테스트 - 실제 검증 단계
+      - name: Build and test
+        run: ./gradlew build
