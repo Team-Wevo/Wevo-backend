@@ -2,6 +2,27 @@ spring:
   application:
     name: Wevo-backend
 
+  ai:
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY}
+      timeout: ${ANTHROPIC_TIMEOUT:60s}
+      max-retries: ${ANTHROPIC_MAX_RETRIES:2}
+      chat:
+        model: ${ANTHROPIC_MODEL:claude-haiku-4-5}
+        max-tokens: ${ANTHROPIC_MAX_TOKENS:4096}
+    chat:
+      client:
+        observations:
+          log-prompt: false
+          log-completion: false
+
+wevo:
+  ai:
+    default-options:
+      model: ${ANTHROPIC_MODEL:claude-haiku-4-5}
+      timeout: ${ANTHROPIC_TIMEOUT:60s}
+      max-output-tokens: ${ANTHROPIC_MAX_TOKENS:4096}
+
 # JWT 유효 시간 (비밀 키(jwt.secret)는 프로파일별 설정에서 주입)
 jwt:
   access-token-validity-ms: 1800000       # 30분
