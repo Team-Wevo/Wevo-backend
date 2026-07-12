@@ -34,6 +34,18 @@ public enum ErrorCode {
     // Section
     SECTION_NOT_FOUND(HttpStatus.NOT_FOUND, "S001", "섹션을 찾을 수 없습니다."),
 
+    // AI
+    AI_INVALID_REQUEST(HttpStatus.BAD_REQUEST, "AI001", "AI 요청 형식이 올바르지 않습니다."),
+    AI_PROVIDER_AUTHENTICATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "AI002", "AI 제공자 인증 설정을 확인해주세요."),
+    AI_PROVIDER_PERMISSION_DENIED(HttpStatus.INTERNAL_SERVER_ERROR, "AI003", "AI 제공자 접근 권한을 확인해주세요."),
+    AI_RATE_LIMITED(HttpStatus.SERVICE_UNAVAILABLE, "AI004", "AI 요청이 많습니다. 잠시 후 다시 시도해주세요."),
+    AI_PROVIDER_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "AI005", "AI 응답 시간이 초과되었습니다."),
+    AI_PROVIDER_OVERLOADED(HttpStatus.SERVICE_UNAVAILABLE, "AI006", "AI 제공자가 혼잡합니다. 잠시 후 다시 시도해주세요."),
+    AI_MODEL_NOT_AVAILABLE(HttpStatus.BAD_GATEWAY, "AI007", "설정된 AI 모델을 사용할 수 없습니다."),
+    AI_PROVIDER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI008", "AI 제공자에 일시적으로 연결할 수 없습니다."),
+    AI_PROVIDER_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "AI009", "AI 응답을 처리할 수 없습니다."),
+    AI_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "AI999", "AI 처리 중 오류가 발생했습니다."),
+
     // Review
     REVIEW_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "R001", "검토 링크를 찾을 수 없습니다.");
 
