@@ -58,7 +58,7 @@ class ProjectServiceTest {
     @DisplayName("프로젝트를 생성하면 생성자가 OWNER 로 등록되고 유형별 고정 6섹션이 생성된다")
     void create_registersOwner_andCreatesSixSections() {
         Long userId = 1L;
-        User owner = User.builder().name("호석").status(UserStatus.ACTIVE).build();
+        User owner = User.builder().name("Wevo").status(UserStatus.ACTIVE).build();
         ReflectionTestUtils.setField(owner, "id", userId);
         ProjectCreateRequest request = new ProjectCreateRequest(
                 "발표 프로젝트", "우리 팀 아이디어 발표를 준비합니다.", OutputType.PRESENTATION, "심사위원");

@@ -7,6 +7,9 @@ import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.dto.request.ProjectCreateRequest;
 import com.wevo.backend.project.dto.response.ProjectCreateResponse;
+import com.wevo.backend.project.dto.response.ProjectDetailResponse;
+import com.wevo.backend.project.dto.response.ProjectSummaryResponse;
+import com.wevo.backend.project.dto.response.SectionSummaryResponse;
 import com.wevo.backend.project.repository.ProjectMemberRepository;
 import com.wevo.backend.project.repository.ProjectRepository;
 import com.wevo.backend.global.exception.BusinessException;
@@ -72,6 +75,53 @@ public class ProjectService {
 
         List<ProjectSection> sections = createFixedSections(project, request.resultType());
         return ProjectCreateResponse.of(project, sections);
+    }
+
+    /**
+     * 내가 멤버로 속한 프로젝트 목록을 최신순으로 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public List<ProjectSummaryResponse> getMyProjects(Long userId) {
+        return projectMemberRepository.findAllWithProjectByUserId(userId).stream()
+                .map(ProjectSummaryResponse::from)
+                .toList();
+    }
+
+    /**
+     * 프로젝트 상세를 조회한다. (멤버만 조회 가능)
+     */
+    @Transactional(readOnly = true)
+    public ProjectDetailResponse getProject(Long userId, Long projectId) {
+        ProjectMember membership = getMembershipOrThrow(projectId, userId);
+        Project project = membership.getProject();
+
+        long memberCount = projectMemberRepository.countByProjectId(projectId);
+        List<ProjectSection> sections = projectSectionRepository.findAllWithTemplateByProjectId(projectId);
+
+        return ProjectDetailResponse.of(project, membership.getRole(), memberCount, sections);
+    }
+
+    /**
+     * 프로젝트의 섹션 목록을 순서대로 조회한다. (멤버만 조회 가능)
+     */
+    @Transactional(readOnly = true)
+    public List<SectionSummaryResponse> getSections(Long userId, Long projectId) {
+        getMembershipOrThrow(projectId, userId);
+
+        return projectSectionRepository.findAllWithTemplateByProjectId(projectId).stream()
+                .map(SectionSummaryResponse::from)
+                .toList();
+    }
+
+    /**
+     * 프로젝트 멤버십을 확인한다.
+     *
+     * <p>프로젝트가 없거나 <b>내가 멤버가 아니면 동일하게 {@code PROJECT_NOT_FOUND}(404)</b> 를 던진다.
+     * 순번 ID 를 훑어 남의 프로젝트 존재 여부를 알아내지 못하도록 존재 자체를 숨긴다.
+     */
+    private ProjectMember getMembershipOrThrow(Long projectId, Long userId) {
+        return projectMemberRepository.findByProjectIdAndUserId(projectId, userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PROJECT_NOT_FOUND));
     }
 
     /**
