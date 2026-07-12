@@ -18,6 +18,8 @@ import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.review.domain.ReviewSubmission;
 import com.wevo.backend.review.domain.UnderstandingSignal;
 import com.wevo.backend.review.repository.ReviewSubmissionRepository;
+import com.wevo.backend.review.domain.ReviewLink;
+import com.wevo.backend.review.repository.ReviewLinkRepository;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionDraft;
@@ -55,6 +57,8 @@ class ExternalReviewIntegrationTest {
     private MockMvc mockMvc;
     @Autowired
     private ReviewSubmissionRepository reviewSubmissionRepository;
+    @Autowired
+    private ReviewLinkRepository reviewLinkRepository;
 
     @PersistenceContext
     private EntityManager em;
@@ -68,6 +72,7 @@ class ExternalReviewIntegrationTest {
         em.flush();
 
         // 1) 링크 발급 (팀장 인증)
+
         MvcResult issued = mockMvc.perform(post("/api/project-sections/{id}/review-links", section.getId())
                         .with(authentication(authOf(owner))))
                 .andExpect(status().isCreated())
@@ -79,6 +84,10 @@ class ExternalReviewIntegrationTest {
         String token = objectMapper.readTree(issued.getResponse().getContentAsString())
                 .path("data").path("token").asText();
         assertThat(token).isNotBlank();
+
+        // 발급자(createdBy)가 팀장으로 세팅되는지 확인 (created_by_user_id 유실 방지)
+        ReviewLink savedLink = reviewLinkRepository.findByToken(token).orElseThrow();
+        assertThat(savedLink.getCreatedBy().getId()).isEqualTo(owner.getId());
 
         // 2) 공개 열람 (로그인 없이)
         mockMvc.perform(get("/public/review-links/{token}", token))

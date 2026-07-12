@@ -14,6 +14,8 @@ import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.SectionDraft;
 import com.wevo.backend.section.repository.SectionDraftRepository;
 import java.util.UUID;
+import com.wevo.backend.user.domain.User;
+import com.wevo.backend.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,15 +41,17 @@ public class ReviewLinkService {
     private final SectionDraftRepository sectionDraftRepository;
     private final ReviewLinkRepository reviewLinkRepository;
     private final ReviewSubmissionRepository reviewSubmissionRepository;
+    private final UserRepository userRepository;
 
     public ReviewLinkService(SectionAccessGuard sectionAccessGuard,
                              SectionDraftRepository sectionDraftRepository,
                              ReviewLinkRepository reviewLinkRepository,
-                             ReviewSubmissionRepository reviewSubmissionRepository) {
+                             ReviewSubmissionRepository reviewSubmissionRepository, UserRepository userRepository) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.sectionDraftRepository = sectionDraftRepository;
         this.reviewLinkRepository = reviewLinkRepository;
         this.reviewSubmissionRepository = reviewSubmissionRepository;
+        this.userRepository = userRepository;
     }
 
     /**
@@ -56,9 +60,10 @@ public class ReviewLinkService {
     @Transactional
     public ReviewLinkResponse issueExternalLink(Long sectionId, Long userId) {
         ProjectSection section = sectionAccessGuard.requireOwnedSection(sectionId, userId);
-
+        User createdBy = userRepository.getReferenceById(userId);
         ReviewLink link = ReviewLink.builder()
                 .projectSection(section)
+                .createdBy(createdBy)
                 .token(generateToken())
                 .isActive(true)
                 .build();
