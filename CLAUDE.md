@@ -232,7 +232,6 @@ Content-Type: application/json
 | `IssueType` ⏳ | `CONFLICT`, `GAP` | 쟁점 유형 |
 | `IssueStatus` ⏳ | `PENDING`, `RESOLVED` | 쟁점 처리 |
 | `TeamReviewStatus` ⏳ | `PENDING`, `APPROVED`, `CHANGES_REQUESTED` | 팀(내부) 검토 |
-| `ReviewType` | `INTERNAL`, `EXTERNAL` | 내부/외부 검토 구분 |
 | `UnderstandingSignal` | `CLEAR`, `PARTIAL`, `UNCLEAR` | 외부 검토 결과. **UI 라벨**: 이해됨/애매함/이해 어려움 (코드=영문, 화면=한글 매핑) |
 
 **섹션 오버레이 플래그** — `sectionStatus`와 **독립**이며 한 섹션이 동시에 여러 개 가질 수 있음 (§8). `sectionStatus` 안에 넣지 말 것.
