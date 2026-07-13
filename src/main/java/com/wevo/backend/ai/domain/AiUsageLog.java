@@ -136,15 +136,15 @@ public class AiUsageLog extends BaseTimeEntity {
             String inputSnapshotHash,
             LocalDateTime startedAt
     ) {
-        this.requestId = Objects.requireNonNull(requestId);
-        this.project = Objects.requireNonNull(project);
+        this.requestId = Objects.requireNonNull(requestId, "requestId는 필수입니다.");
+        this.project = Objects.requireNonNull(project, "project는 필수입니다.");
         this.projectSection = projectSection;
-        this.requestedBy = Objects.requireNonNull(requestedBy);
-        this.feature = Objects.requireNonNull(feature);
+        this.requestedBy = Objects.requireNonNull(requestedBy, "requestedBy는 필수입니다.");
+        this.feature = Objects.requireNonNull(feature, "feature는 필수입니다.");
         this.modelId = requireText(modelId, "modelId");
         this.promptVersion = requireText(promptVersion, "promptVersion");
         this.inputSnapshotHash = requireText(inputSnapshotHash, "inputSnapshotHash");
-        this.startedAt = Objects.requireNonNull(startedAt);
+        this.startedAt = Objects.requireNonNull(startedAt, "startedAt는 필수입니다.");
         this.requestStatus = AiRequestStatus.REQUESTED;
     }
 
@@ -196,7 +196,7 @@ public class AiUsageLog extends BaseTimeEntity {
         }
         applyUsageAndCost(usage, cost);
         this.attemptCount = attemptCount;
-        this.errorType = Objects.requireNonNull(errorType);
+        this.errorType = Objects.requireNonNull(errorType, "errorType는 필수입니다.");
         this.errorMessage = errorMessage;
         finish(AiRequestStatus.FAILED, completedAt);
     }
@@ -232,7 +232,7 @@ public class AiUsageLog extends BaseTimeEntity {
     }
 
     private void finish(AiRequestStatus status, LocalDateTime completedAt) {
-        this.completedAt = Objects.requireNonNull(completedAt);
+        this.completedAt = Objects.requireNonNull(completedAt, "completedAt는 필수입니다.");
         this.latencyMs = Math.max(0L, Duration.between(startedAt, completedAt).toMillis());
         this.requestStatus = status;
     }
