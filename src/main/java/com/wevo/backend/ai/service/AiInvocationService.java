@@ -29,7 +29,7 @@ public class AiInvocationService {
         }
 
         AiUsageHandle handle = usageService.startRequest(startCommand);
-        ClaudeResponse response;
+        ClaudeResponse response = null;
         AiProcessedResult<T> processedResult;
 
         try {
@@ -39,9 +39,9 @@ public class AiInvocationService {
                 throw new IllegalStateException("AI 결과 처리 결과는 null일 수 없습니다.");
             }
         } catch (RuntimeException exception) {
-            AiUsageMetadata usage = null;
-            Integer attemptCount = null;
-            if (exception instanceof ClaudeProviderException providerException) {
+            AiUsageMetadata usage = response == null ? null : response.usageMetadata();
+            Integer attemptCount = response == null ? null : response.attemptCount();
+            if (response == null && exception instanceof ClaudeProviderException providerException) {
                 usage = providerException.getUsageMetadata();
                 attemptCount = providerException.getAttemptCount() > 0
                         ? providerException.getAttemptCount()

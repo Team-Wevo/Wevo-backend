@@ -3,6 +3,7 @@ package com.wevo.backend.ai.service;
 import com.wevo.backend.ai.client.AiUsageMetadata;
 import com.wevo.backend.ai.client.ClaudeGateway;
 import com.wevo.backend.ai.client.ClaudeRequest;
+import com.wevo.backend.ai.client.ClaudeResponse;
 import com.wevo.backend.ai.domain.AiErrorType;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiRequestStatus;
@@ -119,6 +120,59 @@ class AiUsageLifecycleIntegrationTest {
     }
 
     @Test
+    void resultProcessingFailurePreservesSuccessfulProviderUsage() {
+        AiUsageMetadata usage = new AiUsageMetadata(
+                "provider-success", "response-model", 120L, 30L, 7L, 2L
+        );
+        AiInvocationService invocationService = new AiInvocationService(
+                successfulGateway(usage, 2), usageService
+        );
+
+        assertThatThrownBy(() -> invocationService.invoke(
+                startCommand(),
+                new ClaudeRequest(AiFeature.DRAFT_GENERATION, "system prompt", "user prompt"),
+                response -> {
+                    throw new IllegalStateException("result persistence failed");
+                }
+        )).isInstanceOf(IllegalStateException.class);
+
+        AiUsageLog failed = usageLogRepository.findAll().getFirst();
+        assertThat(failed.getRequestStatus()).isEqualTo(AiRequestStatus.FAILED);
+        assertThat(failed.getErrorType()).isEqualTo(AiErrorType.INTERNAL_ERROR);
+        assertThat(failed.getProviderRequestId()).isEqualTo("provider-success");
+        assertThat(failed.getModelId()).isEqualTo("response-model");
+        assertThat(failed.getInputTokens()).isEqualTo(120L);
+        assertThat(failed.getOutputTokens()).isEqualTo(30L);
+        assertThat(failed.getTotalInputTokens()).isEqualTo(129L);
+        assertThat(failed.getAttemptCount()).isEqualTo(2);
+    }
+
+    @Test
+    void nullResultAlsoPreservesSuccessfulProviderUsage() {
+        AiUsageMetadata usage = new AiUsageMetadata(
+                "provider-null-result", "response-model", 40L, 10L, null, null
+        );
+        AiInvocationService invocationService = new AiInvocationService(
+                successfulGateway(usage, 1), usageService
+        );
+
+        assertThatThrownBy(() -> invocationService.invoke(
+                startCommand(),
+                new ClaudeRequest(AiFeature.DRAFT_GENERATION, "system prompt", "user prompt"),
+                response -> null
+        ))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("AI 결과 처리 결과는 null일 수 없습니다.");
+
+        AiUsageLog failed = usageLogRepository.findAll().getFirst();
+        assertThat(failed.getRequestStatus()).isEqualTo(AiRequestStatus.FAILED);
+        assertThat(failed.getProviderRequestId()).isEqualTo("provider-null-result");
+        assertThat(failed.getInputTokens()).isEqualTo(40L);
+        assertThat(failed.getOutputTokens()).isEqualTo(10L);
+        assertThat(failed.getAttemptCount()).isEqualTo(1);
+    }
+
+    @Test
     void recoversOnlyRequestsOlderThanFeatureTimeoutAndGrace() {
         LocalDateTime now = LocalDateTime.now();
         AiUsageLog orphan = usageLogRepository.save(AiUsageLog.start(
@@ -150,5 +204,9 @@ class AiUsageLifecycleIntegrationTest {
                 "v1",
                 "snapshot-hash"
         );
+    }
+
+    private ClaudeGateway successfulGateway(AiUsageMetadata usage, int attemptCount) {
+        return request -> new ClaudeResponse("generated content", usage, "end_turn", attemptCount);
     }
 }
