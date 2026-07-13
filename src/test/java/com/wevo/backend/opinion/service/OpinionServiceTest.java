@@ -5,6 +5,7 @@ import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.opinion.domain.Opinion;
 import com.wevo.backend.opinion.domain.OpinionStatus;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
+import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
 import com.wevo.backend.opinion.repository.OpinionRepository;
 import com.wevo.backend.project.domain.Project;
@@ -98,7 +99,6 @@ class OpinionServiceTest {
         given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
         given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
                 .willReturn(Optional.of(existing));
-        given(opinionRepository.saveAndFlush(existing)).willReturn(existing);
 
         OpinionDraftResponse response = opinionService.saveDraft(
                 SECTION_ID, USER_ID, new OpinionDraftRequest(CONTENT));
@@ -144,6 +144,72 @@ class OpinionServiceTest {
                 () -> opinionService.saveDraft(SECTION_ID, USER_ID, new OpinionDraftRequest(CONTENT)));
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.OPINION_COLLECTION_CLOSED);
+    }
+
+    @Test
+    @DisplayName("내가 작성한 의견이 있으면 exists=true 와 의견 내용을 반환한다")
+    void getMyOpinion_returnsOpinion_whenPresent() {
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        Opinion opinion = Opinion.builder()
+                .projectSection(section)
+                .author(user())
+                .content(CONTENT)
+                .status(OpinionStatus.DRAFT)
+                .build();
+        ReflectionTestUtils.setField(opinion, "id", 501L);
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
+        given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
+                .willReturn(Optional.of(opinion));
+
+        MyOpinionResponse response = opinionService.getMyOpinion(SECTION_ID, USER_ID);
+
+        assertThat(response.exists()).isTrue();
+        assertThat(response.id()).isEqualTo(501L);
+        assertThat(response.content()).isEqualTo(CONTENT);
+        assertThat(response.status()).isEqualTo(OpinionStatus.DRAFT);
+    }
+
+    @Test
+    @DisplayName("아직 의견을 작성하지 않았으면 예외 없이 exists=false 를 반환한다")
+    void getMyOpinion_returnsEmpty_whenAbsent() {
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
+        given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
+                .willReturn(Optional.empty());
+
+        MyOpinionResponse response = opinionService.getMyOpinion(SECTION_ID, USER_ID);
+
+        assertThat(response.exists()).isFalse();
+        assertThat(response.id()).isNull();
+        assertThat(response.content()).isNull();
+        assertThat(response.status()).isNull();
+        assertThat(response.updatedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("조회 시 섹션이 없으면 SECTION_NOT_FOUND 예외를 던진다")
+    void getMyOpinion_sectionNotFound_throws() {
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.empty());
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> opinionService.getMyOpinion(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("조회 시 프로젝트 멤버가 아니면 NOT_PROJECT_MEMBER 예외를 던진다")
+    void getMyOpinion_notMember_throws() {
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(false);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> opinionService.getMyOpinion(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_PROJECT_MEMBER);
     }
 
     private ProjectSection section(ProjectSectionStatus status) {
