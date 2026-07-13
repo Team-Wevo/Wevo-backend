@@ -3,6 +3,7 @@ package com.wevo.backend.opinion.controller;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.opinion.domain.OpinionStatus;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
+import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
 import com.wevo.backend.opinion.service.OpinionService;
 import org.junit.jupiter.api.DisplayName;
@@ -22,6 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -31,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class OpinionControllerWebMvcTest {
 
     private static final String URL = "/api/project-sections/10/my-opinion/draft";
+    private static final String GET_URL = "/api/project-sections/10/my-opinion";
     private static final String VALID_CONTENT = "타겟을 공모전 참가 대학생 팀으로 좁히는 게 좋겠습니다.";
 
     @Autowired
@@ -98,6 +101,48 @@ class OpinionControllerWebMvcTest {
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))
                 .andExpect(jsonPath("$.data.updatedAt").exists())
                 .andExpect(jsonPath("$.timestamp").exists());
+    }
+
+    @Test
+    @DisplayName("의견 조회는 인증 없이 호출하면 A001 공통 응답을 반환한다")
+    void getMyOpinion_withoutAuthentication_returnsA001() throws Exception {
+        mockMvc.perform(get(GET_URL))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("A001"));
+    }
+
+    @Test
+    @DisplayName("작성한 의견이 있으면 exists=true 와 의견 내용을 담은 OK 응답을 반환한다")
+    void getMyOpinion_present_returnsOpinion() throws Exception {
+        given(opinionService.getMyOpinion(10L, 7L))
+                .willReturn(new MyOpinionResponse(
+                        true, 501L, VALID_CONTENT, OpinionStatus.DRAFT,
+                        LocalDateTime.of(2026, 7, 14, 12, 0)));
+
+        mockMvc.perform(get(GET_URL).with(authenticatedUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data.exists").value(true))
+                .andExpect(jsonPath("$.data.id").value(501))
+                .andExpect(jsonPath("$.data.content").value(VALID_CONTENT))
+                .andExpect(jsonPath("$.data.status").value("DRAFT"))
+                .andExpect(jsonPath("$.data.updatedAt").exists());
+    }
+
+    @Test
+    @DisplayName("의견 미작성이면 404가 아니라 exists=false 인 OK 응답을 반환한다")
+    void getMyOpinion_absent_returnsExistsFalse() throws Exception {
+        given(opinionService.getMyOpinion(10L, 7L)).willReturn(MyOpinionResponse.empty());
+
+        mockMvc.perform(get(GET_URL).with(authenticatedUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data.exists").value(false))
+                .andExpect(jsonPath("$.data.id").doesNotExist())
+                .andExpect(jsonPath("$.data.status").doesNotExist());
     }
 
     private RequestPostProcessor authenticatedUser() {

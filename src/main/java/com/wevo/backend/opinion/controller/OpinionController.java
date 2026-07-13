@@ -3,11 +3,13 @@ package com.wevo.backend.opinion.controller;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
+import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
 import com.wevo.backend.opinion.service.OpinionService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -25,6 +27,18 @@ public class OpinionController {
 
     public OpinionController(OpinionService opinionService) {
         this.opinionService = opinionService;
+    }
+
+    /**
+     * 내 의견 상태를 조회한다. 아직 작성 전이면 404가 아니라 {@code exists=false} 로 응답한다.
+     */
+    @GetMapping("/{projectSectionId}/my-opinion")
+    public ResponseEntity<ApiResponse<MyOpinionResponse>> getMyOpinion(
+            @PathVariable Long projectSectionId,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        MyOpinionResponse response = opinionService.getMyOpinion(projectSectionId, principal.userId());
+        return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", response));
     }
 
     /**
