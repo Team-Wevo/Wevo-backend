@@ -6,7 +6,7 @@ spring:
     anthropic:
       api-key: ${ANTHROPIC_API_KEY}
       timeout: ${ANTHROPIC_TIMEOUT:60s}
-      max-retries: ${ANTHROPIC_MAX_RETRIES:2}
+      max-retries: 0
       chat:
         model: ${ANTHROPIC_MODEL:claude-haiku-4-5}
         max-tokens: ${ANTHROPIC_MAX_TOKENS:4096}
@@ -22,6 +22,15 @@ wevo:
       model: ${ANTHROPIC_MODEL:claude-haiku-4-5}
       timeout: ${ANTHROPIC_TIMEOUT:60s}
       max-output-tokens: ${ANTHROPIC_MAX_TOKENS:4096}
+      max-retries: ${ANTHROPIC_MAX_RETRIES:2}
+      initial-backoff: 500ms
+      max-backoff: 8s
+    pricing:
+      version: ${AI_PRICING_VERSION:}
+    audit:
+      recovery-enabled: true
+      recovery-interval: 60s
+      orphan-grace: 30s
 
 # JWT 유효 시간 (비밀 키(jwt.secret)는 프로파일별 설정에서 주입)
 jwt:

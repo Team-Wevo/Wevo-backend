@@ -5,13 +5,8 @@ package com.wevo.backend.ai.client;
  */
 public record ClaudeResponse(
         String content,
-        String requestId,
-        String model,
-        Integer promptTokens,
-        Integer completionTokens,
-        Integer totalTokens,
-        Long cacheReadInputTokens,
-        Long cacheWriteInputTokens,
-        String finishReason
+        AiUsageMetadata usageMetadata,
+        String finishReason,
+        int attemptCount
 ) {
 }
