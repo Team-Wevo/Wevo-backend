@@ -33,6 +33,7 @@ public enum ErrorCode {
 
     // Section
     SECTION_NOT_FOUND(HttpStatus.NOT_FOUND, "S001", "섹션을 찾을 수 없습니다."),
+    INVALID_SECTION_STATUS_TRANSITION(HttpStatus.CONFLICT, "S002", "허용되지 않은 섹션 상태 전이입니다."),
 
     // Review
     REVIEW_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "R001", "검토 링크를 찾을 수 없습니다.");
