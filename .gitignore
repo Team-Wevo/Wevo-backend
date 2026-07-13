@@ -53,3 +53,10 @@ out/
 *.keystore
 src/main/resources/application-secret.yml
 src/main/resources/application-*-secret.yml
+
+### AI agent instructions (개인용, 커밋 제외) ###
+AGENTS.md
+API_SEPC_NOTION.md
+API_SPEC.md
+API_TEMPLATE.md
+CLAUDE.md
