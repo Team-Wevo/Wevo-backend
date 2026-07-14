@@ -6,4 +6,8 @@ package com.wevo.backend.ai.client;
 public interface ClaudeGateway {
 
     ClaudeResponse generate(ClaudeRequest request);
+
+    default <T> StructuredClaudeResponse<T> generateStructured(StructuredClaudeRequest<T> request) {
+        throw new UnsupportedOperationException("구조화 출력 호출을 지원하지 않습니다.");
+    }
 }
