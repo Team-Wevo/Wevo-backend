@@ -27,7 +27,7 @@ public class ExternalReviewQueryController {
     }
 
     /**
-     * 섹션의 외부 검토 결과(이해도 집계 + 개별 코멘트)를 조회한다. (팀장만)
+     * 섹션의 외부 검토 결과(이해도 집계 + 개별 코멘트)를 조회한다. (팀장 전용)
      */
     @GetMapping("/{sectionId}/review-submissions")
     public ResponseEntity<ApiResponse<ExternalReviewResultResponse>> getReviewSubmissions(

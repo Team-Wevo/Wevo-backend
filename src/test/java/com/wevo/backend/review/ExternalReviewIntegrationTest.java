@@ -20,6 +20,8 @@ import com.wevo.backend.review.domain.UnderstandingSignal;
 import com.wevo.backend.review.repository.ReviewSubmissionRepository;
 import com.wevo.backend.review.domain.ReviewLink;
 import com.wevo.backend.review.repository.ReviewLinkRepository;
+import com.wevo.backend.review.service.ReviewLinkService;
+import com.wevo.backend.review.service.ReviewTokenHasher;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionDraft;
@@ -50,6 +52,7 @@ import org.springframework.transaction.annotation.Transactional;
 class ExternalReviewIntegrationTest {
 
     private static final String DRAFT_CONTENT = "우리가 해결하려는 문제는 정보가 흩어져 있다는 점이다.";
+    private static final String REVIEWER_ID_HEADER = "X-Anonymous-Reviewer-Id";
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -59,6 +62,10 @@ class ExternalReviewIntegrationTest {
     private ReviewSubmissionRepository reviewSubmissionRepository;
     @Autowired
     private ReviewLinkRepository reviewLinkRepository;
+    @Autowired
+    private ReviewLinkService reviewLinkService;
+    @Autowired
+    private ReviewTokenHasher tokenHasher;
 
     @PersistenceContext
     private EntityManager em;
@@ -86,8 +93,11 @@ class ExternalReviewIntegrationTest {
         assertThat(token).isNotBlank();
 
         // 발급자(createdBy)가 팀장으로 세팅되는지 확인 (created_by_user_id 유실 방지)
-        ReviewLink savedLink = reviewLinkRepository.findByToken(token).orElseThrow();
+        // 원문 토큰이 아니라 해시로만 저장되므로 해시로 조회한다.
+        ReviewLink savedLink = reviewLinkRepository.findByTokenHash(tokenHasher.hash(token)).orElseThrow();
         assertThat(savedLink.getCreatedBy().getId()).isEqualTo(owner.getId());
+        assertThat(savedLink.getTokenHash()).isNotEqualTo(token);
+        assertThat(savedLink.getContentSnapshot()).isEqualTo(DRAFT_CONTENT);
 
         // 2) 공개 열람 (로그인 없이)
         mockMvc.perform(get("/public/review-links/{token}", token))
@@ -183,7 +193,182 @@ class ExternalReviewIntegrationTest {
                 .andExpect(jsonPath("$.success").value(false));
     }
 
+    @Test
+    @DisplayName("같은 브라우저(익명 키)로 두 번 제출하면 두 번째는 409(R002) 를 반환한다")
+    void sameBrowserCannotSubmitTwice() throws Exception {
+        User owner = persistUser("owner-dup@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+
+        submitAsReviewer(token, "CLEAR", "browser-A").andExpect(status().isCreated());
+        submitAsReviewer(token, "PARTIAL", "browser-A")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R002"));
+
+        assertThat(reviewSubmissionRepository.countByReviewLink_Id(linkId(token))).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("다른 브라우저는 각각 1회씩 제출할 수 있다")
+    void differentBrowsersEachSubmitOnce() throws Exception {
+        User owner = persistUser("owner-multi@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+
+        submitAsReviewer(token, "CLEAR", "browser-A").andExpect(status().isCreated());
+        submitAsReviewer(token, "UNCLEAR", "browser-B").andExpect(status().isCreated());
+
+        assertThat(reviewSubmissionRepository.countByReviewLink_Id(linkId(token))).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("링크당 21번째 제출은 409(R003) 로 상한을 넘지 못한다")
+    void submissionCapIsEnforced() throws Exception {
+        User owner = persistUser("owner-cap@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+
+        for (int i = 0; i < ReviewLink.MAX_SUBMISSIONS; i++) {
+            submitAsReviewer(token, "CLEAR", "browser-" + i).andExpect(status().isCreated());
+        }
+        submitAsReviewer(token, "CLEAR", "browser-over")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R003"));
+
+        assertThat(reviewSubmissionRepository.countByReviewLink_Id(linkId(token)))
+                .isEqualTo(ReviewLink.MAX_SUBMISSIONS);
+    }
+
+    @Test
+    @DisplayName("본문 수정으로 만료(OUTDATED)된 링크에 제출하면 409(R004) 를 반환한다")
+    void outdatedLinkRejectsSubmission() throws Exception {
+        User owner = persistUser("owner-outdated@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+
+        // 본문 저장 시점에 호출되는 만료 처리
+        reviewLinkService.markSectionLinksOutdated(section.getId());
+
+        submitAsReviewer(token, "CLEAR", "browser-A")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R004"));
+    }
+
+    @Test
+    @DisplayName("팀장이 비활성화(CLOSED)한 링크에 제출하면 409(R005) 를 반환한다")
+    void closedLinkRejectsSubmission() throws Exception {
+        User owner = persistUser("owner-closed@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+        Long linkId = linkId(token);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/api/review-links/{id}", linkId)
+                        .with(authentication(authOf(owner)))
+                        .contentType("application/json")
+                        .content("{ \"status\": \"CLOSED\" }"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("REVIEW_LINK_CLOSED"));
+
+        submitAsReviewer(token, "CLEAR", "browser-A")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R005"));
+    }
+
+    @Test
+    @DisplayName("이미 제출한 브라우저가 다시 열람하면 alreadySubmitted=true 로 안내한다")
+    void alreadySubmittedFlagIsExposedOnView() throws Exception {
+        User owner = persistUser("owner-flag@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+
+        submitAsReviewer(token, "CLEAR", "browser-A").andExpect(status().isCreated());
+
+        mockMvc.perform(get("/public/review-links/{token}", token)
+                        .header(REVIEWER_ID_HEADER, "browser-A"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.alreadySubmitted").value(true))
+                .andExpect(jsonPath("$.data.content").value(DRAFT_CONTENT));
+
+        mockMvc.perform(get("/public/review-links/{token}", token)
+                        .header(REVIEWER_ID_HEADER, "browser-B"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.alreadySubmitted").value(false));
+    }
+
+    @Test
+    @DisplayName("summary 는 CLEAR·PARTIAL 이면 필수(400 C001), UNCLEAR 이면 선택(201)")
+    void summaryRequiredExceptForUnclear() throws Exception {
+        User owner = persistUser("owner-summary@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+
+        // summary 없이 CLEAR → 400 (교차 검증 실패)
+        submitWithoutSummary(token, "CLEAR", "browser-clear")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"))
+                .andExpect(jsonPath("$.errors").isNotEmpty());
+
+        // 공백만 있는 summary 도 CLEAR 에서는 400
+        submitWithBlankSummary(token, "CLEAR", "browser-blank")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+
+        // summary 없이 PARTIAL → 400
+        submitWithoutSummary(token, "PARTIAL", "browser-partial")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+
+        // summary 없이 UNCLEAR → 201 (선택)
+        submitWithoutSummary(token, "UNCLEAR", "browser-unclear")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.understandingSignal").value("UNCLEAR"));
+    }
+
     // --- 시드 헬퍼 ---
+
+    private org.springframework.test.web.servlet.ResultActions submitWithoutSummary(
+            String token, String signal, String reviewerId) throws Exception {
+        return mockMvc.perform(post("/public/review-links/{token}/submissions", token)
+                .header(REVIEWER_ID_HEADER, reviewerId)
+                .contentType("application/json")
+                .content("{ \"understandingSignal\": \"%s\" }".formatted(signal)));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions submitWithBlankSummary(
+            String token, String signal, String reviewerId) throws Exception {
+        return mockMvc.perform(post("/public/review-links/{token}/submissions", token)
+                .header(REVIEWER_ID_HEADER, reviewerId)
+                .contentType("application/json")
+                .content("{ \"understandingSignal\": \"%s\", \"summary\": \"   \" }".formatted(signal)));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions submitAsReviewer(
+            String token, String signal, String reviewerId) throws Exception {
+        // CLEAR·PARTIAL 은 summary 가 필수이므로 항상 채워 보낸다. (UNCLEAR 에는 무해)
+        return mockMvc.perform(post("/public/review-links/{token}/submissions", token)
+                .header(REVIEWER_ID_HEADER, reviewerId)
+                .contentType("application/json")
+                .content("{ \"understandingSignal\": \"%s\", \"summary\": \"핵심을 이해했어요.\" }".formatted(signal)));
+    }
+
+    private Long linkId(String token) {
+        return reviewLinkRepository.findByTokenHash(tokenHasher.hash(token)).orElseThrow().getId();
+    }
 
     private UsernamePasswordAuthenticationToken authOf(User user) {
         return new UsernamePasswordAuthenticationToken(

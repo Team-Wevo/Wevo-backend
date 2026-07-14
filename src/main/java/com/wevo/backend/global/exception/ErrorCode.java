@@ -35,7 +35,12 @@ public enum ErrorCode {
     SECTION_NOT_FOUND(HttpStatus.NOT_FOUND, "S001", "섹션을 찾을 수 없습니다."),
 
     // Review
-    REVIEW_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "R001", "검토 링크를 찾을 수 없습니다.");
+    REVIEW_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "R001", "검토 링크를 찾을 수 없습니다."),
+    REVIEW_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "R002", "이미 검토를 제출했어요."),
+    REVIEW_SUBMISSION_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "R003", "이 링크는 검토 정원(20명)이 모두 찼어요."),
+    REVIEW_LINK_OUTDATED(HttpStatus.CONFLICT, "R004", "외부 검토 링크가 이전 본문 기준이라 만료됐어요."),
+    REVIEW_LINK_CLOSED(HttpStatus.CONFLICT, "R005", "종료된 외부 검토 링크예요."),
+    TEAM_REVIEW_SECTION_NOT_REVIEWING(HttpStatus.UNPROCESSABLE_ENTITY, "R006", "검토 단계(REVIEWING)의 섹션만 검토할 수 있습니다.");
 
     private final HttpStatus status;
     private final String code;

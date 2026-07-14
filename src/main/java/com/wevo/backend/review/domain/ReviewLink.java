@@ -5,6 +5,8 @@ import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -12,7 +14,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -22,12 +23,25 @@ import lombok.NoArgsConstructor;
  * 섹션 외부 검토용 공유 링크. 외부 검토자에게 토큰으로 발급된다.
  *
  * <p>내부(팀) 검토는 멤버십 기반(§6.1)이라 링크를 쓰지 않으므로, 이 링크는 외부 검토 전용이다.
+ *
+ * <h2>보안 · 남용 방지</h2>
+ * <ul>
+ *   <li><b>토큰 해시 저장</b> — 원문 토큰은 URL 로만 전달하고 DB 에는 SHA-256 해시({@code tokenHash})만 저장한다.
+ *       조회 시 요청 토큰을 해시해 비교한다. (DB 유출 시에도 링크 접근 불가)</li>
+ *   <li><b>본문 스냅샷</b> — 발급 시점의 제목·본문·버전을 그대로 보관한다.
+ *       외부 검토자는 <b>항상 스냅샷</b>을 읽으며, 이후 본문이 수정돼도 링크가 가리키던 버전을 그대로 본다.</li>
+ *   <li><b>버전 만료</b> — 본문이 수정되면 링크는 {@link ReviewLinkStatus#OUTDATED} 로 만료되고,
+ *       팀장은 {@link ReviewLinkStatus#CLOSED} 로 직접 비활성화할 수 있다. 만료·비활성 링크는 제출을 받지 않는다.</li>
+ * </ul>
  */
 @Entity
 @Table(name = "review_links")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ReviewLink extends BaseTimeEntity {
+
+    /** 링크 하나가 받을 수 있는 외부 검토 제출 상한. (스팸 최종 방어선) */
+    public static final int MAX_SUBMISSIONS = 20;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -41,22 +55,56 @@ public class ReviewLink extends BaseTimeEntity {
     @JoinColumn(name = "created_by_user_id")
     private User createdBy;
 
-    @Column(length = 255)
-    private String token;
+    /** 원문 토큰의 SHA-256 해시. 원문은 저장하지 않는다. */
+    @Column(name = "token_hash", length = 64, unique = true, nullable = false)
+    private String tokenHash;
 
-    @Column(name = "expires_at")
-    private LocalDateTime expiresAt;
+    /** 발급 시점 섹션 제목 스냅샷. */
+    @Column(name = "section_title_snapshot", length = 200)
+    private String sectionTitleSnapshot;
 
-    @Column(name = "is_active")
-    private Boolean isActive;
+    /** 발급 시점 본문 스냅샷. 외부 검토자는 항상 이 값을 읽는다. */
+    @Column(name = "content_snapshot", columnDefinition = "TEXT")
+    private String contentSnapshot;
+
+    /** 스냅샷이 가리키는 본문 버전. (만료 판단·추적용) */
+    @Column(name = "content_version")
+    private Integer contentVersion;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20, nullable = false)
+    private ReviewLinkStatus status;
 
     @Builder
-    private ReviewLink(ProjectSection projectSection, User createdBy, String token,
-                       LocalDateTime expiresAt, Boolean isActive) {
+    private ReviewLink(ProjectSection projectSection, User createdBy, String tokenHash,
+                       String sectionTitleSnapshot, String contentSnapshot, Integer contentVersion,
+                       ReviewLinkStatus status) {
         this.projectSection = projectSection;
         this.createdBy = createdBy;
-        this.token = token;
-        this.expiresAt = expiresAt;
-        this.isActive = isActive;
+        this.tokenHash = tokenHash;
+        this.sectionTitleSnapshot = sectionTitleSnapshot;
+        this.contentSnapshot = contentSnapshot;
+        this.contentVersion = contentVersion;
+        this.status = status;
+    }
+
+    /** 열람·제출을 받는 정상 상태인지. */
+    public boolean isActive() {
+        return status == ReviewLinkStatus.ACTIVE;
+    }
+
+    /**
+     * 본문이 수정돼 링크를 만료시킨다. (첫 실제 저장 시점에 호출)
+     * 이미 만료·비활성인 링크는 상태를 유지한다.
+     */
+    public void markOutdated() {
+        if (status == ReviewLinkStatus.ACTIVE) {
+            this.status = ReviewLinkStatus.OUTDATED;
+        }
+    }
+
+    /** 팀장이 링크를 직접 비활성화한다. */
+    public void close() {
+        this.status = ReviewLinkStatus.CLOSED;
     }
 }
