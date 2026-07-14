@@ -4,12 +4,19 @@ import com.wevo.backend.ai.client.AiUsageMetadata;
 import com.wevo.backend.ai.client.ClaudeGateway;
 import com.wevo.backend.ai.client.ClaudeRequest;
 import com.wevo.backend.ai.client.ClaudeResponse;
+import com.wevo.backend.ai.client.OutputSchemaId;
+import com.wevo.backend.ai.client.StructuredClaudeRequest;
+import com.wevo.backend.ai.client.StructuredClaudeResponse;
+import com.wevo.backend.ai.client.StructuredOutputDefinition;
+import com.wevo.backend.ai.client.StructuredOutputValidationContext;
 import com.wevo.backend.ai.domain.AiErrorType;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiRequestStatus;
 import com.wevo.backend.ai.domain.AiUsageLog;
 import com.wevo.backend.ai.exception.ClaudeProviderException;
 import com.wevo.backend.ai.repository.AiUsageLogRepository;
+import com.wevo.backend.ai.prompt.PromptTemplateId;
+import com.wevo.backend.ai.prompt.RenderedPrompt;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
@@ -24,7 +31,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.time.LocalDateTime;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -173,6 +182,49 @@ class AiUsageLifecycleIntegrationTest {
     }
 
     @Test
+    void structuredValidationFailureIsAuditedBeforeResultHandlerCanPersist() {
+        AiUsageMetadata usage = new AiUsageMetadata(
+                "provider-structured", "response-model", 30L, 10L, null, null
+        );
+        ClaudeGateway failingGateway = new ClaudeGateway() {
+            @Override
+            public ClaudeResponse generate(ClaudeRequest request) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public <T> StructuredClaudeResponse<T> generateStructured(StructuredClaudeRequest<T> request) {
+                throw new ClaudeProviderException(
+                        ErrorCode.AI_STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED,
+                        new IllegalStateException("invalid structured output"),
+                        usage,
+                        3
+                );
+            }
+        };
+        AiInvocationService invocationService = new AiInvocationService(failingGateway, usageService);
+        AtomicBoolean handlerCalled = new AtomicBoolean();
+
+        assertThatThrownBy(() -> invocationService.invokeStructured(
+                startCommand("contract-summary:v1"),
+                structuredRequest(),
+                response -> {
+                    handlerCalled.set(true);
+                    return new AiProcessedResult<>(response.result(), 91L);
+                }
+        )).isInstanceOf(ClaudeProviderException.class);
+
+        assertThat(handlerCalled).isFalse();
+        AiUsageLog failed = usageLogRepository.findAll().getFirst();
+        assertThat(failed.getRequestStatus()).isEqualTo(AiRequestStatus.FAILED);
+        assertThat(failed.getErrorType()).isEqualTo(AiErrorType.SCHEMA_VALIDATION_FAILED);
+        assertThat(failed.getProviderRequestId()).isEqualTo("provider-structured");
+        assertThat(failed.getInputTokens()).isEqualTo(30L);
+        assertThat(failed.getOutputTokens()).isEqualTo(10L);
+        assertThat(failed.getAttemptCount()).isEqualTo(3);
+    }
+
+    @Test
     void recoversOnlyRequestsOlderThanFeatureTimeoutAndGrace() {
         LocalDateTime now = LocalDateTime.now();
         AiUsageLog orphan = usageLogRepository.save(AiUsageLog.start(
@@ -196,17 +248,33 @@ class AiUsageLifecycleIntegrationTest {
     }
 
     private AiUsageStartCommand startCommand() {
+        return startCommand("v1");
+    }
+
+    private AiUsageStartCommand startCommand(String promptVersion) {
         return new AiUsageStartCommand(
                 project,
                 null,
                 user,
                 AiFeature.DRAFT_GENERATION,
-                "v1",
+                promptVersion,
                 "snapshot-hash"
+        );
+    }
+
+    private StructuredClaudeRequest<TestOutput> structuredRequest() {
+        return new StructuredClaudeRequest<>(
+                AiFeature.DRAFT_GENERATION,
+                new RenderedPrompt(new PromptTemplateId("contract-summary", 1), "system", "user"),
+                StructuredOutputDefinition.of(new OutputSchemaId("test-output", 1), TestOutput.class),
+                new StructuredOutputValidationContext(Set.of(7L))
         );
     }
 
     private ClaudeGateway successfulGateway(AiUsageMetadata usage, int attemptCount) {
         return request -> new ClaudeResponse("generated content", usage, "end_turn", attemptCount);
+    }
+
+    private record TestOutput(Long resourceId) {
     }
 }
