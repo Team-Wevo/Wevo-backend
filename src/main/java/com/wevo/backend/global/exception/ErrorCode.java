@@ -50,6 +50,9 @@ public enum ErrorCode {
     AI_PROVIDER_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "AI009", "AI 응답을 처리할 수 없습니다."),
     AI_AUDIT_LOG_PERSISTENCE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "AI010", "AI 요청 감사 로그를 저장할 수 없습니다."),
     AI_USAGE_LOG_NOT_FOUND(HttpStatus.NOT_FOUND, "AI011", "AI 사용 로그를 찾을 수 없습니다."),
+    AI_PROMPT_NOT_FOUND(HttpStatus.INTERNAL_SERVER_ERROR, "AI012", "AI 프롬프트를 찾을 수 없습니다."),
+    AI_PROMPT_INVALID(HttpStatus.INTERNAL_SERVER_ERROR, "AI013", "AI 프롬프트 설정이 올바르지 않습니다."),
+    AI_PROMPT_VARIABLE_INVALID(HttpStatus.BAD_REQUEST, "AI014", "AI 프롬프트 입력값이 올바르지 않습니다."),
     AI_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "AI999", "AI 처리 중 오류가 발생했습니다."),
 
     // Review
