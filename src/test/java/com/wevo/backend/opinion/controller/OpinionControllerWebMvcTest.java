@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -148,8 +149,14 @@ class OpinionControllerWebMvcTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.code").value("OK"))
                 .andExpect(jsonPath("$.data.exists").value(false))
-                .andExpect(jsonPath("$.data.id").doesNotExist())
-                .andExpect(jsonPath("$.data.status").doesNotExist());
+                .andExpect(jsonPath("$.data.id").hasJsonPath())
+                .andExpect(jsonPath("$.data.id").value(nullValue()))
+                .andExpect(jsonPath("$.data.content").hasJsonPath())
+                .andExpect(jsonPath("$.data.content").value(nullValue()))
+                .andExpect(jsonPath("$.data.status").hasJsonPath())
+                .andExpect(jsonPath("$.data.status").value(nullValue()))
+                .andExpect(jsonPath("$.data.updatedAt").hasJsonPath())
+                .andExpect(jsonPath("$.data.updatedAt").value(nullValue()));
     }
 
     @Test
