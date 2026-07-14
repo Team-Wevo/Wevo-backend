@@ -22,6 +22,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -138,5 +139,41 @@ class OpinionRepositoryTest {
         Opinion found = opinionRepository.findById(opinion.getId()).orElseThrow();
         assertThat(found.getStatus()).isEqualTo(OpinionStatus.SUBMITTED);
         assertThat(found.getSubmittedAt()).isEqualTo(firstSubmittedAt);
+    }
+
+    @Test
+    @DisplayName("제출 목록 조회는 SUBMITTED 만 제출 시각 오름차순으로 반환하고 DRAFT 는 제외한다")
+    void findAllWithAuthor_returnsSubmittedOnlyOrderedBySubmittedAt() {
+        User late = userRepository.save(User.builder()
+                .name("이서연").email("late@wevo.com").status(UserStatus.ACTIVE).build());
+        User early = userRepository.save(User.builder()
+                .name("박지훈").email("early@wevo.com").status(UserStatus.ACTIVE).build());
+        // author 의 DRAFT — 목록에 나오면 안 된다
+        opinionRepository.save(Opinion.builder()
+                .projectSection(section).author(author)
+                .content(CONTENT).status(OpinionStatus.DRAFT)
+                .build());
+        // 늦게 제출한 의견을 먼저 저장해 정렬이 저장 순서가 아님을 보장한다
+        Opinion lateOpinion = opinionRepository.save(Opinion.builder()
+                .projectSection(section).author(late)
+                .content(CONTENT).status(OpinionStatus.SUBMITTED)
+                .submittedAt(LocalDateTime.of(2026, 7, 14, 11, 0))
+                .build());
+        Opinion earlyOpinion = opinionRepository.save(Opinion.builder()
+                .projectSection(section).author(early)
+                .content(CONTENT).status(OpinionStatus.SUBMITTED)
+                .submittedAt(LocalDateTime.of(2026, 7, 14, 10, 20))
+                .build());
+        opinionRepository.flush();
+        entityManager.clear();
+
+        List<Opinion> found = opinionRepository
+                .findAllWithAuthorByProjectSectionIdAndStatus(section.getId(), OpinionStatus.SUBMITTED);
+
+        assertThat(found).hasSize(2);
+        assertThat(found.get(0).getId()).isEqualTo(earlyOpinion.getId());
+        assertThat(found.get(0).getAuthor().getName()).isEqualTo("박지훈");
+        assertThat(found.get(1).getId()).isEqualTo(lateOpinion.getId());
+        assertThat(found.get(1).getAuthor().getName()).isEqualTo("이서연");
     }
 }

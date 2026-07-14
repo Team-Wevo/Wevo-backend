@@ -6,6 +6,7 @@ import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
 import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
+import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
 import com.wevo.backend.opinion.service.OpinionService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -54,6 +55,20 @@ public class OpinionController {
     ) {
         OpinionDraftResponse response = opinionService.saveDraft(projectSectionId, principal.userId(), request);
         return ResponseEntity.ok(ApiResponse.success("OPINION_DRAFT_SAVED", "의견이 임시저장되었습니다.", response));
+    }
+
+    /**
+     * 섹션에 제출된 팀원 의견 목록을 조회한다.
+     * 본인이 제출한 적 없으면 목록은 숨기고 제출 건수만 반환한다(공개 게이트).
+     */
+    @GetMapping("/{projectSectionId}/opinions")
+    public ResponseEntity<ApiResponse<SubmittedOpinionListResponse>> getSubmittedOpinions(
+            @PathVariable Long projectSectionId,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        SubmittedOpinionListResponse response =
+                opinionService.getSubmittedOpinions(projectSectionId, principal.userId());
+        return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", response));
     }
 
     /**

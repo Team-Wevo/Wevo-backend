@@ -8,6 +8,7 @@ import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
 import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
+import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
 import com.wevo.backend.opinion.repository.OpinionRepository;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectStatus;
@@ -28,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -304,6 +306,88 @@ class OpinionServiceTest {
                 .satisfies(error -> assertThat(error.getField()).isEqualTo("content"));
     }
 
+    @Test
+    @DisplayName("본인이 제출했으면 제출 의견 전체를 제출 시각 순서 그대로 반환한다")
+    void getSubmittedOpinions_returnsFullList_whenEverSubmitted() {
+        ProjectSection section = section(ProjectSectionStatus.SYNTHESIZING); // 마감 후에도 조회 가능
+        User other = user(2L, "이서연");
+        Opinion mine = submittedOpinion(501L, section, user(),
+                LocalDateTime.of(2026, 7, 14, 10, 20));
+        Opinion others = submittedOpinion(508L, section, other,
+                LocalDateTime.of(2026, 7, 14, 11, 0));
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
+        given(opinionRepository.findAllWithAuthorByProjectSectionIdAndStatus(
+                SECTION_ID, OpinionStatus.SUBMITTED)).willReturn(List.of(mine, others));
+
+        SubmittedOpinionListResponse response = opinionService.getSubmittedOpinions(SECTION_ID, USER_ID);
+
+        assertThat(response.everSubmitted()).isTrue();
+        assertThat(response.totalSubmittedCount()).isEqualTo(2);
+        assertThat(response.opinions()).hasSize(2);
+        assertThat(response.opinions().get(0).id()).isEqualTo(501L);
+        assertThat(response.opinions().get(0).author().name()).isEqualTo("김민준");
+        assertThat(response.opinions().get(1).id()).isEqualTo(508L);
+        assertThat(response.opinions().get(1).author().id()).isEqualTo(2L);
+        assertThat(response.opinions().get(1).submittedAt())
+                .isEqualTo(LocalDateTime.of(2026, 7, 14, 11, 0));
+    }
+
+    @Test
+    @DisplayName("본인이 제출하지 않았으면 목록을 숨기고 제출 건수만 반환한다 (공개 게이트)")
+    void getSubmittedOpinions_hidesList_whenNotSubmitted() {
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        Opinion others = submittedOpinion(508L, section, user(2L, "이서연"),
+                LocalDateTime.of(2026, 7, 14, 11, 0));
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
+        given(opinionRepository.findAllWithAuthorByProjectSectionIdAndStatus(
+                SECTION_ID, OpinionStatus.SUBMITTED)).willReturn(List.of(others));
+
+        SubmittedOpinionListResponse response = opinionService.getSubmittedOpinions(SECTION_ID, USER_ID);
+
+        assertThat(response.everSubmitted()).isFalse();
+        assertThat(response.totalSubmittedCount()).isEqualTo(1);
+        assertThat(response.opinions()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("목록 조회 시 섹션이 없으면 SECTION_NOT_FOUND 예외를 던진다")
+    void getSubmittedOpinions_sectionNotFound_throws() {
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.empty());
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> opinionService.getSubmittedOpinions(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("목록 조회 시 프로젝트 멤버가 아니면 NOT_PROJECT_MEMBER 예외를 던진다")
+    void getSubmittedOpinions_notMember_throws() {
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(false);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> opinionService.getSubmittedOpinions(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_PROJECT_MEMBER);
+    }
+
+    private Opinion submittedOpinion(Long id, ProjectSection section, User author,
+                                     LocalDateTime submittedAt) {
+        Opinion opinion = Opinion.builder()
+                .projectSection(section)
+                .author(author)
+                .content(CONTENT)
+                .status(OpinionStatus.SUBMITTED)
+                .submittedAt(submittedAt)
+                .build();
+        ReflectionTestUtils.setField(opinion, "id", id);
+        return opinion;
+    }
+
     private Opinion opinion(ProjectSection section, OpinionStatus status, String content,
                             LocalDateTime submittedAt) {
         Opinion opinion = Opinion.builder()
@@ -335,8 +419,12 @@ class OpinionServiceTest {
     }
 
     private User user() {
-        User user = User.builder().name("김민준").status(UserStatus.ACTIVE).build();
-        ReflectionTestUtils.setField(user, "id", USER_ID);
+        return user(USER_ID, "김민준");
+    }
+
+    private User user(Long id, String name) {
+        User user = User.builder().name(name).status(UserStatus.ACTIVE).build();
+        ReflectionTestUtils.setField(user, "id", id);
         return user;
     }
 }
