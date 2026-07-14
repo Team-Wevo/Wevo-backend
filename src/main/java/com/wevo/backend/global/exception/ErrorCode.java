@@ -33,6 +33,7 @@ public enum ErrorCode {
 
     // Section
     SECTION_NOT_FOUND(HttpStatus.NOT_FOUND, "S001", "섹션을 찾을 수 없습니다."),
+    INVALID_SECTION_STATUS_TRANSITION(HttpStatus.CONFLICT, "S002", "허용되지 않은 섹션 상태 전이입니다."),
 
     // AI
     AI_INVALID_REQUEST(HttpStatus.BAD_REQUEST, "AI001", "AI 요청 형식이 올바르지 않습니다."),
