@@ -45,6 +45,8 @@ public enum ErrorCode {
     AI_MODEL_NOT_AVAILABLE(HttpStatus.BAD_GATEWAY, "AI007", "설정된 AI 모델을 사용할 수 없습니다."),
     AI_PROVIDER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI008", "AI 제공자에 일시적으로 연결할 수 없습니다."),
     AI_PROVIDER_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "AI009", "AI 응답을 처리할 수 없습니다."),
+    AI_AUDIT_LOG_PERSISTENCE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "AI010", "AI 요청 감사 로그를 저장할 수 없습니다."),
+    AI_USAGE_LOG_NOT_FOUND(HttpStatus.NOT_FOUND, "AI011", "AI 사용 로그를 찾을 수 없습니다."),
     AI_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "AI999", "AI 처리 중 오류가 발생했습니다."),
 
     // Review

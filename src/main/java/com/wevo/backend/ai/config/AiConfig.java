@@ -4,11 +4,14 @@ import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
+import java.time.Clock;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 @Configuration(proxyBeanMethods = false)
+@EnableScheduling
 public class AiConfig {
 
     @Bean
@@ -28,5 +31,10 @@ public class AiConfig {
     @Bean(destroyMethod = "close")
     public ExecutorService claudeRequestExecutor() {
         return Executors.newVirtualThreadPerTaskExecutor();
+    }
+
+    @Bean
+    public Clock aiClock() {
+        return Clock.systemDefaultZone();
     }
 }

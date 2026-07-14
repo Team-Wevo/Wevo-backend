@@ -1,5 +1,6 @@
 package com.wevo.backend.ai.config;
 
+import com.wevo.backend.ai.domain.AiFeature;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
@@ -28,8 +29,9 @@ public record AiProperties(
         features = features == null ? Map.of() : Map.copyOf(features);
     }
 
-    public ModelOptions optionsFor(String featureName) {
-        FeatureOptions featureOptions = features.get(featureName);
+    public ModelOptions optionsFor(AiFeature feature) {
+        String featureKey = feature.configKey();
+        FeatureOptions featureOptions = features.get(featureKey);
         if (featureOptions == null) {
             return defaultOptions;
         }
@@ -43,17 +45,36 @@ public record AiProperties(
                         : defaultOptions.timeout(),
                 featureOptions.maxOutputTokens() != null
                         ? featureOptions.maxOutputTokens()
-                        : defaultOptions.maxOutputTokens()
+                        : defaultOptions.maxOutputTokens(),
+                featureOptions.maxRetries() != null
+                        ? featureOptions.maxRetries()
+                        : defaultOptions.maxRetries(),
+                featureOptions.initialBackoff() != null
+                        ? featureOptions.initialBackoff()
+                        : defaultOptions.initialBackoff(),
+                featureOptions.maxBackoff() != null
+                        ? featureOptions.maxBackoff()
+                        : defaultOptions.maxBackoff()
         );
-        resolved.validate("wevo.ai.features." + featureName);
+        resolved.validate("wevo.ai.features." + featureKey);
         return resolved;
     }
 
-    public record ModelOptions(String model, Duration timeout, Integer maxOutputTokens) {
+    public record ModelOptions(
+            String model,
+            Duration timeout,
+            Integer maxOutputTokens,
+            Integer maxRetries,
+            Duration initialBackoff,
+            Duration maxBackoff
+    ) {
 
         private void validate(String path) {
             if (!StringUtils.hasText(model)) {
                 throw new IllegalArgumentException(path + ".model 설정은 필수입니다.");
+            }
+            if (model.length() > 100) {
+                throw new IllegalArgumentException(path + ".model은 100자 이하여야 합니다.");
             }
             if (timeout == null || timeout.isZero() || timeout.isNegative()) {
                 throw new IllegalArgumentException(path + ".timeout은 0보다 커야 합니다.");
@@ -61,9 +82,25 @@ public record AiProperties(
             if (maxOutputTokens == null || maxOutputTokens <= 0) {
                 throw new IllegalArgumentException(path + ".max-output-tokens는 0보다 커야 합니다.");
             }
+            if (maxRetries == null || maxRetries < 0) {
+                throw new IllegalArgumentException(path + ".max-retries는 0 이상이어야 합니다.");
+            }
+            if (initialBackoff == null || initialBackoff.isNegative()) {
+                throw new IllegalArgumentException(path + ".initial-backoff은 0 이상이어야 합니다.");
+            }
+            if (maxBackoff == null || maxBackoff.isNegative() || maxBackoff.compareTo(initialBackoff) < 0) {
+                throw new IllegalArgumentException(path + ".max-backoff은 initial-backoff 이상이어야 합니다.");
+            }
         }
     }
 
-    public record FeatureOptions(String model, Duration timeout, Integer maxOutputTokens) {
+    public record FeatureOptions(
+            String model,
+            Duration timeout,
+            Integer maxOutputTokens,
+            Integer maxRetries,
+            Duration initialBackoff,
+            Duration maxBackoff
+    ) {
     }
 }

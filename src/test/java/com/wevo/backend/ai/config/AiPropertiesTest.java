@@ -1,5 +1,6 @@
 package com.wevo.backend.ai.config;
 
+import com.wevo.backend.ai.domain.AiFeature;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -13,11 +14,13 @@ class AiPropertiesTest {
     @Test
     void featureOptionsOverrideOnlyConfiguredValues() {
         AiProperties properties = new AiProperties(
-                new AiProperties.ModelOptions("default-model", Duration.ofSeconds(60), 4096),
-                Map.of("draft", new AiProperties.FeatureOptions("draft-model", null, 2048))
+                modelOptions("default-model", Duration.ofSeconds(60), 4096),
+                Map.of("draft-generation", new AiProperties.FeatureOptions(
+                        "draft-model", null, 2048, null, null, null
+                ))
         );
 
-        AiProperties.ModelOptions options = properties.optionsFor("draft");
+        AiProperties.ModelOptions options = properties.optionsFor(AiFeature.DRAFT_GENERATION);
 
         assertThat(options.model()).isEqualTo("draft-model");
         assertThat(options.timeout()).isEqualTo(Duration.ofSeconds(60));
@@ -27,19 +30,25 @@ class AiPropertiesTest {
     @Test
     void unknownFeatureUsesDefaultOptions() {
         AiProperties.ModelOptions defaultOptions =
-                new AiProperties.ModelOptions("default-model", Duration.ofSeconds(30), 1024);
+                modelOptions("default-model", Duration.ofSeconds(30), 1024);
         AiProperties properties = new AiProperties(defaultOptions, Map.of());
 
-        assertThat(properties.optionsFor("unknown")).isSameAs(defaultOptions);
+        assertThat(properties.optionsFor(AiFeature.ISSUE_DETECTION)).isSameAs(defaultOptions);
     }
 
     @Test
     void invalidDefaultOptionsFailFast() {
         assertThatThrownBy(() -> new AiProperties(
-                new AiProperties.ModelOptions("", Duration.ZERO, 0),
+                modelOptions("", Duration.ZERO, 0),
                 Map.of()
         ))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("model");
+    }
+
+    private AiProperties.ModelOptions modelOptions(String model, Duration timeout, int maxOutputTokens) {
+        return new AiProperties.ModelOptions(
+                model, timeout, maxOutputTokens, 2, Duration.ofMillis(500), Duration.ofSeconds(8)
+        );
     }
 }
