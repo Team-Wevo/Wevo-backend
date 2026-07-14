@@ -18,7 +18,8 @@ import java.util.Map;
 @ConfigurationProperties(prefix = "wevo.ai")
 public record AiProperties(
         ModelOptions defaultOptions,
-        Map<String, FeatureOptions> features
+        Map<String, FeatureOptions> features,
+        StructuredOutputOptions structuredOutput
 ) {
 
     public AiProperties {
@@ -27,6 +28,7 @@ public record AiProperties(
         }
         defaultOptions.validate("wevo.ai.default-options");
         features = features == null ? Map.of() : Map.copyOf(features);
+        structuredOutput = structuredOutput == null ? new StructuredOutputOptions(2) : structuredOutput;
     }
 
     public ModelOptions optionsFor(AiFeature feature) {
@@ -102,5 +104,17 @@ public record AiProperties(
             Duration initialBackoff,
             Duration maxBackoff
     ) {
+    }
+
+    public record StructuredOutputOptions(Integer maxCorrectionRetries) {
+
+        public StructuredOutputOptions {
+            maxCorrectionRetries = maxCorrectionRetries == null ? 2 : maxCorrectionRetries;
+            if (maxCorrectionRetries < 0 || maxCorrectionRetries > 5) {
+                throw new IllegalArgumentException(
+                        "wevo.ai.structured-output.max-correction-retries는 0 이상 5 이하여야 합니다."
+                );
+            }
+        }
     }
 }
