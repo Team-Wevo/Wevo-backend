@@ -1,13 +1,26 @@
 package com.wevo.backend.section.repository;
 
 import com.wevo.backend.section.domain.ProjectSection;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface ProjectSectionRepository extends JpaRepository<ProjectSection, Long> {
+
+    /**
+     * 섹션 행을 배타 잠금(PESSIMISTIC_WRITE)으로 조회한다.
+     *
+     * <p>섹션 상태 확인 후 쓰기가 이어지는 작업(의견 upsert, 수집 마감 등)을 직렬화해
+     * 동시 요청이 유니크 제약 충돌이나 마감 직후 저장 같은 경합을 일으키지 않게 한다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM ProjectSection s WHERE s.id = :id")
+    Optional<ProjectSection> findByIdForUpdate(@Param("id") Long id);
 
     List<ProjectSection> findByProjectIdOrderBySectionOrder(Long projectId);
 
