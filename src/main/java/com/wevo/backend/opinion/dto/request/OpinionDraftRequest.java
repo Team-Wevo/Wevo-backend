@@ -1,5 +1,6 @@
 package com.wevo.backend.opinion.dto.request;
 
+import com.wevo.backend.opinion.domain.Opinion;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -8,7 +9,7 @@ import jakarta.validation.constraints.Size;
  */
 public record OpinionDraftRequest(
         @NotBlank
-        @Size(min = 20, max = 1000)
+        @Size(min = Opinion.MIN_CONTENT_LENGTH, max = Opinion.MAX_CONTENT_LENGTH)
         String content
 ) {
 }

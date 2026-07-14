@@ -12,6 +12,7 @@ import com.wevo.backend.section.repository.ProjectSectionRepository;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
 import com.wevo.backend.user.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,6 +41,8 @@ class OpinionRepositoryTest {
     private ProjectRepository projectRepository;
     @Autowired
     private ProjectSectionRepository projectSectionRepository;
+    @Autowired
+    private EntityManager entityManager;
 
     private User author;
     private ProjectSection section;
@@ -112,5 +116,27 @@ class OpinionRepositoryTest {
         assertThat(found).isPresent();
         assertThat(found.get().getId()).isEqualTo(saved.getId());
         assertThat(found.get().getContent()).isEqualTo(CONTENT);
+    }
+
+    @Test
+    @DisplayName("최초 제출 시 SUBMITTED 상태와 제출 시각이 저장되고 재호출해도 시각이 유지된다")
+    void submit_persistsStatusAndKeepsFirstSubmittedAt() {
+        Opinion opinion = opinionRepository.saveAndFlush(Opinion.builder()
+                .projectSection(section)
+                .author(author)
+                .content(CONTENT)
+                .status(OpinionStatus.DRAFT)
+                .build());
+        LocalDateTime firstSubmittedAt = LocalDateTime.of(2026, 7, 14, 12, 5);
+
+        opinion.submit(firstSubmittedAt);
+        opinionRepository.flush();
+        opinion.submit(firstSubmittedAt.plusMinutes(10));
+        opinionRepository.flush();
+        entityManager.clear();
+
+        Opinion found = opinionRepository.findById(opinion.getId()).orElseThrow();
+        assertThat(found.getStatus()).isEqualTo(OpinionStatus.SUBMITTED);
+        assertThat(found.getSubmittedAt()).isEqualTo(firstSubmittedAt);
     }
 }

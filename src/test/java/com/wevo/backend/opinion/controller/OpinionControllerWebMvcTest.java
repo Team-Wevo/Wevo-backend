@@ -1,10 +1,14 @@
 package com.wevo.backend.opinion.controller;
 
+import com.wevo.backend.global.exception.BusinessException;
+import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.global.response.FieldError;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.opinion.domain.OpinionStatus;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
+import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
 import com.wevo.backend.opinion.service.OpinionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,13 +22,16 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -34,6 +41,7 @@ class OpinionControllerWebMvcTest {
 
     private static final String URL = "/api/project-sections/10/my-opinion/draft";
     private static final String GET_URL = "/api/project-sections/10/my-opinion";
+    private static final String SUBMIT_URL = "/api/project-sections/10/my-opinion/submit";
     private static final String VALID_CONTENT = "타겟을 공모전 참가 대학생 팀으로 좁히는 게 좋겠습니다.";
 
     @Autowired
@@ -141,8 +149,65 @@ class OpinionControllerWebMvcTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.code").value("OK"))
                 .andExpect(jsonPath("$.data.exists").value(false))
-                .andExpect(jsonPath("$.data.id").doesNotExist())
-                .andExpect(jsonPath("$.data.status").doesNotExist());
+                .andExpect(jsonPath("$.data.id").hasJsonPath())
+                .andExpect(jsonPath("$.data.id").value(nullValue()))
+                .andExpect(jsonPath("$.data.content").hasJsonPath())
+                .andExpect(jsonPath("$.data.content").value(nullValue()))
+                .andExpect(jsonPath("$.data.status").hasJsonPath())
+                .andExpect(jsonPath("$.data.status").value(nullValue()))
+                .andExpect(jsonPath("$.data.updatedAt").hasJsonPath())
+                .andExpect(jsonPath("$.data.updatedAt").value(nullValue()));
+    }
+
+    @Test
+    @DisplayName("의견 제출은 인증 없이 호출하면 A001 공통 응답을 반환한다")
+    void submitMyOpinion_withoutAuthentication_returnsA001() throws Exception {
+        mockMvc.perform(post(SUBMIT_URL))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("A001"));
+    }
+
+    @Test
+    @DisplayName("임시저장된 의견을 제출하면 OPINION_SUBMITTED 성공 응답을 반환한다")
+    void submitMyOpinion_returnsSuccess() throws Exception {
+        given(opinionService.submitMyOpinion(10L, 7L))
+                .willReturn(new OpinionSubmitResponse(
+                        501L,
+                        OpinionStatus.SUBMITTED,
+                        LocalDateTime.of(2026, 7, 14, 12, 5)));
+
+        mockMvc.perform(post(SUBMIT_URL).with(authenticatedUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("OPINION_SUBMITTED"))
+                .andExpect(jsonPath("$.message").value("의견이 제출되었습니다."))
+                .andExpect(jsonPath("$.data.id").value(501))
+                .andExpect(jsonPath("$.data.status").value("SUBMITTED"))
+                .andExpect(jsonPath("$.data.submittedAt").value("2026-07-14T12:05:00"))
+                .andExpect(jsonPath("$.timestamp").exists());
+    }
+
+    @Test
+    @DisplayName("임시저장된 의견이 없으면 O001과 projectSectionId 필드 오류를 반환한다")
+    void submitMyOpinion_opinionNotFound_returnsO001() throws Exception {
+        given(opinionService.submitMyOpinion(10L, 7L))
+                .willThrow(new BusinessException(
+                        ErrorCode.OPINION_NOT_FOUND,
+                        List.of(new FieldError(
+                                "projectSectionId",
+                                "no draft opinion to submit"
+                        ))
+                ));
+
+        mockMvc.perform(post(SUBMIT_URL).with(authenticatedUser()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("O001"))
+                .andExpect(jsonPath("$.message").value("의견을 찾을 수 없습니다."))
+                .andExpect(jsonPath("$.errors[0].field").value("projectSectionId"))
+                .andExpect(jsonPath("$.errors[0].reason").value("no draft opinion to submit"))
+                .andExpect(jsonPath("$.timestamp").exists());
     }
 
     private RequestPostProcessor authenticatedUser() {

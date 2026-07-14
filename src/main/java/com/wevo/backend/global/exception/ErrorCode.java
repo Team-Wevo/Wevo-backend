@@ -36,6 +36,7 @@ public enum ErrorCode {
     INVALID_SECTION_STATUS_TRANSITION(HttpStatus.CONFLICT, "S002", "허용되지 않은 섹션 상태 전이입니다."),
 
     // Opinion
+    OPINION_NOT_FOUND(HttpStatus.NOT_FOUND, "O001", "의견을 찾을 수 없습니다."),
     OPINION_COLLECTION_CLOSED(HttpStatus.UNPROCESSABLE_ENTITY, "O003", "의견 수집이 마감되었습니다."),
 
     // AI
