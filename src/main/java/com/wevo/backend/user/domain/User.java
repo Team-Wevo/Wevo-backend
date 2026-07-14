@@ -44,4 +44,13 @@ public class User extends BaseTimeEntity {
         this.profileImageUrl = profileImageUrl;
         this.status = status;
     }
+
+    /**
+     * 표시 이름을 변경한다. (제품 정책서 §1.1 — 로그인 후 마이페이지에서 표시 이름 수정 가능)
+     *
+     * <p>이메일(계정 식별 정보)·프로필 사진(provider URL)은 사용자가 직접 수정하지 않는다.
+     */
+    public void updateName(String name) {
+        this.name = name;
+    }
 }
