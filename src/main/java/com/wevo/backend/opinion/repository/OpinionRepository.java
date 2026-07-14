@@ -2,11 +2,12 @@ package com.wevo.backend.opinion.repository;
 
 import com.wevo.backend.opinion.domain.Opinion;
 import com.wevo.backend.opinion.domain.OpinionStatus;
-import java.util.List;
-import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+
+import java.util.List;
+import java.util.Optional;
 
 public interface OpinionRepository extends JpaRepository<Opinion, Long> {
 
