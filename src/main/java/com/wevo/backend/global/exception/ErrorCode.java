@@ -53,6 +53,12 @@ public enum ErrorCode {
     AI_PROMPT_NOT_FOUND(HttpStatus.INTERNAL_SERVER_ERROR, "AI012", "AI 프롬프트를 찾을 수 없습니다."),
     AI_PROMPT_INVALID(HttpStatus.INTERNAL_SERVER_ERROR, "AI013", "AI 프롬프트 설정이 올바르지 않습니다."),
     AI_PROMPT_VARIABLE_INVALID(HttpStatus.BAD_REQUEST, "AI014", "AI 프롬프트 입력값이 올바르지 않습니다."),
+    AI_PROVIDER_REFUSAL(HttpStatus.UNPROCESSABLE_ENTITY, "AI015", "AI 제공자가 요청 처리를 거절했습니다."),
+    AI_PROVIDER_MAX_TOKENS(HttpStatus.BAD_GATEWAY, "AI016", "AI 응답이 출력 한도에 도달해 완료되지 않았습니다."),
+    AI_STRUCTURED_OUTPUT_JSON_PARSE_FAILED(HttpStatus.BAD_GATEWAY, "AI017", "AI 응답 JSON을 해석할 수 없습니다."),
+    AI_STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED(HttpStatus.BAD_GATEWAY, "AI018", "AI 응답이 출력 형식을 충족하지 않습니다."),
+    AI_STRUCTURED_OUTPUT_CONVERSION_FAILED(HttpStatus.BAD_GATEWAY, "AI019", "AI 응답을 결과 타입으로 변환할 수 없습니다."),
+    AI_STRUCTURED_OUTPUT_SEMANTIC_VALIDATION_FAILED(HttpStatus.BAD_GATEWAY, "AI020", "AI 응답의 참조값이 유효하지 않습니다."),
     AI_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "AI999", "AI 처리 중 오류가 발생했습니다."),
 
     // Review

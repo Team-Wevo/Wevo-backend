@@ -25,6 +25,8 @@ wevo:
       max-retries: ${ANTHROPIC_MAX_RETRIES:2}
       initial-backoff: 500ms
       max-backoff: 8s
+    structured-output:
+      max-correction-retries: ${AI_STRUCTURED_OUTPUT_MAX_CORRECTION_RETRIES:2}
     pricing:
       version: ${AI_PRICING_VERSION:}
     audit:

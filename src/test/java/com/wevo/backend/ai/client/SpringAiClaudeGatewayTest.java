@@ -7,7 +7,10 @@ import com.wevo.backend.ai.config.AiProperties;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.exception.ClaudeExceptionTranslator;
 import com.wevo.backend.ai.exception.ClaudeProviderException;
+import com.wevo.backend.ai.prompt.PromptTemplateId;
+import com.wevo.backend.ai.prompt.RenderedPrompt;
 import com.wevo.backend.global.exception.ErrorCode;
+import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.prompt.ChatOptions;
@@ -20,10 +23,13 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.StructuredOutputChatOptions;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -160,15 +166,144 @@ class SpringAiClaudeGatewayTest {
                 .isEqualTo(ErrorCode.AI_PROVIDER_INVALID_RESPONSE);
     }
 
+    @Test
+    void returnsTypedStructuredOutputWithNativeSchemaAndMetadata() {
+        AtomicReference<Prompt> capturedPrompt = new AtomicReference<>();
+        ChatModel chatModel = prompt -> {
+            capturedPrompt.set(prompt);
+            return response("{\"resourceId\":7,\"signal\":\"CLEAR\"}");
+        };
+        SpringAiClaudeGateway gateway = structuredGateway(chatModel, 2);
+
+        StructuredClaudeResponse<TestOutput> response = gateway.generateStructured(structuredRequest(Set.of(7L)));
+
+        assertThat(response.result()).isEqualTo(new TestOutput(7L, TestSignal.CLEAR));
+        assertThat(response.promptId().trackingValue()).isEqualTo("contract-summary:v1");
+        assertThat(response.schemaId().trackingValue()).isEqualTo("test-output:v1");
+        assertThat(response.usageMetadata().providerRequestId()).isEqualTo("request-1");
+        assertThat(response.attemptCount()).isEqualTo(1);
+        assertThat(capturedPrompt.get().getInstructions())
+                .extracting(message -> message.getText().strip())
+                .containsExactly("system", "user");
+        assertThat(capturedPrompt.get().getOptions()).isInstanceOf(StructuredOutputChatOptions.class);
+        assertThat(((StructuredOutputChatOptions) capturedPrompt.get().getOptions()).getOutputSchema())
+                .contains("resourceId", "signal");
+    }
+
+    @Test
+    void retriesInvalidSchemaWithoutCopyingInvalidOutputAndAggregatesUsage() {
+        AtomicInteger calls = new AtomicInteger();
+        AtomicReference<Prompt> correctedPrompt = new AtomicReference<>();
+        ChatModel chatModel = prompt -> {
+            if (calls.incrementAndGet() == 1) {
+                return response("invalid-secret-output");
+            }
+            correctedPrompt.set(prompt);
+            return response("{\"resourceId\":7,\"signal\":\"CLEAR\"}");
+        };
+        SpringAiClaudeGateway gateway = structuredGateway(chatModel, 2);
+
+        StructuredClaudeResponse<TestOutput> response = gateway.generateStructured(structuredRequest(Set.of(7L)));
+
+        assertThat(calls).hasValue(2);
+        assertThat(response.attemptCount()).isEqualTo(2);
+        assertThat(response.usageMetadata().inputTokens()).isEqualTo(10L);
+        assertThat(response.usageMetadata().outputTokens()).isEqualTo(4L);
+        assertThat(correctedPrompt.get().getInstructions().get(1).getText())
+                .contains("<output_correction>")
+                .doesNotContain("invalid-secret-output");
+    }
+
+    @Test
+    void stopsCorrectionRetriesAtConfiguredLimitAndClassifiesFinalFailure() {
+        AtomicInteger calls = new AtomicInteger();
+        ChatModel chatModel = prompt -> {
+            calls.incrementAndGet();
+            return response("not-json");
+        };
+        SpringAiClaudeGateway gateway = structuredGateway(chatModel, 2);
+
+        assertThatThrownBy(() -> gateway.generateStructured(structuredRequest(Set.of(7L))))
+                .isInstanceOf(ClaudeProviderException.class)
+                .satisfies(exception -> {
+                    ClaudeProviderException providerException = (ClaudeProviderException) exception;
+                    assertThat(providerException.getErrorCode())
+                            .isEqualTo(ErrorCode.AI_STRUCTURED_OUTPUT_JSON_PARSE_FAILED);
+                    assertThat(providerException.getAttemptCount()).isEqualTo(3);
+                    assertThat(providerException.getUsageMetadata().inputTokens()).isEqualTo(15L);
+                    assertThat(providerException.getUsageMetadata().outputTokens()).isEqualTo(6L);
+                });
+        assertThat(calls).hasValue(3);
+    }
+
+    @Test
+    void rejectsWrongEnumAfterSchemaCorrectionLimit() {
+        ChatModel chatModel = prompt -> response("{\"resourceId\":7,\"signal\":\"clear\"}");
+        SpringAiClaudeGateway gateway = structuredGateway(chatModel, 0);
+
+        assertThatThrownBy(() -> gateway.generateStructured(structuredRequest(Set.of(7L))))
+                .isInstanceOf(ClaudeProviderException.class)
+                .extracting(exception -> ((ClaudeProviderException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.AI_STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED);
+    }
+
+    @Test
+    void rejectsResourceOutsideSemanticAllowlistWithoutRetry() {
+        AtomicInteger calls = new AtomicInteger();
+        ChatModel chatModel = prompt -> {
+            calls.incrementAndGet();
+            return response("{\"resourceId\":7,\"signal\":\"CLEAR\"}");
+        };
+        SpringAiClaudeGateway gateway = structuredGateway(chatModel, 2);
+
+        assertThatThrownBy(() -> gateway.generateStructured(structuredRequest(Set.of(8L))))
+                .isInstanceOf(ClaudeProviderException.class)
+                .extracting(exception -> ((ClaudeProviderException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.AI_STRUCTURED_OUTPUT_SEMANTIC_VALIDATION_FAILED);
+        assertThat(calls).hasValue(1);
+    }
+
+    @Test
+    void classifiesRefusalAndMaxTokensBeforeParsing() {
+        ConcurrentLinkedQueue<ChatResponse> responses = new ConcurrentLinkedQueue<>();
+        responses.add(response("refused", "refusal"));
+        responses.add(response(" ", "max_tokens"));
+        SpringAiClaudeGateway gateway = structuredGateway(prompt -> responses.remove(), 2);
+
+        assertThatThrownBy(() -> gateway.generateStructured(structuredRequest(Set.of(7L))))
+                .isInstanceOf(ClaudeProviderException.class)
+                .extracting(exception -> ((ClaudeProviderException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.AI_PROVIDER_REFUSAL);
+        assertThatThrownBy(() -> gateway.generateStructured(structuredRequest(Set.of(7L))))
+                .isInstanceOf(ClaudeProviderException.class)
+                .extracting(exception -> ((ClaudeProviderException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.AI_PROVIDER_MAX_TOKENS);
+    }
+
+    @Test
+    void rejectsEmptyStructuredResponse() {
+        SpringAiClaudeGateway gateway = structuredGateway(prompt -> response(" "), 2);
+
+        assertThatThrownBy(() -> gateway.generateStructured(structuredRequest(Set.of(7L))))
+                .isInstanceOf(ClaudeProviderException.class)
+                .extracting(exception -> ((ClaudeProviderException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.AI_PROVIDER_INVALID_RESPONSE);
+    }
+
     private SpringAiClaudeGateway gateway(ChatModel chatModel, Duration timeout) {
         AiProperties properties = new AiProperties(
                 new AiProperties.ModelOptions(
                         "test-model", timeout, 128, 2, Duration.ZERO, Duration.ZERO
                 ),
-                Map.of()
+                Map.of(),
+                null
         );
         return new SpringAiClaudeGateway(
-                ChatClient.builder(chatModel).build(),
+                ChatClient.builder(chatModel)
+                        .defaultOptions(AnthropicChatOptions.builder()
+                                .model("test-model")
+                                .maxTokens(128))
+                        .build(),
                 properties,
                 new ClaudeExceptionTranslator(),
                 executor,
@@ -182,9 +317,63 @@ class SpringAiClaudeGatewayTest {
         );
     }
 
+    private SpringAiClaudeGateway structuredGateway(ChatModel chatModel, int maxCorrectionRetries) {
+        AiProperties properties = new AiProperties(
+                new AiProperties.ModelOptions(
+                        "test-model", Duration.ofSeconds(1), 128, 0, Duration.ZERO, Duration.ZERO
+                ),
+                Map.of(),
+                new AiProperties.StructuredOutputOptions(maxCorrectionRetries)
+        );
+        ChatModel structuredOutputModel = new ChatModel() {
+            @Override
+            public ChatResponse call(Prompt prompt) {
+                return chatModel.call(prompt);
+            }
+
+            @Override
+            public ChatOptions getOptions() {
+                return AnthropicChatOptions.builder()
+                        .model("test-model")
+                        .maxTokens(128)
+                        .build();
+            }
+        };
+        return new SpringAiClaudeGateway(
+                ChatClient.builder(structuredOutputModel).build(),
+                properties,
+                new ClaudeExceptionTranslator(),
+                executor,
+                new AiUsageExtractor(),
+                new AiRetrySleeper() {
+                    @Override
+                    public void sleep(Duration duration) {
+                    }
+                }
+        );
+    }
+
+    private StructuredClaudeRequest<TestOutput> structuredRequest(Set<Long> allowedResourceIds) {
+        StructuredOutputDefinition<TestOutput> definition = StructuredOutputDefinition.of(
+                new OutputSchemaId("test-output", 1),
+                TestOutput.class,
+                (output, context) -> context.requireAllowedResourceId(output.resourceId())
+        );
+        return new StructuredClaudeRequest<>(
+                AiFeature.DRAFT_REVIEW,
+                new RenderedPrompt(new PromptTemplateId("contract-summary", 1), "system", "user"),
+                definition,
+                new StructuredOutputValidationContext(allowedResourceIds)
+        );
+    }
+
     private ChatResponse response(String content) {
+        return response(content, "end_turn");
+    }
+
+    private ChatResponse response(String content, String finishReason) {
         ChatGenerationMetadata generationMetadata = ChatGenerationMetadata.builder()
-                .finishReason("end_turn")
+                .finishReason(finishReason)
                 .build();
         Generation generation = new Generation(new AssistantMessage(content), generationMetadata);
         ChatResponseMetadata responseMetadata = ChatResponseMetadata.builder()
@@ -193,6 +382,15 @@ class SpringAiClaudeGatewayTest {
                 .usage(new DefaultUsage(5, 2, 7))
                 .build();
         return new ChatResponse(List.of(generation), responseMetadata);
+    }
+
+    private record TestOutput(Long resourceId, TestSignal signal) {
+    }
+
+    private enum TestSignal {
+        CLEAR,
+        PARTIAL,
+        UNCLEAR
     }
 
     private static final class TestServiceException extends AnthropicServiceException {

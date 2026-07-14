@@ -28,6 +28,8 @@ wevo:
       max-retries: 0
       initial-backoff: 0ms
       max-backoff: 0ms
+    structured-output:
+      max-correction-retries: 2
     pricing:
       version: test-v1
     audit:
