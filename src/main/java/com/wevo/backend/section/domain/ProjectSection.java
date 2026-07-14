@@ -1,6 +1,8 @@
 package com.wevo.backend.section.domain;
 
 import com.wevo.backend.global.common.BaseTimeEntity;
+import com.wevo.backend.global.exception.BusinessException;
+import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.project.domain.Project;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -65,5 +67,18 @@ public class ProjectSection extends BaseTimeEntity {
         this.status = status;
         this.confirmedVersion = confirmedVersion;
         this.needsReReview = needsReReview;
+    }
+
+    /**
+     * 상태를 전이한다. 허용되지 않은 전이면 예외를 던진다. (전이 규칙은 {@link ProjectSectionStatus} 소유)
+     *
+     * @throws BusinessException 현재 상태에서 {@code target} 으로 전이가 불가능한 경우
+     *                           ({@code INVALID_SECTION_STATUS_TRANSITION})
+     */
+    public void changeStatus(ProjectSectionStatus target) {
+        if (!this.status.canTransitionTo(target)) {
+            throw new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
+        }
+        this.status = target;
     }
 }

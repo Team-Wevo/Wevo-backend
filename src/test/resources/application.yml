@@ -25,6 +25,15 @@ wevo:
       model: claude-haiku-4-5
       timeout: 1s
       max-output-tokens: 128
+      max-retries: 0
+      initial-backoff: 0ms
+      max-backoff: 0ms
+    pricing:
+      version: test-v1
+    audit:
+      recovery-enabled: false
+      recovery-interval: 60s
+      orphan-grace: 30s
 
 # 테스트용 더미 값 (컨텍스트 로딩용, 실제 외부 호출 없음)
 jwt:

@@ -8,7 +8,6 @@ import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
-import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.stereotype.Component;
@@ -26,22 +25,51 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
     private final AiProperties properties;
     private final ClaudeExceptionTranslator exceptionTranslator;
     private final ExecutorService claudeRequestExecutor;
+    private final AiUsageExtractor usageExtractor;
+    private final AiRetrySleeper retrySleeper;
 
     public SpringAiClaudeGateway(
             ChatClient chatClient,
             AiProperties properties,
             ClaudeExceptionTranslator exceptionTranslator,
-            ExecutorService claudeRequestExecutor
+            ExecutorService claudeRequestExecutor,
+            AiUsageExtractor usageExtractor,
+            AiRetrySleeper retrySleeper
     ) {
         this.chatClient = chatClient;
         this.properties = properties;
         this.exceptionTranslator = exceptionTranslator;
         this.claudeRequestExecutor = claudeRequestExecutor;
+        this.usageExtractor = usageExtractor;
+        this.retrySleeper = retrySleeper;
     }
 
     @Override
     public ClaudeResponse generate(ClaudeRequest request) {
-        AiProperties.ModelOptions options = properties.optionsFor(request.featureName());
+        AiProperties.ModelOptions options = properties.optionsFor(request.feature());
+        int attempts = 0;
+
+        while (true) {
+            attempts++;
+            try {
+                ClaudeResponse response = generateOnce(request, options);
+                return new ClaudeResponse(
+                        response.content(),
+                        response.usageMetadata(),
+                        response.finishReason(),
+                        attempts
+                );
+            } catch (ClaudeProviderException exception) {
+                ClaudeProviderException contextual = exception.withAttemptContext(attempts);
+                if (attempts > options.maxRetries() || !isRetryable(contextual.getErrorCode())) {
+                    throw contextual;
+                }
+                sleepBeforeRetry(options, attempts, contextual);
+            }
+        }
+    }
+
+    private ClaudeResponse generateOnce(ClaudeRequest request, AiProperties.ModelOptions options) {
         Future<ChatResponse> future = claudeRequestExecutor.submit(() -> callClaude(request, options));
 
         try {
@@ -57,6 +85,39 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
         } catch (ExecutionException exception) {
             throw exceptionTranslator.translate(exception.getCause());
         }
+    }
+
+    private void sleepBeforeRetry(
+            AiProperties.ModelOptions options,
+            int attempts,
+            ClaudeProviderException lastException
+    ) {
+        long multiplier = 1L << Math.min(attempts - 1, 30);
+        long backoffMillis;
+        try {
+            backoffMillis = Math.multiplyExact(options.initialBackoff().toMillis(), multiplier);
+        } catch (ArithmeticException ignored) {
+            backoffMillis = Long.MAX_VALUE;
+        }
+        long cappedMillis = Math.min(backoffMillis, options.maxBackoff().toMillis());
+
+        try {
+            retrySleeper.sleep(java.time.Duration.ofMillis(cappedMillis));
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ClaudeProviderException(
+                    ErrorCode.AI_PROVIDER_ERROR,
+                    exception,
+                    lastException.getUsageMetadata(),
+                    attempts
+            );
+        }
+    }
+
+    private boolean isRetryable(ErrorCode errorCode) {
+        return errorCode == ErrorCode.AI_RATE_LIMITED
+                || errorCode == ErrorCode.AI_PROVIDER_OVERLOADED
+                || errorCode == ErrorCode.AI_PROVIDER_UNAVAILABLE;
     }
 
     private ChatResponse callClaude(ClaudeRequest request, AiProperties.ModelOptions options) {
@@ -80,30 +141,27 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
 
     private ClaudeResponse toResponse(ChatResponse response, String requestedModel) {
         Generation generation = response.getResult();
+        ChatResponseMetadata metadata = response.getMetadata();
+        AiUsageMetadata usageMetadata = usageExtractor.extract(metadata, requestedModel);
         if (generation == null
                 || generation.getOutput() == null
                 || generation.getOutput().getText() == null
                 || generation.getOutput().getText().isBlank()) {
             throw new ClaudeProviderException(
                     ErrorCode.AI_PROVIDER_INVALID_RESPONSE,
-                    new IllegalStateException("Claude response content is empty")
+                    new IllegalStateException("Claude response content is empty"),
+                    usageMetadata,
+                    0
             );
         }
 
-        ChatResponseMetadata metadata = response.getMetadata();
-        Usage usage = metadata.getUsage();
         ChatGenerationMetadata generationMetadata = generation.getMetadata();
 
         return new ClaudeResponse(
                 generation.getOutput().getText(),
-                metadata.getId(),
-                metadata.getModel() == null ? requestedModel : metadata.getModel(),
-                usage.getPromptTokens(),
-                usage.getCompletionTokens(),
-                usage.getTotalTokens(),
-                usage.getCacheReadInputTokens(),
-                usage.getCacheWriteInputTokens(),
-                generationMetadata.getFinishReason()
+                usageMetadata,
+                generationMetadata.getFinishReason(),
+                0
         );
     }
 }

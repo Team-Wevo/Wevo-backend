@@ -4,6 +4,7 @@ import com.anthropic.core.JsonValue;
 import com.anthropic.core.http.Headers;
 import com.anthropic.errors.AnthropicServiceException;
 import com.wevo.backend.ai.config.AiProperties;
+import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.exception.ClaudeExceptionTranslator;
 import com.wevo.backend.ai.exception.ClaudeProviderException;
 import com.wevo.backend.global.exception.ErrorCode;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,16 +51,17 @@ class SpringAiClaudeGatewayTest {
         SpringAiClaudeGateway gateway = gateway(chatModel, Duration.ofSeconds(1));
 
         ClaudeResponse response = gateway.generate(
-                new ClaudeRequest("smoke", "You are a test assistant.", "Reply with pong.")
+                new ClaudeRequest(AiFeature.DRAFT_REVIEW, "You are a test assistant.", "Reply with pong.")
         );
 
         assertThat(response.content()).isEqualTo("pong");
-        assertThat(response.requestId()).isEqualTo("request-1");
-        assertThat(response.model()).isEqualTo("response-model");
-        assertThat(response.promptTokens()).isEqualTo(5);
-        assertThat(response.completionTokens()).isEqualTo(2);
-        assertThat(response.totalTokens()).isEqualTo(7);
+        assertThat(response.usageMetadata().providerRequestId()).isEqualTo("request-1");
+        assertThat(response.usageMetadata().modelId()).isEqualTo("response-model");
+        assertThat(response.usageMetadata().inputTokens()).isEqualTo(5L);
+        assertThat(response.usageMetadata().outputTokens()).isEqualTo(2L);
+        assertThat(response.usageMetadata().totalInputTokens()).isEqualTo(5L);
         assertThat(response.finishReason()).isEqualTo("end_turn");
+        assertThat(response.attemptCount()).isEqualTo(1);
 
         ChatOptions options = capturedPrompt.get().getOptions();
         assertThat(options.getModel()).isEqualTo("test-model");
@@ -81,7 +84,7 @@ class SpringAiClaudeGatewayTest {
         SpringAiClaudeGateway gateway = gateway(slowModel, Duration.ofMillis(30));
 
         assertThatThrownBy(() -> gateway.generate(
-                new ClaudeRequest("smoke", "system", "user")
+                new ClaudeRequest(AiFeature.DRAFT_REVIEW, "system", "user")
         ))
                 .isInstanceOf(ClaudeProviderException.class)
                 .extracting(exception -> ((ClaudeProviderException) exception).getErrorCode())
@@ -90,17 +93,58 @@ class SpringAiClaudeGatewayTest {
 
     @Test
     void translatesProviderRateLimitError() {
+        AtomicInteger attempts = new AtomicInteger();
         ChatModel failingModel = prompt -> {
+            attempts.incrementAndGet();
             throw new TestServiceException(429);
         };
         SpringAiClaudeGateway gateway = gateway(failingModel, Duration.ofSeconds(1));
 
         assertThatThrownBy(() -> gateway.generate(
-                new ClaudeRequest("smoke", "system", "user")
+                new ClaudeRequest(AiFeature.DRAFT_REVIEW, "system", "user")
         ))
                 .isInstanceOf(ClaudeProviderException.class)
                 .extracting(exception -> ((ClaudeProviderException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.AI_RATE_LIMITED);
+        assertThat(attempts).hasValue(3);
+    }
+
+    @Test
+    void retriesRateLimitAndReturnsTotalAttemptCountOnSuccess() {
+        AtomicInteger attempts = new AtomicInteger();
+        ChatModel recoveringModel = prompt -> {
+            if (attempts.incrementAndGet() == 1) {
+                throw new TestServiceException(429);
+            }
+            return response("recovered");
+        };
+        SpringAiClaudeGateway gateway = gateway(recoveringModel, Duration.ofSeconds(1));
+
+        ClaudeResponse response = gateway.generate(
+                new ClaudeRequest(AiFeature.DRAFT_REVIEW, "system", "user")
+        );
+
+        assertThat(response.content()).isEqualTo("recovered");
+        assertThat(response.attemptCount()).isEqualTo(2);
+        assertThat(attempts).hasValue(2);
+    }
+
+    @Test
+    void doesNotRetryNonRetryableProviderError() {
+        AtomicInteger attempts = new AtomicInteger();
+        ChatModel failingModel = prompt -> {
+            attempts.incrementAndGet();
+            throw new TestServiceException(400);
+        };
+        SpringAiClaudeGateway gateway = gateway(failingModel, Duration.ofSeconds(1));
+
+        assertThatThrownBy(() -> gateway.generate(
+                new ClaudeRequest(AiFeature.DRAFT_REVIEW, "system", "user")
+        ))
+                .isInstanceOf(ClaudeProviderException.class)
+                .satisfies(exception -> assertThat(((ClaudeProviderException) exception).getAttemptCount())
+                        .isEqualTo(1));
+        assertThat(attempts).hasValue(1);
     }
 
     @Test
@@ -109,7 +153,7 @@ class SpringAiClaudeGatewayTest {
         SpringAiClaudeGateway gateway = gateway(emptyModel, Duration.ofSeconds(1));
 
         assertThatThrownBy(() -> gateway.generate(
-                new ClaudeRequest("smoke", "system", "user")
+                new ClaudeRequest(AiFeature.DRAFT_REVIEW, "system", "user")
         ))
                 .isInstanceOf(ClaudeProviderException.class)
                 .extracting(exception -> ((ClaudeProviderException) exception).getErrorCode())
@@ -118,14 +162,23 @@ class SpringAiClaudeGatewayTest {
 
     private SpringAiClaudeGateway gateway(ChatModel chatModel, Duration timeout) {
         AiProperties properties = new AiProperties(
-                new AiProperties.ModelOptions("test-model", timeout, 128),
+                new AiProperties.ModelOptions(
+                        "test-model", timeout, 128, 2, Duration.ZERO, Duration.ZERO
+                ),
                 Map.of()
         );
         return new SpringAiClaudeGateway(
                 ChatClient.builder(chatModel).build(),
                 properties,
                 new ClaudeExceptionTranslator(),
-                executor
+                executor,
+                new AiUsageExtractor(),
+                new AiRetrySleeper() {
+                    @Override
+                    public void sleep(Duration duration) {
+                        // 테스트에서는 backoff를 기다리지 않는다.
+                    }
+                }
         );
     }
 
