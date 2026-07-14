@@ -9,6 +9,7 @@ import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
 import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
+import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
 import com.wevo.backend.opinion.repository.OpinionRepository;
 import com.wevo.backend.project.repository.ProjectMemberRepository;
 import com.wevo.backend.section.domain.ProjectSection;
@@ -93,6 +94,29 @@ public class OpinionService {
         return opinionRepository.findByProjectSection_IdAndAuthor_Id(projectSectionId, userId)
                 .map(MyOpinionResponse::from)
                 .orElseGet(MyOpinionResponse::empty);
+    }
+
+    /**
+     * 섹션에 제출된 팀원 의견 목록을 조회한다. (정책서 §5 공개 게이트)
+     *
+     * <p>요청자가 이 섹션에 제출한 적이 없으면 목록을 숨기고 제출 건수만 반환한다(베끼기 방지).
+     * 게이트 판정은 "내 SUBMITTED 의견 존재"로 파생한다 — 의견 삭제가 정책상 미지원이라
+     * 한 번 제출한 사실은 사라지지 않는다.
+     *
+     * <p>섹션 상태와 무관하게 조회할 수 있다 — 수집 마감 후에도 정리(SYNTHESIZING) 단계에서
+     * 팀이 근거 의견을 봐야 한다. DRAFT 의견은 쿼리 단계에서 제외되어 어떤 경우에도 노출되지 않는다.
+     */
+    public SubmittedOpinionListResponse getSubmittedOpinions(Long projectSectionId, Long userId) {
+        requireMemberSection(projectSectionId, userId);
+        List<Opinion> submitted = opinionRepository
+                .findAllWithAuthorByProjectSectionIdAndStatus(projectSectionId, OpinionStatus.SUBMITTED);
+
+        boolean everSubmitted = submitted.stream()
+                .anyMatch(opinion -> opinion.getAuthor().getId().equals(userId));
+        if (!everSubmitted) {
+            return SubmittedOpinionListResponse.hidden(submitted.size());
+        }
+        return SubmittedOpinionListResponse.visible(submitted);
     }
 
     /**

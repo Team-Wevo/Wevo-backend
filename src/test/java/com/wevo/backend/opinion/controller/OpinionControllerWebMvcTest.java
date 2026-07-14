@@ -9,6 +9,9 @@ import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
 import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
+import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
+import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse.AuthorResponse;
+import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse.SubmittedOpinionResponse;
 import com.wevo.backend.opinion.service.OpinionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,6 +45,7 @@ class OpinionControllerWebMvcTest {
     private static final String URL = "/api/project-sections/10/my-opinion/draft";
     private static final String GET_URL = "/api/project-sections/10/my-opinion";
     private static final String SUBMIT_URL = "/api/project-sections/10/my-opinion/submit";
+    private static final String OPINIONS_URL = "/api/project-sections/10/opinions";
     private static final String VALID_CONTENT = "타겟을 공모전 참가 대학생 팀으로 좁히는 게 좋겠습니다.";
 
     @Autowired
@@ -208,6 +212,66 @@ class OpinionControllerWebMvcTest {
                 .andExpect(jsonPath("$.errors[0].field").value("projectSectionId"))
                 .andExpect(jsonPath("$.errors[0].reason").value("no draft opinion to submit"))
                 .andExpect(jsonPath("$.timestamp").exists());
+    }
+
+    @Test
+    @DisplayName("의견 목록 조회는 인증 없이 호출하면 A001 공통 응답을 반환한다")
+    void getSubmittedOpinions_withoutAuthentication_returnsA001() throws Exception {
+        mockMvc.perform(get(OPINIONS_URL))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("A001"));
+    }
+
+    @Test
+    @DisplayName("본인이 제출했으면 작성자 정보를 포함한 제출 의견 목록을 반환한다")
+    void getSubmittedOpinions_everSubmitted_returnsFullList() throws Exception {
+        given(opinionService.getSubmittedOpinions(10L, 7L))
+                .willReturn(new SubmittedOpinionListResponse(true, 2, List.of(
+                        new SubmittedOpinionResponse(
+                                501L,
+                                new AuthorResponse(7L, "김민준", "https://img.wevo.com/7.png"),
+                                VALID_CONTENT,
+                                LocalDateTime.of(2026, 7, 14, 10, 20)),
+                        new SubmittedOpinionResponse(
+                                508L,
+                                new AuthorResponse(9L, "이서연", null),
+                                "기존 도구는 의견 통합을 지원하지 않는다는 점을 강조하면 좋겠습니다.",
+                                LocalDateTime.of(2026, 7, 14, 11, 0)))));
+
+        mockMvc.perform(get(OPINIONS_URL).with(authenticatedUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.message").value("조회에 성공했습니다."))
+                .andExpect(jsonPath("$.data.everSubmitted").value(true))
+                .andExpect(jsonPath("$.data.totalSubmittedCount").value(2))
+                .andExpect(jsonPath("$.data.opinions.length()").value(2))
+                .andExpect(jsonPath("$.data.opinions[0].id").value(501))
+                .andExpect(jsonPath("$.data.opinions[0].author.id").value(7))
+                .andExpect(jsonPath("$.data.opinions[0].author.name").value("김민준"))
+                .andExpect(jsonPath("$.data.opinions[0].author.profileImageUrl")
+                        .value("https://img.wevo.com/7.png"))
+                .andExpect(jsonPath("$.data.opinions[0].content").value(VALID_CONTENT))
+                .andExpect(jsonPath("$.data.opinions[0].submittedAt").value("2026-07-14T10:20:00"))
+                .andExpect(jsonPath("$.data.opinions[1].id").value(508))
+                .andExpect(jsonPath("$.timestamp").exists());
+    }
+
+    @Test
+    @DisplayName("본인이 제출하지 않았으면 목록은 빈 배열이고 제출 건수만 반환한다 (공개 게이트)")
+    void getSubmittedOpinions_notSubmitted_returnsCountOnly() throws Exception {
+        given(opinionService.getSubmittedOpinions(10L, 7L))
+                .willReturn(SubmittedOpinionListResponse.hidden(2));
+
+        mockMvc.perform(get(OPINIONS_URL).with(authenticatedUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data.everSubmitted").value(false))
+                .andExpect(jsonPath("$.data.totalSubmittedCount").value(2))
+                .andExpect(jsonPath("$.data.opinions").isArray())
+                .andExpect(jsonPath("$.data.opinions").isEmpty());
     }
 
     private RequestPostProcessor authenticatedUser() {
