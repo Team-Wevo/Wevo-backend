@@ -2,17 +2,22 @@ package com.wevo.backend.opinion.service;
 
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.global.response.FieldError;
 import com.wevo.backend.opinion.domain.Opinion;
 import com.wevo.backend.opinion.domain.OpinionStatus;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
+import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
 import com.wevo.backend.opinion.repository.OpinionRepository;
 import com.wevo.backend.project.repository.ProjectMemberRepository;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.repository.ProjectSectionRepository;
 import com.wevo.backend.user.repository.UserRepository;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -91,6 +96,40 @@ public class OpinionService {
     }
 
     /**
+     * 임시저장된 내 의견을 제출한다.
+     *
+     * <p>섹션 단위 배타 잠금으로 임시저장·제출·수집 마감 경합을 직렬화한다. 이미 제출된
+     * 의견은 수집 마감 이후 재호출하더라도 최초 제출 시각을 유지한 채 멱등 성공으로 응답한다.
+     */
+    @Transactional
+    public OpinionSubmitResponse submitMyOpinion(Long projectSectionId, Long userId) {
+        ProjectSection section = requireMemberSectionForUpdate(projectSectionId, userId);
+        Optional<Opinion> opinionOptional = opinionRepository
+                .findByProjectSection_IdAndAuthor_Id(projectSectionId, userId);
+
+        if (opinionOptional.isPresent()
+                && opinionOptional.get().getStatus() == OpinionStatus.SUBMITTED) {
+            return OpinionSubmitResponse.from(opinionOptional.get());
+        }
+
+        if (section.getStatus() != ProjectSectionStatus.COLLECTING) {
+            throw new BusinessException(ErrorCode.OPINION_COLLECTION_CLOSED);
+        }
+
+        Opinion opinion = opinionOptional.orElseThrow(() ->
+                new BusinessException(
+                        ErrorCode.OPINION_NOT_FOUND,
+                        List.of(new FieldError(
+                                "projectSectionId",
+                                "no draft opinion to submit"
+                        ))
+                ));
+        validateContentForSubmit(opinion.getContent());
+        opinion.submit(LocalDateTime.now());
+        return OpinionSubmitResponse.from(opinion);
+    }
+
+    /**
      * 섹션을 조회하고 요청자가 그 프로젝트의 멤버인지 검증한 뒤 섹션을 반환한다. (읽기 전용 — 잠금 없음)
      *
      * @throws BusinessException SECTION_NOT_FOUND(섹션 없음) / NOT_PROJECT_MEMBER(멤버 아님)
@@ -118,6 +157,21 @@ public class OpinionService {
     private void validateMember(ProjectSection section, Long userId) {
         if (!projectMemberRepository.existsByProjectIdAndUserId(section.getProject().getId(), userId)) {
             throw new BusinessException(ErrorCode.NOT_PROJECT_MEMBER);
+        }
+    }
+
+    private void validateContentForSubmit(String content) {
+        if (content == null || content.isBlank()
+                || content.length() < Opinion.MIN_CONTENT_LENGTH
+                || content.length() > Opinion.MAX_CONTENT_LENGTH) {
+            throw new BusinessException(
+                    ErrorCode.BUSINESS_RULE_VIOLATION,
+                    List.of(new FieldError(
+                            "content",
+                            "content must be between " + Opinion.MIN_CONTENT_LENGTH
+                                    + " and " + Opinion.MAX_CONTENT_LENGTH + " characters"
+                    ))
+            );
         }
     }
 }

@@ -7,6 +7,7 @@ import com.wevo.backend.opinion.domain.OpinionStatus;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
+import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
 import com.wevo.backend.opinion.repository.OpinionRepository;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectStatus;
@@ -26,6 +27,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -210,6 +212,109 @@ class OpinionServiceTest {
                 () -> opinionService.getMyOpinion(SECTION_ID, USER_ID));
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_PROJECT_MEMBER);
+    }
+
+    @Test
+    @DisplayName("임시저장된 의견을 SUBMITTED 상태로 제출하고 최초 제출 시각을 반환한다")
+    void submitMyOpinion_submitsDraft() {
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        Opinion opinion = opinion(section, OpinionStatus.DRAFT, CONTENT, null);
+        given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
+        given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
+                .willReturn(Optional.of(opinion));
+
+        OpinionSubmitResponse response = opinionService.submitMyOpinion(SECTION_ID, USER_ID);
+
+        assertThat(response.id()).isEqualTo(501L);
+        assertThat(response.status()).isEqualTo(OpinionStatus.SUBMITTED);
+        assertThat(response.submittedAt()).isNotNull();
+        assertThat(opinion.getStatus()).isEqualTo(OpinionStatus.SUBMITTED);
+        assertThat(opinion.getSubmittedAt()).isEqualTo(response.submittedAt());
+    }
+
+    @Test
+    @DisplayName("이미 제출한 의견은 수집 마감 후 재호출해도 최초 제출 시각으로 멱등 성공한다")
+    void submitMyOpinion_alreadySubmittedAfterClose_returnsIdempotentSuccess() {
+        ProjectSection section = section(ProjectSectionStatus.SYNTHESIZING);
+        LocalDateTime firstSubmittedAt = LocalDateTime.of(2026, 7, 14, 12, 5);
+        Opinion opinion = opinion(section, OpinionStatus.SUBMITTED, CONTENT, firstSubmittedAt);
+        given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
+        given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
+                .willReturn(Optional.of(opinion));
+
+        OpinionSubmitResponse response = opinionService.submitMyOpinion(SECTION_ID, USER_ID);
+
+        assertThat(response.status()).isEqualTo(OpinionStatus.SUBMITTED);
+        assertThat(response.submittedAt()).isEqualTo(firstSubmittedAt);
+        assertThat(opinion.getSubmittedAt()).isEqualTo(firstSubmittedAt);
+    }
+
+    @Test
+    @DisplayName("미제출 의견은 수집이 마감된 섹션에 제출할 수 없다")
+    void submitMyOpinion_collectionClosed_throws() {
+        ProjectSection section = section(ProjectSectionStatus.SYNTHESIZING);
+        Opinion opinion = opinion(section, OpinionStatus.DRAFT, CONTENT, null);
+        given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
+        given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
+                .willReturn(Optional.of(opinion));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> opinionService.submitMyOpinion(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.OPINION_COLLECTION_CLOSED);
+    }
+
+    @Test
+    @DisplayName("수집 중이지만 임시저장된 의견이 없으면 OPINION_NOT_FOUND 예외를 던진다")
+    void submitMyOpinion_opinionNotFound_throws() {
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
+        given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
+                .willReturn(Optional.empty());
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> opinionService.submitMyOpinion(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.OPINION_NOT_FOUND);
+        assertThat(exception.getErrors()).singleElement().satisfies(error -> {
+            assertThat(error.getField()).isEqualTo("projectSectionId");
+            assertThat(error.getReason()).isEqualTo("no draft opinion to submit");
+        });
+    }
+
+    @Test
+    @DisplayName("저장된 의견 본문이 제출 기준을 위반하면 BUSINESS_RULE_VIOLATION 예외를 던진다")
+    void submitMyOpinion_invalidContent_throws() {
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        Opinion opinion = opinion(section, OpinionStatus.DRAFT, "너무 짧은 의견", null);
+        given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
+        given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
+                .willReturn(Optional.of(opinion));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> opinionService.submitMyOpinion(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.BUSINESS_RULE_VIOLATION);
+        assertThat(exception.getErrors()).singleElement()
+                .satisfies(error -> assertThat(error.getField()).isEqualTo("content"));
+    }
+
+    private Opinion opinion(ProjectSection section, OpinionStatus status, String content,
+                            LocalDateTime submittedAt) {
+        Opinion opinion = Opinion.builder()
+                .projectSection(section)
+                .author(user())
+                .content(content)
+                .status(status)
+                .submittedAt(submittedAt)
+                .build();
+        ReflectionTestUtils.setField(opinion, "id", 501L);
+        return opinion;
     }
 
     private ProjectSection section(ProjectSectionStatus status) {
