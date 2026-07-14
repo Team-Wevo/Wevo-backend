@@ -27,7 +27,8 @@ import lombok.NoArgsConstructor;
                 @Index(name = "idx_ai_usage_logs_project_created", columnList = "project_id, created_at"),
                 @Index(name = "idx_ai_usage_logs_section_created", columnList = "project_section_id, created_at"),
                 @Index(name = "idx_ai_usage_logs_status_started", columnList = "request_status, started_at"),
-                @Index(name = "idx_ai_usage_logs_feature_created", columnList = "feature, created_at")
+                @Index(name = "idx_ai_usage_logs_feature_created", columnList = "feature, created_at"),
+                @Index(name = "idx_ai_usage_logs_job_created", columnList = "ai_job_id, created_at")
         }
 )
 @Getter
@@ -43,6 +44,10 @@ public class AiUsageLog extends BaseTimeEntity {
 
     @Column(name = "provider_request_id", length = 200)
     private String providerRequestId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ai_job_id")
+    private AiJob aiJob;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "project_id", nullable = false)
@@ -127,6 +132,7 @@ public class AiUsageLog extends BaseTimeEntity {
 
     private AiUsageLog(
             UUID requestId,
+            AiJob aiJob,
             Project project,
             ProjectSection projectSection,
             User requestedBy,
@@ -137,6 +143,7 @@ public class AiUsageLog extends BaseTimeEntity {
             LocalDateTime startedAt
     ) {
         this.requestId = Objects.requireNonNull(requestId, "requestId는 필수입니다.");
+        this.aiJob = aiJob;
         this.project = Objects.requireNonNull(project, "project는 필수입니다.");
         this.projectSection = projectSection;
         this.requestedBy = Objects.requireNonNull(requestedBy, "requestedBy는 필수입니다.");
@@ -159,8 +166,26 @@ public class AiUsageLog extends BaseTimeEntity {
             String inputSnapshotHash,
             LocalDateTime startedAt
     ) {
+        return start(
+                requestId, null, project, projectSection, requestedBy, feature,
+                modelId, promptVersion, inputSnapshotHash, startedAt
+        );
+    }
+
+    public static AiUsageLog start(
+            UUID requestId,
+            AiJob aiJob,
+            Project project,
+            ProjectSection projectSection,
+            User requestedBy,
+            AiFeature feature,
+            String modelId,
+            String promptVersion,
+            String inputSnapshotHash,
+            LocalDateTime startedAt
+    ) {
         return new AiUsageLog(
-                requestId, project, projectSection, requestedBy, feature,
+                requestId, aiJob, project, projectSection, requestedBy, feature,
                 modelId, promptVersion, inputSnapshotHash, startedAt
         );
     }

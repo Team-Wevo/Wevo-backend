@@ -30,6 +30,8 @@ wevo:
       max-backoff: 0ms
     structured-output:
       max-correction-retries: 2
+    jobs:
+      max-executions-per-key: 3
     pricing:
       version: test-v1
     audit:

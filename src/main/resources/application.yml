@@ -27,6 +27,8 @@ wevo:
       max-backoff: 8s
     structured-output:
       max-correction-retries: ${AI_STRUCTURED_OUTPUT_MAX_CORRECTION_RETRIES:2}
+    jobs:
+      max-executions-per-key: ${AI_JOB_MAX_EXECUTIONS_PER_KEY:3}
     pricing:
       version: ${AI_PRICING_VERSION:}
     audit:
