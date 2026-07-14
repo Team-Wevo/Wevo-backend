@@ -35,6 +35,7 @@ public enum ErrorCode {
     SECTION_NOT_FOUND(HttpStatus.NOT_FOUND, "S001", "섹션을 찾을 수 없습니다."),
 
     // Opinion
+    OPINION_NOT_FOUND(HttpStatus.NOT_FOUND, "O001", "의견을 찾을 수 없습니다."),
     OPINION_COLLECTION_CLOSED(HttpStatus.UNPROCESSABLE_ENTITY, "O003", "의견 수집이 마감되었습니다."),
 
     // AI

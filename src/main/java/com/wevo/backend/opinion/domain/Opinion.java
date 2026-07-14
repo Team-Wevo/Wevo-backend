@@ -15,6 +15,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.time.LocalDateTime;
+import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -33,6 +35,9 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Opinion extends BaseTimeEntity {
+
+    public static final int MIN_CONTENT_LENGTH = 20;
+    public static final int MAX_CONTENT_LENGTH = 1000;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -53,12 +58,17 @@ public class Opinion extends BaseTimeEntity {
     @Column(length = 20, nullable = false)
     private OpinionStatus status;
 
+    @Column(name = "submitted_at")
+    private LocalDateTime submittedAt;
+
     @Builder
-    private Opinion(ProjectSection projectSection, User author, String content, OpinionStatus status) {
+    private Opinion(ProjectSection projectSection, User author, String content, OpinionStatus status,
+                    LocalDateTime submittedAt) {
         this.projectSection = projectSection;
         this.author = author;
         this.content = content;
         this.status = status;
+        this.submittedAt = submittedAt;
     }
 
     /**
@@ -67,5 +77,22 @@ public class Opinion extends BaseTimeEntity {
      */
     public void updateContent(String content) {
         this.content = content;
+    }
+
+    /**
+     * 의견을 최초 제출 상태로 전환한다.
+     *
+     * <p>이미 제출된 의견에 다시 호출해도 최초 제출 시각을 유지한다.
+     */
+    public void submit(LocalDateTime submittedAt) {
+        if (status == OpinionStatus.SUBMITTED) {
+            return;
+        }
+        LocalDateTime firstSubmittedAt = Objects.requireNonNull(
+                submittedAt,
+                "submittedAt must not be null"
+        );
+        this.status = OpinionStatus.SUBMITTED;
+        this.submittedAt = firstSubmittedAt;
     }
 }
