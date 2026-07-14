@@ -13,4 +13,14 @@ public record ProfileUpdateRequest(
         @Size(max = 100)
         String name
 ) {
+
+    /**
+     * 표시 이름 앞뒤 공백을 제거한다. 검증(@NotBlank·@Size)은 정리된 값을 기준으로 수행된다.
+     * ({@code strip()} 은 유니코드 공백까지 처리 — 전각 공백 등)
+     */
+    public ProfileUpdateRequest {
+        if (name != null) {
+            name = name.strip();
+        }
+    }
 }
