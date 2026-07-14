@@ -60,6 +60,8 @@ public class SectionStatusService {
         ProjectSectionStatus from = section.getStatus();
         section.changeStatus(target); // 허용되지 않은 전이면 INVALID_SECTION_STATUS_TRANSITION
 
+        // version(본문 버전)은 초안 이후 전이에서만 의미가 있다. COLLECTING→SYNTHESIZING 시점엔
+        // 초안이 없어 null이 정상이며, 초안 단계 전이(DRAFTING→…) 구현 시 contentVersion을 채운다.
         sectionStatusHistoryRepository.save(SectionStatusHistory.builder()
                 .projectSection(section)
                 .actor(actor.getUser())
