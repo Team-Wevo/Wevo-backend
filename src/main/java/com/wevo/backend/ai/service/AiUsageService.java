@@ -43,9 +43,16 @@ public class AiUsageService {
     }
 
     public AiUsageHandle startRequest(AiUsageStartCommand command) {
-        String modelId = aiProperties.optionsFor(command.feature()).model();
+        AiProperties.ModelOptions modelOptions = aiProperties.optionsFor(command.feature());
+        String modelId = modelOptions.model();
+        if (command.aiJob() != null
+                && (!command.aiJob().getModelId().equals(modelId)
+                || !command.aiJob().getMaxOutputTokens().equals(modelOptions.maxOutputTokens()))) {
+            throw new IllegalArgumentException("AiJob과 감사 로그의 model 실행 정책이 일치해야 합니다.");
+        }
         AiUsageLog usageLog = AiUsageLog.start(
                 UUID.randomUUID(),
+                command.aiJob(),
                 command.project(),
                 command.projectSection(),
                 command.requestedBy(),
