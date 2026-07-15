@@ -2,6 +2,7 @@ package com.wevo.backend.review.service;
 
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.review.domain.ReviewLink;
 import com.wevo.backend.review.domain.ReviewSubmission;
 import com.wevo.backend.review.dto.request.ExternalReviewSubmitRequest;
@@ -31,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>검토 링크는 <b>외부 검토 전용</b>이다. 내부(팀) 검토(§6.1)는 링크가 아니라 멤버십 기반이다.
  *
- * <p>팀장(OWNER) 권한 검증은 {@link SectionAccessGuard} 에 위임한다.
+ * <p>팀장(OWNER) 권한 검증은 SectionAccessGuard 에 위임한다.
  */
 @Service
 @Transactional(readOnly = true)

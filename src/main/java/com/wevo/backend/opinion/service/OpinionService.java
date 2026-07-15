@@ -11,7 +11,7 @@ import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
 import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
 import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
 import com.wevo.backend.opinion.repository.OpinionRepository;
-import com.wevo.backend.project.repository.ProjectMemberRepository;
+import com.wevo.backend.project.service.ProjectAccessGuard;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.repository.ProjectSectionRepository;
@@ -32,22 +32,25 @@ import org.springframework.transaction.annotation.Transactional;
  *       별도 게이트 컬럼 없이 섹션 상태로 판정한다.</li>
  *   <li>SUBMITTED 의견을 다시 임시저장해도 상태는 SUBMITTED 로 유지된다(재제출 절차 없음).</li>
  * </ul>
+ *
+ * <p>의견 API는 OWNER와 MEMBER 모두 사용할 수 있으므로 프로젝트 참여 여부만 확인하며,
+ * 공통 인가 규칙은 {@link ProjectAccessGuard}에 위임한다.
  */
 @Service
 @Transactional(readOnly = true)
 public class OpinionService {
 
     private final ProjectSectionRepository projectSectionRepository;
-    private final ProjectMemberRepository projectMemberRepository;
+    private final ProjectAccessGuard projectAccessGuard;
     private final OpinionRepository opinionRepository;
     private final UserRepository userRepository;
 
     public OpinionService(ProjectSectionRepository projectSectionRepository,
-                          ProjectMemberRepository projectMemberRepository,
+                          ProjectAccessGuard projectAccessGuard,
                           OpinionRepository opinionRepository,
                           UserRepository userRepository) {
         this.projectSectionRepository = projectSectionRepository;
-        this.projectMemberRepository = projectMemberRepository;
+        this.projectAccessGuard = projectAccessGuard;
         this.opinionRepository = opinionRepository;
         this.userRepository = userRepository;
     }
@@ -167,7 +170,7 @@ public class OpinionService {
 
     /**
      * 섹션을 배타 잠금으로 조회하고 요청자가 그 프로젝트의 멤버인지 검증한 뒤 섹션을 반환한다.
-     * 상태 확인 후 쓰기가 이어지는 경로 전용 — 읽기 전용 조회에는 {@link #requireMemberSection} 을 쓴다.
+     * 상태 확인 후 쓰기가 이어지는 경로 전용 — 읽기 전용 조회에는  requireMemberSection 을 쓴다.
      *
      * @throws BusinessException SECTION_NOT_FOUND(섹션 없음) / NOT_PROJECT_MEMBER(멤버 아님)
      */
@@ -178,10 +181,11 @@ public class OpinionService {
         return section;
     }
 
+    /**
+     * 섹션이 속한 프로젝트의 참여자(OWNER 또는 MEMBER)인지 공통 Guard를 통해 검증한다.
+     */
     private void validateMember(ProjectSection section, Long userId) {
-        if (!projectMemberRepository.existsByProjectIdAndUserId(section.getProject().getId(), userId)) {
-            throw new BusinessException(ErrorCode.NOT_PROJECT_MEMBER);
-        }
+        projectAccessGuard.requireParticipant(section.getProject().getId(), userId);
     }
 
     private void validateContentForSubmit(String content) {

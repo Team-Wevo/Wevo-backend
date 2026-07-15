@@ -12,7 +12,7 @@ import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
 import com.wevo.backend.opinion.repository.OpinionRepository;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectStatus;
-import com.wevo.backend.project.repository.ProjectMemberRepository;
+import com.wevo.backend.project.service.ProjectAccessGuard;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.repository.ProjectSectionRepository;
@@ -50,7 +50,7 @@ class OpinionServiceTest {
     @Mock
     private ProjectSectionRepository projectSectionRepository;
     @Mock
-    private ProjectMemberRepository projectMemberRepository;
+    private ProjectAccessGuard projectAccessGuard;
     @Mock
     private OpinionRepository opinionRepository;
     @Mock
@@ -65,7 +65,6 @@ class OpinionServiceTest {
         ProjectSection section = section(ProjectSectionStatus.COLLECTING);
         User author = user();
         given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
         given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
                 .willReturn(Optional.empty());
         given(userRepository.getReferenceById(USER_ID)).willReturn(author);
@@ -100,7 +99,6 @@ class OpinionServiceTest {
                 .build();
         ReflectionTestUtils.setField(existing, "id", 501L);
         given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
         given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
                 .willReturn(Optional.of(existing));
 
@@ -129,7 +127,8 @@ class OpinionServiceTest {
     void saveDraft_notMember_throws() {
         ProjectSection section = section(ProjectSectionStatus.COLLECTING);
         given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(false);
+        given(projectAccessGuard.requireParticipant(PROJECT_ID, USER_ID))
+                .willThrow(new BusinessException(ErrorCode.NOT_PROJECT_MEMBER));
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> opinionService.saveDraft(SECTION_ID, USER_ID, new OpinionDraftRequest(CONTENT)));
@@ -142,7 +141,6 @@ class OpinionServiceTest {
     void saveDraft_collectionClosed_throws() {
         ProjectSection section = section(ProjectSectionStatus.SYNTHESIZING);
         given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> opinionService.saveDraft(SECTION_ID, USER_ID, new OpinionDraftRequest(CONTENT)));
@@ -162,7 +160,6 @@ class OpinionServiceTest {
                 .build();
         ReflectionTestUtils.setField(opinion, "id", 501L);
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
         given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
                 .willReturn(Optional.of(opinion));
 
@@ -179,7 +176,6 @@ class OpinionServiceTest {
     void getMyOpinion_returnsEmpty_whenAbsent() {
         ProjectSection section = section(ProjectSectionStatus.COLLECTING);
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
         given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
                 .willReturn(Optional.empty());
 
@@ -208,7 +204,8 @@ class OpinionServiceTest {
     void getMyOpinion_notMember_throws() {
         ProjectSection section = section(ProjectSectionStatus.COLLECTING);
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(false);
+        given(projectAccessGuard.requireParticipant(PROJECT_ID, USER_ID))
+                .willThrow(new BusinessException(ErrorCode.NOT_PROJECT_MEMBER));
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> opinionService.getMyOpinion(SECTION_ID, USER_ID));
@@ -222,7 +219,6 @@ class OpinionServiceTest {
         ProjectSection section = section(ProjectSectionStatus.COLLECTING);
         Opinion opinion = opinion(section, OpinionStatus.DRAFT, CONTENT, null);
         given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
         given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
                 .willReturn(Optional.of(opinion));
 
@@ -242,7 +238,6 @@ class OpinionServiceTest {
         LocalDateTime firstSubmittedAt = LocalDateTime.of(2026, 7, 14, 12, 5);
         Opinion opinion = opinion(section, OpinionStatus.SUBMITTED, CONTENT, firstSubmittedAt);
         given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
         given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
                 .willReturn(Optional.of(opinion));
 
@@ -259,7 +254,6 @@ class OpinionServiceTest {
         ProjectSection section = section(ProjectSectionStatus.SYNTHESIZING);
         Opinion opinion = opinion(section, OpinionStatus.DRAFT, CONTENT, null);
         given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
         given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
                 .willReturn(Optional.of(opinion));
 
@@ -274,7 +268,6 @@ class OpinionServiceTest {
     void submitMyOpinion_opinionNotFound_throws() {
         ProjectSection section = section(ProjectSectionStatus.COLLECTING);
         given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
         given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
                 .willReturn(Optional.empty());
 
@@ -294,7 +287,6 @@ class OpinionServiceTest {
         ProjectSection section = section(ProjectSectionStatus.COLLECTING);
         Opinion opinion = opinion(section, OpinionStatus.DRAFT, "너무 짧은 의견", null);
         given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
         given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
                 .willReturn(Optional.of(opinion));
 
@@ -316,7 +308,6 @@ class OpinionServiceTest {
         Opinion others = submittedOpinion(508L, section, other,
                 LocalDateTime.of(2026, 7, 14, 11, 0));
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
         given(opinionRepository.findAllWithAuthorByProjectSectionIdAndStatus(
                 SECTION_ID, OpinionStatus.SUBMITTED)).willReturn(List.of(mine, others));
 
@@ -340,7 +331,6 @@ class OpinionServiceTest {
         Opinion others = submittedOpinion(508L, section, user(2L, "이서연"),
                 LocalDateTime.of(2026, 7, 14, 11, 0));
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(true);
         given(opinionRepository.findAllWithAuthorByProjectSectionIdAndStatus(
                 SECTION_ID, OpinionStatus.SUBMITTED)).willReturn(List.of(others));
 
@@ -367,7 +357,8 @@ class OpinionServiceTest {
     void getSubmittedOpinions_notMember_throws() {
         ProjectSection section = section(ProjectSectionStatus.COLLECTING);
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.existsByProjectIdAndUserId(PROJECT_ID, USER_ID)).willReturn(false);
+        given(projectAccessGuard.requireParticipant(PROJECT_ID, USER_ID))
+                .willThrow(new BusinessException(ErrorCode.NOT_PROJECT_MEMBER));
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> opinionService.getSubmittedOpinions(SECTION_ID, USER_ID));

@@ -3,8 +3,7 @@ package com.wevo.backend.section.service;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.project.domain.ProjectMember;
-import com.wevo.backend.project.domain.ProjectMemberRole;
-import com.wevo.backend.project.repository.ProjectMemberRepository;
+import com.wevo.backend.project.service.ProjectAccessGuard;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionStatusHistory;
@@ -21,19 +20,22 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>기본 전파(REQUIRED)로 <b>호출자 트랜잭션에 참여</b>하여, 호출측 액션(예: 수집 마감)과
  * 원자적으로 커밋/롤백된다.
+ *
+ * <p>상태 전이의 OWNER 권한 검사는 ProjectAccessGuard에 위임해 다른 도메인과
+ * 동일한 미참여·역할 불일치 예외 규칙을 적용한다.
  */
 @Service
 public class SectionStatusService {
 
     private final ProjectSectionRepository projectSectionRepository;
-    private final ProjectMemberRepository projectMemberRepository;
+    private final ProjectAccessGuard projectAccessGuard;
     private final SectionStatusHistoryRepository sectionStatusHistoryRepository;
 
     public SectionStatusService(ProjectSectionRepository projectSectionRepository,
-                                ProjectMemberRepository projectMemberRepository,
+                                ProjectAccessGuard projectAccessGuard,
                                 SectionStatusHistoryRepository sectionStatusHistoryRepository) {
         this.projectSectionRepository = projectSectionRepository;
-        this.projectMemberRepository = projectMemberRepository;
+        this.projectAccessGuard = projectAccessGuard;
         this.sectionStatusHistoryRepository = sectionStatusHistoryRepository;
     }
 
@@ -73,14 +75,10 @@ public class SectionStatusService {
 
     /**
      * 요청자가 해당 섹션 프로젝트의 팀장(OWNER)인지 검증한다.
+     *
+     * @return 상태 전이 이력의 실행자 정보로 사용할 프로젝트 멤버십
      */
     private ProjectMember requireOwner(ProjectSection section, Long actorUserId) {
-        ProjectMember member = projectMemberRepository
-                .findByProjectIdAndUserId(section.getProject().getId(), actorUserId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_PROJECT_MEMBER));
-        if (member.getRole() != ProjectMemberRole.OWNER) {
-            throw new BusinessException(ErrorCode.FORBIDDEN);
-        }
-        return member;
+        return projectAccessGuard.requireOwner(section.getProject().getId(), actorUserId);
     }
 }
