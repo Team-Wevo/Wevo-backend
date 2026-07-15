@@ -53,4 +53,18 @@ public class InviteLink extends BaseTimeEntity {
         this.expiresAt = expiresAt;
         this.isActive = isActive;
     }
+
+    /**
+     * 재사용 초대 링크를 발급한다. MVP에서는 만료를 두지 않으므로 {@code expiresAt=null},
+     * 활성 상태({@code isActive=true})로 생성한다. (제품 정책서 §2.1 — 만료·비활성화는 MVP 이후)
+     */
+    public static InviteLink issue(Project project, User createdBy, String token) {
+        return InviteLink.builder()
+                .project(project)
+                .createdBy(createdBy)
+                .token(token)
+                .expiresAt(null)
+                .isActive(true)
+                .build();
+    }
 }

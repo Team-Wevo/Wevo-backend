@@ -30,6 +30,8 @@ public enum ErrorCode {
     // Project
     PROJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "P001", "프로젝트를 찾을 수 없습니다."),
     NOT_PROJECT_MEMBER(HttpStatus.FORBIDDEN, "P002", "프로젝트 멤버가 아닙니다."),
+    INVITE_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "P003", "유효하지 않은 초대 링크입니다."),
+    PROJECT_MEMBER_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "P004", "프로젝트 최대 인원을 초과했습니다."),
 
     // Section
     SECTION_NOT_FOUND(HttpStatus.NOT_FOUND, "S001", "섹션을 찾을 수 없습니다."),
