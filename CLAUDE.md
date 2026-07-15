@@ -146,7 +146,7 @@ Content-Type: application/json
 ```json
 {
   "success": false,
-  "code": "PROJECT_NOT_FOUND",
+  "code": "P001",
   "message": "프로젝트를 찾을 수 없습니다.",
   "errors": [
     {
@@ -158,9 +158,10 @@ Content-Type: application/json
 }
 ```
 
-- `code`는 단순 `SUCCESS`/`ERROR`가 아닌 **상황을 식별할 수 있는 의미 있는 코드**를 사용합니다.
-  (예: `PROJECT_CREATED`, `OK`, `PROJECT_NOT_FOUND`)
-- 성공 코드는 별도 Enum으로 강제하지 않고 의미 있는 문자열로 전달합니다.
+- 성공 응답의 `code`는 별도 Enum으로 강제하지 않고 상황을 식별할 수 있는 의미 있는 문자열을 사용합니다.
+  (예: `PROJECT_CREATED`, `OK`)
+- 실패 응답의 `code`는 반드시 `ErrorCode.code` 값을 사용합니다. Enum 상수명(예: `PROJECT_NOT_FOUND`)을
+  외부 응답 코드로 노출하지 않습니다. (예: `PROJECT_NOT_FOUND`의 외부 코드는 `P001`)
 - `errors`는 검증 실패 등 필드 단위 사유가 있을 때 사용하며, 사유가 없으면 생략합니다.
 
 ### 5.5 페이지네이션 형식
@@ -321,40 +322,64 @@ public class FieldError {
 ```
 
 **ErrorCode** (`global.exception`) — 코드/메시지/HTTP 상태를 한 곳에서 관리합니다.
-코드 prefix는 도메인 단위로 구분합니다. (공통 `C`, auth `A`, user `U`, project `P` …)
+
+#### ErrorCode 단일 소스와 외부 코드 규칙
+
+- 실패 코드의 단일 소스(source of truth)는
+  `src/main/java/com/wevo/backend/global/exception/ErrorCode.java`입니다. `CLAUDE.md`나 API 명세에
+  enum 전체 목록을 복사해 별도의 정본을 만들지 않습니다.
+- Enum 상수명은 개발자가 의미를 이해하기 쉬운 `UPPER_SNAKE_CASE`로 작성하고, 외부 API의 `code`는
+  도메인 prefix와 3자리 숫자로 작성합니다. 두 값은 역할이 다릅니다.
+- 외부 실패 코드는 `^[A-Z]{1,3}\d{3}$` 형식을 만족하고 전체 `ErrorCode`에서 유일해야 합니다.
+- 이미 외부에 공개된 코드는 다른 의미로 재사용하거나 임의로 변경하지 않습니다.
+
+| prefix | 도메인 |
+| --- | --- |
+| `C` | 공통(Common) |
+| `A` | 인증(Auth) |
+| `U` | 사용자(User) |
+| `P` | 프로젝트(Project) |
+| `S` | 섹션(Section) |
+| `O` | 의견(Opinion) |
+| `AI` | AI |
+| `R` | 리뷰(Review) |
+
+#### 공통 코드와 도메인 코드 선택
+
+- 요청 형식·필수값 검증 실패는 `INVALID_INPUT`(`C001`)을 사용합니다.
+- 클라이언트가 원인을 구분해 별도 행동을 할 필요가 없는 일반 충돌은 `CONFLICT`(`C003`)을 재사용합니다.
+- 클라이언트가 해당 원인을 독립적으로 분기해야 할 때만 도메인 전용 `ErrorCode`를 추가합니다.
+  HTTP 상태가 같다는 이유만으로 모든 오류를 하나의 코드로 합치거나, 메시지만 다른 전용 코드를 무분별하게
+  추가하지 않습니다.
+
+예를 들어 섹션 템플릿 생성 기능을 추가하면서 `(resultType, sectionKey)` 중복을 클라이언트가 별도로 처리해야
+한다면 다음과 같이 의미 중심의 상수명과 `S` prefix 외부 코드를 함께 정의할 수 있습니다.
 
 ```java
-package com.wevo.backend.global.exception;
-
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-
-@Getter
-@RequiredArgsConstructor
-public enum ErrorCode {
-
-    // Common
-    INVALID_INPUT(HttpStatus.BAD_REQUEST, "C001", "잘못된 입력입니다."),
-    BUSINESS_RULE_VIOLATION(HttpStatus.UNPROCESSABLE_ENTITY, "C002", "업무 규칙을 위반했습니다."),
-    CONFLICT(HttpStatus.CONFLICT, "C003", "요청이 현재 상태와 충돌합니다."),
-    INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "C999", "서버 오류가 발생했습니다."),
-
-    // Auth
-    UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "A001", "인증이 필요합니다."),
-    FORBIDDEN(HttpStatus.FORBIDDEN, "A002", "접근 권한이 없습니다."),
-
-    // User
-    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U001", "사용자를 찾을 수 없습니다."),
-
-    // Project
-    PROJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "P001", "프로젝트를 찾을 수 없습니다.");
-
-    private final HttpStatus status;
-    private final String code;
-    private final String message;
-}
+SECTION_TEMPLATE_DUPLICATED(
+        HttpStatus.CONFLICT,
+        "S003",
+        "중복된 섹션 템플릿입니다."
+);
 ```
+
+별도 처리가 필요 없다면 새 `S003`을 만들지 않고 `CONFLICT`(`C003`)을 사용합니다.
+
+| 상황 | HTTP | 외부 `code` |
+| --- | --- | --- |
+| 요청 형식/필수값 오류 | `400` | `C001` |
+| `(resultType, sectionKey)` 중복 — 별도 식별 불필요 | `409` | `C003` |
+| `(resultType, sectionKey)` 중복 — 별도 식별 필요 | `409` | `S003` |
+
+#### 구현과 API 명세 동기화
+
+- API 명세의 실패 응답에는 Enum 상수명(`INVALID_INPUT`, `SECTION_TEMPLATE_DUPLICATED`)이 아니라 실제 외부
+  코드(`C001`, `S003`)를 기록합니다.
+- 구현되지 않은 API나 오류 코드를 확정된 명세처럼 먼저 기재하지 않습니다. 새 오류를 추가할 때는
+  `ErrorCode`, 예외 발생 지점, 전역 예외 매핑, API 명세를 같은 변경에서 갱신합니다.
+- 중복처럼 데이터 무결성에 의존하는 오류는 애플리케이션의 사전 검사만으로 보장하지 않습니다. DB 유니크 제약을
+  함께 두고, 동시 요청에서 발생하는 제약 위반도 합의한 `ErrorCode`로 변환합니다.
+- `ErrorCode`의 모든 외부 코드가 위 정규식을 만족하고 서로 중복되지 않는지 검증하는 테스트를 유지합니다.
 
 ### 5.9 전역 예외 처리
 
