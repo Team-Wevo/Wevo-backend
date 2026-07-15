@@ -60,6 +60,9 @@ public enum ErrorCode {
     AI_STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED(HttpStatus.BAD_GATEWAY, "AI018", "AI 응답이 출력 형식을 충족하지 않습니다."),
     AI_STRUCTURED_OUTPUT_CONVERSION_FAILED(HttpStatus.BAD_GATEWAY, "AI019", "AI 응답을 결과 타입으로 변환할 수 없습니다."),
     AI_STRUCTURED_OUTPUT_SEMANTIC_VALIDATION_FAILED(HttpStatus.BAD_GATEWAY, "AI020", "AI 응답의 참조값이 유효하지 않습니다."),
+    AI_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "AI021", "AI 작업을 찾을 수 없습니다."),
+    AI_JOB_INVALID_STATE_TRANSITION(HttpStatus.CONFLICT, "AI022", "허용되지 않은 AI 작업 상태 전이입니다."),
+    AI_JOB_RETRY_LIMIT_EXCEEDED(HttpStatus.UNPROCESSABLE_ENTITY, "AI023", "AI 작업 재실행 한도를 초과했습니다."),
     AI_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "AI999", "AI 처리 중 오류가 발생했습니다."),
 
     // Review
