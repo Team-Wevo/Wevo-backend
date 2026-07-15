@@ -10,9 +10,12 @@ import java.util.Optional;
 public interface InviteLinkRepository extends JpaRepository<InviteLink, Long> {
 
     /**
-     * 프로젝트의 활성 초대 링크를 조회한다. (재사용 링크 정책상 프로젝트당 최대 1개)
+     * 프로젝트의 활성 초대 링크를 조회한다. (재사용 링크 정책상 프로젝트당 1개)
+     *
+     * <p>동시 발급 경합으로 활성 링크가 중복 저장되더라도 첫 번째만 반환해
+     * {@code NonUniqueResultException} 으로 초대 기능이 마비되지 않도록 {@code findFirst} 를 쓴다.
      */
-    Optional<InviteLink> findByProjectIdAndIsActiveTrue(Long projectId);
+    Optional<InviteLink> findFirstByProjectIdAndIsActiveTrue(Long projectId);
 
     /**
      * 토큰으로 활성 초대 링크를 프로젝트와 함께 조회한다.

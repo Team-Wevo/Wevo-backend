@@ -62,11 +62,11 @@ public class InviteService {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
 
-        InviteLink link = inviteLinkRepository.findByProjectIdAndIsActiveTrue(projectId)
+        InviteLink link = inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(projectId)
                 .orElseGet(() -> inviteLinkRepository.save(
                         InviteLink.issue(membership.getProject(), membership.getUser(), generateToken())));
 
-        return InviteLinkResponse.of(link.getToken(), inviteBaseUrl + link.getToken());
+        return InviteLinkResponse.of(link.getToken(), buildInviteUrl(link.getToken()));
     }
 
     /**
@@ -121,6 +121,15 @@ public class InviteService {
                 .build());
 
         return ProjectJoinResponse.from(saved);
+    }
+
+    /**
+     * 공유용 초대 URL을 만든다. base-url에 trailing slash가 있든 없든 정확히 하나만 붙여
+     * {@code .../inviteTOKEN} 같은 잘못된 링크를 막는다.
+     */
+    private String buildInviteUrl(String token) {
+        String base = inviteBaseUrl.endsWith("/") ? inviteBaseUrl : inviteBaseUrl + "/";
+        return base + token;
     }
 
     private String generateToken() {

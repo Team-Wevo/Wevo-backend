@@ -69,7 +69,7 @@ class InviteServiceTest {
         User owner = user(OWNER_ID, "팀장");
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
                 .willReturn(Optional.of(member(project, owner, ProjectMemberRole.OWNER)));
-        given(inviteLinkRepository.findByProjectIdAndIsActiveTrue(PROJECT_ID)).willReturn(Optional.empty());
+        given(inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(PROJECT_ID)).willReturn(Optional.empty());
         given(inviteLinkRepository.save(any(InviteLink.class)))
                 .willAnswer(i -> i.getArgument(0));
 
@@ -81,13 +81,31 @@ class InviteServiceTest {
     }
 
     @Test
+    @DisplayName("base-url에 trailing slash가 없어도 정확히 하나만 붙여 URL을 만든다")
+    void createInviteLink_normalizesTrailingSlash() {
+        InviteService noSlash = new InviteService(
+                projectRepository, projectMemberRepository, inviteLinkRepository, userRepository,
+                "http://host/invite"); // 끝에 슬래시 없음
+        Project project = project();
+        User owner = user(OWNER_ID, "팀장");
+        given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
+                .willReturn(Optional.of(member(project, owner, ProjectMemberRole.OWNER)));
+        given(inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(PROJECT_ID))
+                .willReturn(Optional.of(InviteLink.issue(project, owner, TOKEN)));
+
+        InviteLinkResponse response = noSlash.createInviteLink(OWNER_ID, PROJECT_ID);
+
+        assertThat(response.inviteUrl()).isEqualTo("http://host/invite/" + TOKEN);
+    }
+
+    @Test
     @DisplayName("이미 활성 링크가 있으면 새로 만들지 않고 기존 링크를 반환한다 (재사용)")
     void createInviteLink_reusesExistingActiveLink() {
         Project project = project();
         User owner = user(OWNER_ID, "팀장");
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
                 .willReturn(Optional.of(member(project, owner, ProjectMemberRole.OWNER)));
-        given(inviteLinkRepository.findByProjectIdAndIsActiveTrue(PROJECT_ID))
+        given(inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(PROJECT_ID))
                 .willReturn(Optional.of(InviteLink.issue(project, owner, TOKEN)));
 
         InviteLinkResponse response = inviteService.createInviteLink(OWNER_ID, PROJECT_ID);
