@@ -11,8 +11,8 @@ import com.wevo.backend.review.domain.ReviewLinkStatus;
  *
  * @param sectionId        섹션 식별자
  * @param sectionTitle     발급 시점 섹션 제목 스냅샷
- * @param content          발급 시점 본문 스냅샷 (없으면 null)
- * @param contentVersion   스냅샷 본문 버전
+ * @param content          발급 시점 본문 스냅샷 (발급 이후 불변 — 초안 없는 발급은 거부되므로 항상 존재)
+ * @param contentVersion   링크에 고정된 발급 시점 본문 버전
  * @param linkStatus       링크 상태 (ACTIVE/OUTDATED/CLOSED — 만료·종료 시 안내 화면 표시)
  * @param alreadySubmitted 이 브라우저가 이미 제출했는지 (true 면 "이미 검토를 제출했어요." 화면 표시)
  */

@@ -141,6 +141,42 @@ class TeamReviewIntegrationTest {
     }
 
     @Test
+    @DisplayName("PENDING 은 파생 상태라 제출할 수 없다 (400 C001)")
+    void cannotSubmitPending() throws Exception {
+        User owner = persistUser("owner-p1@team.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistReviewingSectionWithDraft(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User m1 = persistUser("mp1@team.com");
+        persistMember(project, m1, ProjectMemberRole.MEMBER);
+        em.flush();
+
+        submit(section.getId(), m1, "PENDING", null)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+
+        assertThat(teamReviewRepository.findByProjectSection_Id(section.getId())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("REVIEWING 인데 초안이 없는 비정상 상태면 제출을 거부한다 (409 C003)")
+    void cannotSubmitWhenReviewingWithoutDraft() throws Exception {
+        User owner = persistUser("owner-nd1@team.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project, ProjectSectionStatus.REVIEWING); // 초안 없음
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User m1 = persistUser("mnd1@team.com");
+        persistMember(project, m1, ProjectMemberRole.MEMBER);
+        em.flush();
+
+        submit(section.getId(), m1, "APPROVED", null)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("C003"));
+
+        assertThat(teamReviewRepository.findByProjectSection_Id(section.getId())).isEmpty();
+    }
+
+    @Test
     @DisplayName("검토 단계(REVIEWING)가 아닌 섹션에는 제출할 수 없다 (409 R006)")
     void cannotSubmitWhenNotReviewing() throws Exception {
         User owner = persistUser("owner5@team.com");

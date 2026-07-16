@@ -4,6 +4,7 @@ import com.wevo.backend.auth.domain.AuthProvider;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.response.FieldError;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -82,6 +83,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(errorCode.getStatus())
                 .body(ApiResponse.error(errorCode));
+    }
+
+    /**
+     * 낙관적 잠금({@code @Version}) 충돌을 409 {@code C003 CONFLICT} 로 변환한다.
+     *
+     * <p>같은 리소스를 두 요청이 동시에 갱신하면 늦게 커밋하는 쪽이 실패한다.
+     * (예: 팀 검토 재제출과 팀장의 resolve 처리가 동시에 실행되는 경우)
+     */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLockingFailure(
+            OptimisticLockingFailureException exception
+    ) {
+        return ResponseEntity
+                .status(ErrorCode.CONFLICT.getStatus())
+                .body(ApiResponse.error(ErrorCode.CONFLICT));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

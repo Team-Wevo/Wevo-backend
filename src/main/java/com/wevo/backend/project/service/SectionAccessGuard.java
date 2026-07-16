@@ -70,6 +70,44 @@ public class SectionAccessGuard {
     }
 
     /**
+     * 섹션 행을 <b>배타 잠금(PESSIMISTIC_WRITE)</b>으로 조회하고 요청자가 팀장(OWNER)인지 검증한다.
+     *
+     * <p>"섹션의 최신 상태 확인 후 쓰기"가 이어지는 팀장 전용 경로(외부 검토 링크 발급 등) 전용 —
+     * 같은 섹션 행을 잠그는 본문 저장 플로우와 직렬화되어, 방금 구버전이 된 본문을 스냅샷으로 갖는
+     * ACTIVE 링크가 생기는 경합을 막는다. 읽기 전용 경로에는 {@link #requireOwnedSection}을 사용한다.
+     *
+     * @return OWNER 접근 권한이 확인된, 잠금이 걸린 섹션
+     * @throws BusinessException 섹션이 없으면 {@link ErrorCode#SECTION_NOT_FOUND}, 프로젝트에
+     *                           참여하지 않았으면 {@link ErrorCode#NOT_PROJECT_MEMBER},
+     *                           MEMBER이면 {@link ErrorCode#FORBIDDEN}
+     */
+    public ProjectSection requireOwnedSectionForUpdate(Long sectionId, Long userId) {
+        ProjectSection section = projectSectionRepository.findByIdForUpdate(sectionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_NOT_FOUND));
+        projectAccessGuard.requireOwner(section.getProject().getId(), userId);
+        return section;
+    }
+
+    /**
+     * 섹션 행을 <b>배타 잠금(PESSIMISTIC_WRITE)</b>으로 조회하고 요청자가 팀원(MEMBER)인지 검증한다.
+     *
+     * <p>상태 확인 후 쓰기가 이어지는 경로(팀 검토 업서트 등) 전용 — 같은 섹션에 대한 동시
+     * 요청을 직렬화해 "조회 후 insert"가 유니크 제약 충돌로 실패하는 경합을 막는다.
+     * 읽기 전용 경로에는 {@link #requireMemberSection}을 사용한다.
+     *
+     * @return MEMBER 접근 권한이 확인된, 잠금이 걸린 섹션
+     * @throws BusinessException 섹션이 없으면 {@link ErrorCode#SECTION_NOT_FOUND}, 프로젝트에
+     *                           참여하지 않았으면 {@link ErrorCode#NOT_PROJECT_MEMBER},
+     *                           OWNER이면 {@link ErrorCode#FORBIDDEN}
+     */
+    public ProjectSection requireMemberSectionForUpdate(Long sectionId, Long userId) {
+        ProjectSection section = projectSectionRepository.findByIdForUpdate(sectionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_NOT_FOUND));
+        projectAccessGuard.requireMember(section.getProject().getId(), userId);
+        return section;
+    }
+
+    /**
      * 역할 검사에 앞서 대상 섹션을 조회한다.
      */
     private ProjectSection requireSection(Long sectionId) {

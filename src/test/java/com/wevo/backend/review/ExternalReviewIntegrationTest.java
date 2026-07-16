@@ -145,6 +145,58 @@ class ExternalReviewIntegrationTest {
     }
 
     @Test
+    @DisplayName("링크는 발급 시점 본문 버전에 고정된다 — 본문이 수정돼도 스냅샷과 버전을 그대로 보여준다")
+    void linkPinsIssuanceTimeDraftVersion() throws Exception {
+        User owner = persistUser("owner-pin@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        // 발급 응답에 고정된 버전(v1)이 담긴다
+        MvcResult issued = mockMvc.perform(post("/api/project-sections/{id}/review-links", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.contentVersion").value(1))
+                .andReturn();
+        String token = objectMapper.readTree(issued.getResponse().getContentAsString())
+                .path("data").path("token").asText();
+
+        // 본문 v2 저장 (+ 본문 저장 플로우가 호출하는 링크 만료 처리)
+        persistDraft(section, "수정된 본문 v2", 2, owner);
+        reviewLinkService.markSectionLinksOutdated(section.getId());
+
+        // 열람은 여전히 발급 시점(v1) 스냅샷 — 링크 상태만 OUTDATED 로 안내
+        mockMvc.perform(get("/public/review-links/{token}", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content").value(DRAFT_CONTENT))
+                .andExpect(jsonPath("$.data.contentVersion").value(1))
+                .andExpect(jsonPath("$.data.linkStatus").value("OUTDATED"));
+
+        // 새 본문(v2)의 외부 검토는 재발급으로만 — 새 링크는 v2 에 고정된다
+        mockMvc.perform(post("/api/project-sections/{id}/review-links", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.contentVersion").value(2));
+    }
+
+    @Test
+    @DisplayName("본문 초안이 없는 섹션에 링크를 발급하면 409(R009) 를 반환한다")
+    void cannotIssueLinkWithoutDraft() throws Exception {
+        User owner = persistUser("owner-nodraft@wevo.com", "팀장");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSectionWithoutDraft(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        mockMvc.perform(post("/api/project-sections/{id}/review-links", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R009"));
+
+        assertThat(reviewLinkRepository.count()).isZero();
+    }
+
+    @Test
     @DisplayName("존재하지 않는 토큰으로 열람하면 404(R001) 를 반환한다")
     void unknownTokenReturns404() throws Exception {
         mockMvc.perform(get("/public/review-links/{token}", "no-such-token"))
@@ -175,6 +227,45 @@ class ExternalReviewIntegrationTest {
                 .andExpect(jsonPath("$.data.items[0].understandingSignal").exists())
                 .andExpect(jsonPath("$.data.items[0].reviewerName").exists())
                 .andExpect(jsonPath("$.data.items[0].summary").exists());
+    }
+
+    @Test
+    @DisplayName("재발급 후 결과 조회는 버전별 집계(byVersion)로 어느 본문에 대한 평가인지 구분한다")
+    void resultsAreAggregatedPerContentVersion() throws Exception {
+        User owner = persistUser("owner-ver@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        // v1 링크에 2건 제출 (CLEAR 1, PARTIAL 1)
+        String tokenV1 = issueLink(section.getId(), owner);
+        submitAsReviewer(tokenV1, "CLEAR", "browser-v1-a").andExpect(status().isCreated());
+        submitAsReviewer(tokenV1, "PARTIAL", "browser-v1-b").andExpect(status().isCreated());
+
+        // 본문 v2 저장(+링크 만료) 후 재발급, v2 링크에 1건 제출 (CLEAR)
+        persistDraft(section, "수정된 본문 v2", 2, owner);
+        reviewLinkService.markSectionLinksOutdated(section.getId());
+        String tokenV2 = issueLink(section.getId(), owner);
+        submitAsReviewer(tokenV2, "CLEAR", "browser-v2-a").andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/project-sections/{id}/review-submissions", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                // 전체 합산은 유지된다
+                .andExpect(jsonPath("$.data.totalCount").value(3))
+                .andExpect(jsonPath("$.data.clearCount").value(2))
+                .andExpect(jsonPath("$.data.partialCount").value(1))
+                // 버전별 집계 — 최신 버전(v2)이 먼저
+                .andExpect(jsonPath("$.data.byVersion.length()").value(2))
+                .andExpect(jsonPath("$.data.byVersion[0].contentVersion").value(2))
+                .andExpect(jsonPath("$.data.byVersion[0].totalCount").value(1))
+                .andExpect(jsonPath("$.data.byVersion[0].clearCount").value(1))
+                .andExpect(jsonPath("$.data.byVersion[1].contentVersion").value(1))
+                .andExpect(jsonPath("$.data.byVersion[1].totalCount").value(2))
+                .andExpect(jsonPath("$.data.byVersion[1].clearCount").value(1))
+                .andExpect(jsonPath("$.data.byVersion[1].partialCount").value(1))
+                // 개별 항목에도 검토한 버전이 표기된다 (최신순 — 첫 항목이 v2 제출)
+                .andExpect(jsonPath("$.data.items[0].contentVersion").value(2));
     }
 
     @Test
@@ -417,7 +508,7 @@ class ExternalReviewIntegrationTest {
         return member;
     }
 
-    private ProjectSection persistSectionWithDraft(Project project, User editor) {
+    private ProjectSection persistSectionWithoutDraft(Project project) {
         ProjectSection section = ProjectSection.builder()
                 .project(project)
                 .title("문제 정의")
@@ -426,14 +517,23 @@ class ExternalReviewIntegrationTest {
                 .needsReReview(false)
                 .build();
         em.persist(section);
+        return section;
+    }
 
+    private ProjectSection persistSectionWithDraft(Project project, User editor) {
+        ProjectSection section = persistSectionWithoutDraft(project);
+        persistDraft(section, DRAFT_CONTENT, 1, editor);
+        return section;
+    }
+
+    private void persistDraft(ProjectSection section, String content, int version, User editor) {
         SectionDraft draft = SectionDraft.builder()
                 .projectSection(section)
-                .content(DRAFT_CONTENT)
-                .version(1)
+                .content(content)
+                .version(version)
                 .lastEditor(editor)
                 .build();
         em.persist(draft);
-        return section;
+        em.flush();
     }
 }

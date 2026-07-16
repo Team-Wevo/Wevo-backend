@@ -75,7 +75,8 @@ public enum ErrorCode {
     REVIEW_LINK_CLOSED(HttpStatus.CONFLICT, "R005", "종료된 외부 검토 링크예요."),
     TEAM_REVIEW_SECTION_NOT_REVIEWING(HttpStatus.CONFLICT, "R006", "검토 단계(REVIEWING)의 섹션만 검토할 수 있습니다."),
     TEAM_REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "R007", "팀 검토를 찾을 수 없습니다."),
-    TEAM_REVIEW_NOT_CHANGES_REQUESTED(HttpStatus.CONFLICT, "R008", "수정 요청 상태의 검토만 처리할 수 있습니다.");
+    TEAM_REVIEW_NOT_CHANGES_REQUESTED(HttpStatus.CONFLICT, "R008", "수정 요청 상태의 검토만 처리할 수 있습니다."),
+    REVIEW_LINK_DRAFT_REQUIRED(HttpStatus.CONFLICT, "R009", "본문 초안이 없어 외부 검토 링크를 발급할 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;

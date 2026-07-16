@@ -2,6 +2,7 @@ package com.wevo.backend.review.service;
 
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.global.response.FieldError;
 import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.repository.ProjectMemberRepository;
@@ -81,18 +82,32 @@ public class TeamReviewService {
      */
     @Transactional
     public TeamReviewItemResponse submitMyReview(Long sectionId, Long userId, TeamReviewSubmitRequest request) {
+        // 제출 가능한 상태는 APPROVED/CHANGES_REQUESTED
+        // (PENDING 은 "미제출"의 파생 상태라 저장되면 응답 계약과 집계 의미가 깨진다.)
+        if (request.status() != TeamReviewStatus.APPROVED
+                && request.status() != TeamReviewStatus.CHANGES_REQUESTED) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    List.of(new FieldError("status", "APPROVED 또는 CHANGES_REQUESTED 만 제출할 수 있습니다.")));
+        }
+
         // 팀원(MEMBER)만 제출 가능 — 팀장(OWNER)은 FORBIDDEN
-        ProjectSection section = sectionAccessGuard.requireMemberSection(sectionId, userId);
+        // 섹션 행을 배타 잠금으로 조회해 같은 (섹션, 팀원)의 동시 최초 제출을 직렬화한다.
+        // (둘 다 review == null 을 보고 insert 를 시도하면 한쪽이 유니크 제약 위반으로 실패해
+        //  "재제출 시 기존 검토 갱신" 업서트 계약이 깨지는 경합을 막는다.)
+        ProjectSection section = sectionAccessGuard.requireMemberSectionForUpdate(sectionId, userId);
 
         //REVIEWING 상태가 아니면 팀 검토 진행 불가능
         if (section.getStatus() != ProjectSectionStatus.REVIEWING) {
             throw new BusinessException(ErrorCode.TEAM_REVIEW_SECTION_NOT_REVIEWING);
         }
 
+        // REVIEWING 섹션은 초안 확정을 거쳐 도달하므로 초안이 항상 존재해야 한다.
+        // 없다면 비정상 상태 — 어느 버전을 검토했는지(reviewedContentVersion) 알 수 없는
+        // 검토가 저장되면 만료(outdated)·재검토 판단 근거가 깨지므로 제출을 거부한다.
         Integer reviewedVersion = sectionDraftRepository
                 .findTopByProjectSection_IdOrderByVersionDesc(sectionId)
                 .map(SectionDraft::getVersion)
-                .orElse(null);
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONFLICT));
 
         // 수정 요청이면 사유 필수
         String reason = request.status() == TeamReviewStatus.CHANGES_REQUESTED
@@ -146,6 +161,11 @@ public class TeamReviewService {
      * <p>본문 저장(초안 수정) 플로우가 <b>첫 실제 저장 시점</b>에 호출해야 한다.
      * 외부 검토의 {@code ReviewLinkService#markSectionLinksOutdated} 와 대칭이며, 클라이언트가 직접 호출하는
      * 엔드포인트가 아니라 본문 수정의 부수효과다.
+     *
+     * <p><b>호출 계약</b> — 본문 저장 트랜잭션 안에서, 섹션 행 배타 잠금
+     * ({@code ProjectSectionRepository#findByIdForUpdate})을 잡은 상태로 호출해야 한다.
+     * 검토 제출({@link #submitMyReview})이 같은 잠금을 잡으므로, 이 규약을 지키면
+     * "새 버전 저장 직전에 커밋된 검토가 만료 처리에서 빠지는" 경합이 생기지 않는다.
      */
     @Transactional
     public void markSectionTeamReviewsOutdated(Long sectionId) {

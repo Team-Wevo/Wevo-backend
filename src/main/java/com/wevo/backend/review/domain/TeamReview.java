@@ -15,6 +15,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -59,20 +60,36 @@ public class TeamReview extends BaseTimeEntity {
     @Column(length = 20, nullable = false)
     private TeamReviewStatus status;
 
-    /** 검토 시점의 본문 버전 */
-    @Column(name = "reviewed_content_version")
+    /**
+     * 검토 시점의 본문 버전. (만료·재검토 판단 근거)
+     *
+     * <p>초안 없는 섹션에는 제출이 거부되므로 항상 존재한다.
+     * 외부 검토 링크의 {@code contentVersion} 과 대칭인 계약이다.
+     */
+    @Column(name = "reviewed_content_version", nullable = false)
     private Integer reviewedContentVersion;
 
     /** 수정 요청 사유. CHANGES_REQUESTED 일 때만 작성*/
     @Column(name = "change_request_reason", columnDefinition = "TEXT")
     private String changeRequestReason;
 
-    /** 팀장이 "수정 안 하고 합의됨"으로 처리하면 true. (§6.1.1) */
+    /** 팀장이 수정 안 하고 합의된 경우 true로 변경   (§6.1.1) */
     @Column(nullable = false)
     private boolean resolved;
 
     @Column(nullable = false)
     private boolean outdated;
+
+    /**
+     * 낙관적 잠금 버전. (§5.6 — 409 Conflict)
+     *
+     * <p>팀원의 재제출({@link #apply})과 팀장의 resolve 처리({@link #updateResolved})가 동시에
+     * 실행될 때 마지막 트랜잭션이 상대 변경을 덮어써 모순 상태(예: 재제출인데 resolved=true)가
+     * 남지 않도록, 늦게 커밋하는 쪽을 실패시킨다.
+     */
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     @Builder
     private TeamReview(ProjectSection projectSection, User reviewer, TeamReviewStatus status,
