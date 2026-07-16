@@ -5,13 +5,13 @@ import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.repository.ProjectMemberRepository;
+import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.review.domain.TeamReview;
 import com.wevo.backend.review.domain.TeamReviewStatus;
 import com.wevo.backend.review.dto.request.TeamReviewSubmitRequest;
 import com.wevo.backend.review.dto.response.TeamReviewItemResponse;
 import com.wevo.backend.review.dto.response.TeamReviewStatusResponse;
 import com.wevo.backend.review.repository.TeamReviewRepository;
-import com.wevo.backend.review.service.SectionAccessGuard.SectionMembership;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionDraft;
@@ -61,8 +61,8 @@ public class TeamReviewService {
      * 섹션의 팀 검토 현황을 조회한다. (역할 무관)
      */
     public TeamReviewStatusResponse getStatus(Long sectionId, Long userId) {
-        SectionMembership membership = sectionAccessGuard.requireSectionMembership(sectionId, userId);
-        Long projectId = membership.section().getProject().getId();
+        ProjectSection section = sectionAccessGuard.requireParticipantSection(sectionId, userId);
+        Long projectId = section.getProject().getId();
 
         Map<Long, TeamReview> reviewByReviewer = teamReviewRepository.findByProjectSection_Id(sectionId).stream()
                 .collect(Collectors.toMap(review -> review.getReviewer().getId(), Function.identity()));
@@ -81,13 +81,10 @@ public class TeamReviewService {
      */
     @Transactional
     public TeamReviewItemResponse submitMyReview(Long sectionId, Long userId, TeamReviewSubmitRequest request) {
-        SectionMembership membership = sectionAccessGuard.requireSectionMembership(sectionId, userId);
-        if (membership.member().getRole() != ProjectMemberRole.MEMBER) {
-            throw new BusinessException(ErrorCode.FORBIDDEN); // 팀장(OWNER)은 검토 제출 불가
-        }
+        // 팀원(MEMBER)만 제출 가능 — 팀장(OWNER)은 FORBIDDEN 처리된다
+        ProjectSection section = sectionAccessGuard.requireMemberSection(sectionId, userId);
 
         //REVIEWING 상태가 아니면 팀 검토 진행 불가능
-        ProjectSection section = membership.section();
         if (section.getStatus() != ProjectSectionStatus.REVIEWING) {
             throw new BusinessException(ErrorCode.TEAM_REVIEW_SECTION_NOT_REVIEWING);
         }
@@ -118,7 +115,7 @@ public class TeamReviewService {
             review.apply(request.status(), reason, reviewedVersion);
         }
 
-        return TeamReviewItemResponse.of(review, membership.member().getUser());
+        return TeamReviewItemResponse.of(review, review.getReviewer());
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.wevo.backend.ai.domain;
 
+import com.wevo.backend.ai.client.AiUsageMetadata;
 import com.wevo.backend.global.common.BaseTimeEntity;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.section.domain.ProjectSection;
@@ -7,8 +8,11 @@ import com.wevo.backend.user.domain.User;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import java.util.UUID;
 import lombok.AccessLevel;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -16,7 +20,17 @@ import lombok.NoArgsConstructor;
  * AI 기능 호출 사용량/비용 로그. 토큰 수와 추정 비용, 요청 상태를 기록한다.
  */
 @Entity
-@Table(name = "ai_usage_logs")
+@Table(
+        name = "ai_usage_logs",
+        uniqueConstraints = @UniqueConstraint(name = "uk_ai_usage_logs_request_id", columnNames = "request_id"),
+        indexes = {
+                @Index(name = "idx_ai_usage_logs_project_created", columnList = "project_id, created_at"),
+                @Index(name = "idx_ai_usage_logs_section_created", columnList = "project_section_id, created_at"),
+                @Index(name = "idx_ai_usage_logs_status_started", columnList = "request_status, started_at"),
+                @Index(name = "idx_ai_usage_logs_feature_created", columnList = "feature, created_at"),
+                @Index(name = "idx_ai_usage_logs_job_created", columnList = "ai_job_id, created_at")
+        }
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AiUsageLog extends BaseTimeEntity {
@@ -25,51 +39,239 @@ public class AiUsageLog extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "request_id", nullable = false, updatable = false)
+    private UUID requestId;
+
+    @Column(name = "provider_request_id", length = 200)
+    private String providerRequestId;
+
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "project_id")
+    @JoinColumn(name = "ai_job_id")
+    private AiJob aiJob;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "project_id", nullable = false)
     private Project project;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_section_id")
     private ProjectSection projectSection;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "requested_by_user_id")
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "requested_by_user_id", nullable = false)
     private User requestedBy;
 
-    @Column(name = "feature_name", length = 50)
-    private String featureName;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "feature", nullable = false, length = 50)
+    private AiFeature feature;
 
-    @Column(name = "prompt_tokens")
-    private Integer promptTokens;
+    @Column(name = "model_id", nullable = false, length = 100)
+    private String modelId;
 
-    @Column(name = "completion_tokens")
-    private Integer completionTokens;
+    @Column(name = "prompt_version", nullable = false, length = 100)
+    private String promptVersion;
 
-    @Column(name = "estimated_cost", precision = 12, scale = 4)
+    @Column(name = "input_snapshot_hash", nullable = false, length = 64)
+    private String inputSnapshotHash;
+
+    @Column(name = "input_tokens")
+    private Long inputTokens;
+
+    @Column(name = "output_tokens")
+    private Long outputTokens;
+
+    @Column(name = "cache_read_input_tokens")
+    private Long cacheReadInputTokens;
+
+    @Column(name = "cache_write_input_tokens")
+    private Long cacheWriteInputTokens;
+
+    @Column(name = "pricing_version", length = 100)
+    private String pricingVersion;
+
+    @Column(name = "input_price_per_million_tokens", precision = 24, scale = 12)
+    private BigDecimal inputPricePerMillionTokens;
+
+    @Column(name = "output_price_per_million_tokens", precision = 24, scale = 12)
+    private BigDecimal outputPricePerMillionTokens;
+
+    @Column(name = "cache_read_price_per_million_tokens", precision = 24, scale = 12)
+    private BigDecimal cacheReadPricePerMillionTokens;
+
+    @Column(name = "cache_write_price_per_million_tokens", precision = 24, scale = 12)
+    private BigDecimal cacheWritePricePerMillionTokens;
+
+    @Column(name = "estimated_cost", precision = 24, scale = 12)
     private BigDecimal estimatedCost;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "request_status", length = 20)
+    @Column(name = "request_status", nullable = false, length = 20)
     private AiRequestStatus requestStatus;
 
-    @Builder
+    @Column(name = "started_at", nullable = false)
+    private LocalDateTime startedAt;
+
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+
+    @Column(name = "latency_ms")
+    private Long latencyMs;
+
+    @Column(name = "attempt_count")
+    private Integer attemptCount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "error_type", length = 50)
+    private AiErrorType errorType;
+
+    @Column(name = "error_message", length = 500)
+    private String errorMessage;
+
+    @Column(name = "result_id")
+    private Long resultId;
+
     private AiUsageLog(
+            UUID requestId,
+            AiJob aiJob,
             Project project,
             ProjectSection projectSection,
             User requestedBy,
-            String featureName,
-            Integer promptTokens,
-            Integer completionTokens,
-            BigDecimal estimatedCost,
-            AiRequestStatus requestStatus) {
-        this.project = project;
+            AiFeature feature,
+            String modelId,
+            String promptVersion,
+            String inputSnapshotHash,
+            LocalDateTime startedAt
+    ) {
+        this.requestId = Objects.requireNonNull(requestId, "requestId는 필수입니다.");
+        this.aiJob = aiJob;
+        this.project = Objects.requireNonNull(project, "project는 필수입니다.");
         this.projectSection = projectSection;
-        this.requestedBy = requestedBy;
-        this.featureName = featureName;
-        this.promptTokens = promptTokens;
-        this.completionTokens = completionTokens;
-        this.estimatedCost = estimatedCost;
-        this.requestStatus = requestStatus;
+        this.requestedBy = Objects.requireNonNull(requestedBy, "requestedBy는 필수입니다.");
+        this.feature = Objects.requireNonNull(feature, "feature는 필수입니다.");
+        this.modelId = requireText(modelId, "modelId");
+        this.promptVersion = requireText(promptVersion, "promptVersion");
+        this.inputSnapshotHash = requireText(inputSnapshotHash, "inputSnapshotHash");
+        this.startedAt = Objects.requireNonNull(startedAt, "startedAt는 필수입니다.");
+        this.requestStatus = AiRequestStatus.REQUESTED;
+    }
+
+    public static AiUsageLog start(
+            UUID requestId,
+            Project project,
+            ProjectSection projectSection,
+            User requestedBy,
+            AiFeature feature,
+            String modelId,
+            String promptVersion,
+            String inputSnapshotHash,
+            LocalDateTime startedAt
+    ) {
+        return start(
+                requestId, null, project, projectSection, requestedBy, feature,
+                modelId, promptVersion, inputSnapshotHash, startedAt
+        );
+    }
+
+    public static AiUsageLog start(
+            UUID requestId,
+            AiJob aiJob,
+            Project project,
+            ProjectSection projectSection,
+            User requestedBy,
+            AiFeature feature,
+            String modelId,
+            String promptVersion,
+            String inputSnapshotHash,
+            LocalDateTime startedAt
+    ) {
+        return new AiUsageLog(
+                requestId, aiJob, project, projectSection, requestedBy, feature,
+                modelId, promptVersion, inputSnapshotHash, startedAt
+        );
+    }
+
+    public void completeSuccess(
+            AiUsageMetadata usage,
+            AiCostSnapshot cost,
+            int attemptCount,
+            Long resultId,
+            LocalDateTime completedAt
+    ) {
+        requireRequested();
+        if (attemptCount <= 0) {
+            throw new IllegalArgumentException("attemptCount는 1 이상이어야 합니다.");
+        }
+        applyUsageAndCost(usage, cost);
+        this.attemptCount = attemptCount;
+        this.resultId = resultId;
+        finish(AiRequestStatus.SUCCEEDED, completedAt);
+    }
+
+    public void completeFailure(
+            AiUsageMetadata usage,
+            AiCostSnapshot cost,
+            Integer attemptCount,
+            AiErrorType errorType,
+            String errorMessage,
+            LocalDateTime completedAt
+    ) {
+        requireRequested();
+        if (attemptCount != null && attemptCount <= 0) {
+            throw new IllegalArgumentException("attemptCount는 null 또는 1 이상이어야 합니다.");
+        }
+        applyUsageAndCost(usage, cost);
+        this.attemptCount = attemptCount;
+        this.errorType = Objects.requireNonNull(errorType, "errorType는 필수입니다.");
+        this.errorMessage = errorMessage;
+        finish(AiRequestStatus.FAILED, completedAt);
+    }
+
+    public Long getTotalInputTokens() {
+        if (inputTokens == null) {
+            return null;
+        }
+        return inputTokens
+                + (cacheReadInputTokens == null ? 0L : cacheReadInputTokens)
+                + (cacheWriteInputTokens == null ? 0L : cacheWriteInputTokens);
+    }
+
+    private void applyUsageAndCost(AiUsageMetadata usage, AiCostSnapshot cost) {
+        if (usage != null) {
+            this.providerRequestId = usage.providerRequestId();
+            if (usage.modelId() != null) {
+                this.modelId = usage.modelId();
+            }
+            this.inputTokens = usage.inputTokens();
+            this.outputTokens = usage.outputTokens();
+            this.cacheReadInputTokens = usage.cacheReadInputTokens();
+            this.cacheWriteInputTokens = usage.cacheWriteInputTokens();
+        }
+        if (cost != null) {
+            this.pricingVersion = cost.pricingVersion();
+            this.inputPricePerMillionTokens = cost.inputPricePerMillionTokens();
+            this.outputPricePerMillionTokens = cost.outputPricePerMillionTokens();
+            this.cacheReadPricePerMillionTokens = cost.cacheReadPricePerMillionTokens();
+            this.cacheWritePricePerMillionTokens = cost.cacheWritePricePerMillionTokens();
+            this.estimatedCost = cost.estimatedCost();
+        }
+    }
+
+    private void finish(AiRequestStatus status, LocalDateTime completedAt) {
+        this.completedAt = Objects.requireNonNull(completedAt, "completedAt는 필수입니다.");
+        this.latencyMs = Math.max(0L, Duration.between(startedAt, completedAt).toMillis());
+        this.requestStatus = status;
+    }
+
+    private void requireRequested() {
+        if (requestStatus != AiRequestStatus.REQUESTED) {
+            throw new IllegalStateException("완료된 AI 요청의 상태를 다시 변경할 수 없습니다.");
+        }
+    }
+
+    private static String requireText(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + "는 필수입니다.");
+        }
+        return value;
     }
 }

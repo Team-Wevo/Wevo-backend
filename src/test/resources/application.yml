@@ -1,4 +1,9 @@
 spring:
+  ai:
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:test-anthropic-api-key}
+      max-retries: 0
+
   datasource:
     url: jdbc:h2:mem:wevo-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     username: sa
@@ -13,6 +18,26 @@ spring:
     redis:
       repositories:
         enabled: false
+
+wevo:
+  ai:
+    default-options:
+      model: claude-haiku-4-5
+      timeout: 1s
+      max-output-tokens: 128
+      max-retries: 0
+      initial-backoff: 0ms
+      max-backoff: 0ms
+    structured-output:
+      max-correction-retries: 2
+    jobs:
+      max-executions-per-key: 3
+    pricing:
+      version: test-v1
+    audit:
+      recovery-enabled: false
+      recovery-interval: 60s
+      orphan-grace: 30s
 
 # 테스트용 더미 값 (컨텍스트 로딩용, 실제 외부 호출 없음)
 jwt:

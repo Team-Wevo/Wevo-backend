@@ -3,6 +3,7 @@ package com.wevo.backend.review.service;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.global.response.FieldError;
+import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.review.domain.ReviewLink;
 import com.wevo.backend.review.domain.ReviewLinkStatus;
 import com.wevo.backend.review.domain.ReviewSubmission;
@@ -39,7 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li><b>토큰 해시 저장</b> — 원문 대신 해시만 저장하고 요청 토큰을 해시해 비교한다.</li>
  * </ul>
  *
- * <p>팀장(OWNER) 권한 검증은 {@link SectionAccessGuard} 에 위임한다.
+ * <p>팀장(OWNER) 권한 검증은 SectionAccessGuard 에 위임한다.
  */
 @Service
 @Transactional(readOnly = true)

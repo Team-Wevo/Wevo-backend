@@ -2,6 +2,40 @@ spring:
   application:
     name: Wevo-backend
 
+  ai:
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY}
+      timeout: ${ANTHROPIC_TIMEOUT:60s}
+      max-retries: 0
+      chat:
+        model: ${ANTHROPIC_MODEL:claude-haiku-4-5}
+        max-tokens: ${ANTHROPIC_MAX_TOKENS:4096}
+    chat:
+      client:
+        observations:
+          log-prompt: false
+          log-completion: false
+
+wevo:
+  ai:
+    default-options:
+      model: ${ANTHROPIC_MODEL:claude-haiku-4-5}
+      timeout: ${ANTHROPIC_TIMEOUT:60s}
+      max-output-tokens: ${ANTHROPIC_MAX_TOKENS:4096}
+      max-retries: ${ANTHROPIC_MAX_RETRIES:2}
+      initial-backoff: 500ms
+      max-backoff: 8s
+    structured-output:
+      max-correction-retries: ${AI_STRUCTURED_OUTPUT_MAX_CORRECTION_RETRIES:2}
+    jobs:
+      max-executions-per-key: ${AI_JOB_MAX_EXECUTIONS_PER_KEY:3}
+    pricing:
+      version: ${AI_PRICING_VERSION:}
+    audit:
+      recovery-enabled: true
+      recovery-interval: 60s
+      orphan-grace: 30s
+
 # JWT 유효 시간 (비밀 키(jwt.secret)는 프로파일별 설정에서 주입)
 jwt:
   access-token-validity-ms: 1800000       # 30분
@@ -25,3 +59,6 @@ app:
     allowed-origins:
       - http://localhost:3000
       - http://localhost:5173
+  invite:
+    # 공유용 초대 링크 접두어. 사용자가 클릭할 프론트 초대 페이지 URL의 앞부분이며, 뒤에 토큰이 붙는다.
+    base-url: ${INVITE_BASE_URL:http://localhost:3000/invite/}

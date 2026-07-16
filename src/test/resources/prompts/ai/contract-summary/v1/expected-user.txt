@@ -1,0 +1,4 @@
+Summarize the following source.
+<source_data>
+<data name="sourceText">Tom &amp; Jerry &lt;script&gt;&quot;quoted&quot;&apos;s</data>
+</source_data>

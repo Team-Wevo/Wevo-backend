@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 이 문서는 본 프로젝트(`com.wevo.backend`)의 코드/협업 컨벤션을 정의합니다.
 코드를 작성·수정할 때는 아래 규칙을 항상 준수합니다.
@@ -249,6 +249,7 @@ Content-Type: application/json
 | `UserStatus` | `ACTIVE`, `INACTIVE`, `WITHDRAWN` | 계정 상태 |
 | `AuthProvider` | `GOOGLE`, `KAKAO` | 소셜 제공자 |
 | `AiRequestStatus` | `REQUESTED`, `SUCCEEDED`, `FAILED` | AI 호출 로그·재시도 |
+| `AiJobStatus` | `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `STALE` | 논리적 AI 작업 수명주기·멱등 실행 |
 | `TemplateDependencyType` | `REQUIRES`, `BLOCKS`, `RECOMMENDS` | ⚠️ **단순화 검토 대상** — 우리 의존(`dependsOn`)은 드리프트 단일 종류라 타입 구분이 불필요할 수 있음 |
 
 ### 5.8 ApiResponse / ErrorCode 구현

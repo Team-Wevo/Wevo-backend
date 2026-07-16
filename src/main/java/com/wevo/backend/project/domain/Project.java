@@ -24,6 +24,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Project extends BaseTimeEntity {
 
+    /** 프로젝트 최대 인원 — 팀장 1 + 팀원 3. (제품 정책서 §2.1) */
+    public static final int MAX_MEMBERS = 4;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
