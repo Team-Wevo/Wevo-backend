@@ -77,11 +77,11 @@ public class TeamReviewService {
     }
 
     /**
-     * 내 팀 검토를 제출한다. (팀원 전용·1인 1검토)
+     * 내 팀 검토를 제출한다. (팀원 전용)
      */
     @Transactional
     public TeamReviewItemResponse submitMyReview(Long sectionId, Long userId, TeamReviewSubmitRequest request) {
-        // 팀원(MEMBER)만 제출 가능 — 팀장(OWNER)은 FORBIDDEN 처리된다
+        // 팀원(MEMBER)만 제출 가능 — 팀장(OWNER)은 FORBIDDEN
         ProjectSection section = sectionAccessGuard.requireMemberSection(sectionId, userId);
 
         //REVIEWING 상태가 아니면 팀 검토 진행 불가능

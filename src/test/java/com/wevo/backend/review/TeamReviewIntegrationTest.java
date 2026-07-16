@@ -141,7 +141,7 @@ class TeamReviewIntegrationTest {
     }
 
     @Test
-    @DisplayName("검토 단계(REVIEWING)가 아닌 섹션에는 제출할 수 없다 (422 R006)")
+    @DisplayName("검토 단계(REVIEWING)가 아닌 섹션에는 제출할 수 없다 (409 R006)")
     void cannotSubmitWhenNotReviewing() throws Exception {
         User owner = persistUser("owner5@team.com");
         Project project = persistProject(owner);
@@ -152,7 +152,7 @@ class TeamReviewIntegrationTest {
         em.flush();
 
         submit(section.getId(), m1, "APPROVED", null)
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("R006"));
     }
 
@@ -212,7 +212,7 @@ class TeamReviewIntegrationTest {
     }
 
     @Test
-    @DisplayName("동의(APPROVED) 검토는 resolve 할 수 없다 (422 R008)")
+    @DisplayName("동의(APPROVED) 검토는 resolve 할 수 없다 (409 R008)")
     void cannotResolveApproved() throws Exception {
         User owner = persistUser("owner-r3@team.com");
         Project project = persistProject(owner);
@@ -226,7 +226,7 @@ class TeamReviewIntegrationTest {
         Long reviewId = reviewIdOf(section.getId(), m1);
 
         resolve(section.getId(), reviewId, owner, true)
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("R008"));
     }
 

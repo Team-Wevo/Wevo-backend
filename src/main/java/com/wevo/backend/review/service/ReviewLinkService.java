@@ -71,7 +71,8 @@ public class ReviewLinkService {
      * 외부 검토 링크를 발급한다. (팀장 전용)
      *
      * <p>발급 시점의 제목·본문·버전을 스냅샷으로 저장한다. 이후 본문이 수정돼도 이 링크는
-     * 스냅샷을 그대로 보여준다. 원문 토큰은 저장하지 않고(해시만 저장) 응답으로만 한 번 반환한다.
+     * 스냅샷을 그대로 보여준다.
+     * 원문 토큰은 저장하지 않고(해시만 저장) 응답으로만 한 번 반환한다.
      */
     @Transactional
     public ReviewLinkResponse issueExternalLink(Long sectionId, Long userId) {
@@ -149,9 +150,6 @@ public class ReviewLinkService {
 
     /**
      * 외부 검토 링크 상태를 변경한다. (팀장 전용)
-     *
-     * <p>현재 팀장이 지정할 수 있는 전이는 {@code CLOSED}(직접 비활성화) 뿐이다.
-     * 그 외 값은 잘못된 요청으로 처리한다.
      */
     @Transactional
     public void updateStatus(Long reviewLinkId, Long userId, ReviewLinkStatus targetStatus) {
@@ -168,7 +166,7 @@ public class ReviewLinkService {
     /**
      * 섹션 본문이 수정될 때, 해당 섹션의 <b>활성화된 링크를 모두 만료</b> 시킨다.
      *
-     * <p>본문 저장 플로우(초안 저장 API)가 <b>첫 실제 저장 시점</b>에 호출해야 한다.
+     * <p>본문 저장 플로우가 <b>첫 실제 저장 시점</b>에 호출해야 한다.
      * (편집창 열기만 한 경우는 호출하지 않는다.)
      */
     @Transactional

@@ -73,9 +73,9 @@ public enum ErrorCode {
     REVIEW_SUBMISSION_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "R003", "이 링크는 검토 정원(20명)이 모두 찼어요."),
     REVIEW_LINK_OUTDATED(HttpStatus.CONFLICT, "R004", "외부 검토 링크가 이전 본문 기준이라 만료됐어요."),
     REVIEW_LINK_CLOSED(HttpStatus.CONFLICT, "R005", "종료된 외부 검토 링크예요."),
-    TEAM_REVIEW_SECTION_NOT_REVIEWING(HttpStatus.UNPROCESSABLE_ENTITY, "R006", "검토 단계(REVIEWING)의 섹션만 검토할 수 있습니다."),
+    TEAM_REVIEW_SECTION_NOT_REVIEWING(HttpStatus.CONFLICT, "R006", "검토 단계(REVIEWING)의 섹션만 검토할 수 있습니다."),
     TEAM_REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "R007", "팀 검토를 찾을 수 없습니다."),
-    TEAM_REVIEW_NOT_CHANGES_REQUESTED(HttpStatus.UNPROCESSABLE_ENTITY, "R008", "수정 요청 상태의 검토만 처리할 수 있습니다.");
+    TEAM_REVIEW_NOT_CHANGES_REQUESTED(HttpStatus.CONFLICT, "R008", "수정 요청 상태의 검토만 처리할 수 있습니다.");
 
     private final HttpStatus status;
     private final String code;
