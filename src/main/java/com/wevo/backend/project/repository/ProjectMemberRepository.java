@@ -1,6 +1,7 @@
 package com.wevo.backend.project.repository;
 
 import com.wevo.backend.project.domain.ProjectMember;
+import com.wevo.backend.project.domain.ProjectMemberRole;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,6 +16,16 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Lo
     boolean existsByProjectIdAndUserId(Long projectId, Long userId);
 
     long countByProjectId(Long projectId);
+
+    /**
+     * 프로젝트에서 특정 역할의 멤버를 사용자와 함께 조회한다. (팀 검토 로스터 — MEMBER 목록)
+     *
+     * <p>{@code JOIN FETCH} 로 사용자를 함께 로딩해, 검토자 이름을 뽑을 때 N+1 이 나지 않게 한다.
+     */
+    @Query("SELECT pm FROM ProjectMember pm JOIN FETCH pm.user "
+            + "WHERE pm.project.id = :projectId AND pm.role = :role")
+    List<ProjectMember> findAllWithUserByProjectIdAndRole(@Param("projectId") Long projectId,
+                                                          @Param("role") ProjectMemberRole role);
 
     /**
      * 내가 멤버로 속한 프로젝트 목록을 최신순으로 조회한다.

@@ -34,6 +34,6 @@ public class ExternalReviewQueryService {
         sectionAccessGuard.requireOwnedSection(sectionId, userId);
 
         return ExternalReviewResultResponse.from(
-                reviewSubmissionRepository.findByReviewLink_ProjectSection_IdOrderByCreatedAtDesc(sectionId));
+                reviewSubmissionRepository.findAllWithLinkByProjectSectionId(sectionId));
     }
 }

@@ -75,6 +75,24 @@ class SectionAccessGuardTest {
     }
 
     @Test
+    @DisplayName("쓰기 경로용 팀장 검사는 배타 잠금 조회를 사용하고 OWNER 검사를 수행한다")
+    void requireOwnedSectionForUpdate_locksAndDelegatesOwnerCheck() {
+        given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
+
+        assertThat(sectionAccessGuard.requireOwnedSectionForUpdate(SECTION_ID, USER_ID)).isSameAs(section);
+        verify(projectAccessGuard).requireOwner(PROJECT_ID, USER_ID);
+    }
+
+    @Test
+    @DisplayName("쓰기 경로용 팀원 검사는 배타 잠금 조회를 사용하고 MEMBER 검사를 수행한다")
+    void requireMemberSectionForUpdate_locksAndDelegatesMemberCheck() {
+        given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
+
+        assertThat(sectionAccessGuard.requireMemberSectionForUpdate(SECTION_ID, USER_ID)).isSameAs(section);
+        verify(projectAccessGuard).requireMember(PROJECT_ID, USER_ID);
+    }
+
+    @Test
     @DisplayName("섹션이 없으면 역할 조회 전에 SECTION_NOT_FOUND를 던진다")
     void requireOwnedSection_rejectsMissingSection() {
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.empty());
