@@ -2,6 +2,7 @@ package com.wevo.backend.review.controller;
 
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
+import com.wevo.backend.review.dto.request.TeamReviewResolveRequest;
 import com.wevo.backend.review.dto.request.TeamReviewSubmitRequest;
 import com.wevo.backend.review.dto.response.TeamReviewItemResponse;
 import com.wevo.backend.review.dto.response.TeamReviewStatusResponse;
@@ -10,6 +11,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -56,5 +58,21 @@ public class TeamReviewController {
                 teamReviewService.submitMyReview(sectionId, principal.userId(), request);
         return ResponseEntity.ok(
                 ApiResponse.success("TEAM_REVIEW_SUBMITTED", "검토가 제출되었습니다.", response));
+    }
+
+    /**
+     * 수정 요청을 해소(resolved) 처리한다. (팀장 전용 — 수정 안 하고 합의된 경우)
+     */
+    @PatchMapping("/{sectionId}/team-reviews/{reviewId}")
+    public ResponseEntity<ApiResponse<TeamReviewItemResponse>> resolveChangeRequest(
+            @PathVariable Long sectionId,
+            @PathVariable Long reviewId,
+            @Valid @RequestBody TeamReviewResolveRequest request,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        TeamReviewItemResponse response = teamReviewService.resolveChangeRequest(
+                sectionId, reviewId, principal.userId(), request.resolved());
+        return ResponseEntity.ok(
+                ApiResponse.success("TEAM_REVIEW_RESOLVED", "수정 요청이 처리되었습니다.", response));
     }
 }

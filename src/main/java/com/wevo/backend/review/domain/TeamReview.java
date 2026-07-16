@@ -67,8 +67,12 @@ public class TeamReview extends BaseTimeEntity {
     @Column(name = "change_request_reason", columnDefinition = "TEXT")
     private String changeRequestReason;
 
+    /** 팀장이 "수정 안 하고 합의됨"으로 처리하면 true. (§6.1.1) */
     @Column(nullable = false)
     private boolean resolved;
+
+    @Column(nullable = false)
+    private boolean outdated;
 
     @Builder
     private TeamReview(ProjectSection projectSection, User reviewer, TeamReviewStatus status,
@@ -79,16 +83,28 @@ public class TeamReview extends BaseTimeEntity {
         this.reviewedContentVersion = reviewedContentVersion;
         this.changeRequestReason = changeRequestReason;
         this.resolved = false;
+        this.outdated = false;
     }
 
     /**
      * 검토 내용을 갱신한다. (같은 팀원이 다시 제출 시)
-     * {@code resolved} 는 미해결(false)로 초기화한다.
+     * 새 본문 기준의 새 검토이므로 {@code resolved}·{@code outdated} 를 모두 초기화한다.
      */
     public void apply(TeamReviewStatus status, String changeRequestReason, Integer reviewedContentVersion) {
         this.status = status;
         this.changeRequestReason = changeRequestReason;
         this.reviewedContentVersion = reviewedContentVersion;
         this.resolved = false;
+        this.outdated = false;
+    }
+
+    /** 본문 수정으로 이 검토를 만료 처리한다.*/
+    public void markOutdated() {
+        this.outdated = true;
+    }
+
+    /** 수정 요청 해소 여부를 변경한다. (팀장 전용) */
+    public void updateResolved(boolean resolved) {
+        this.resolved = resolved;
     }
 }

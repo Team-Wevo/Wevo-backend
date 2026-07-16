@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
  * @param changeRequestReason   수정 요청 사유
  * @param reviewedContentVersion 검토 시점 본문 버전
  * @param resolved              수정 요청 해결 여부
+ * @param outdated              본문 수정으로 만료됐는지 (이전 본문 기준 검토)
  * @param reviewedAt            제출·갱신 시각
  */
 public record TeamReviewItemResponse(
@@ -28,6 +29,7 @@ public record TeamReviewItemResponse(
         String changeRequestReason,
         Integer reviewedContentVersion,
         boolean resolved,
+        boolean outdated,
         LocalDateTime reviewedAt
 ) {
 
@@ -40,6 +42,7 @@ public record TeamReviewItemResponse(
                 review.getChangeRequestReason(),
                 review.getReviewedContentVersion(),
                 review.isResolved(),
+                review.isOutdated(),
                 review.getUpdatedAt());
     }
 
@@ -52,6 +55,7 @@ public record TeamReviewItemResponse(
                 TeamReviewStatus.PENDING,
                 null,
                 null,
+                false,
                 false,
                 null);
     }

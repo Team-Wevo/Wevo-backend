@@ -121,6 +121,40 @@ public class TeamReviewService {
         return TeamReviewItemResponse.of(review, membership.member().getUser());
     }
 
+    /**
+     * 팀장이 수정 요청을 해소(resolved) 처리한다. (§6.1.1 — 수정 안 하고 합의된 경우)
+     *
+     * <p>OWNER 전용이며, {@code CHANGES_REQUESTED} 상태의 검토에만 적용된다.
+     */
+    @Transactional
+    public TeamReviewItemResponse resolveChangeRequest(Long sectionId, Long reviewId, Long userId, boolean resolved) {
+        sectionAccessGuard.requireOwnedSection(sectionId, userId); // 팀장(OWNER)만
+
+        TeamReview review = teamReviewRepository.findById(reviewId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_REVIEW_NOT_FOUND));
+        if (!review.getProjectSection().getId().equals(sectionId)) {
+            throw new BusinessException(ErrorCode.TEAM_REVIEW_NOT_FOUND); // 해당 섹션의 검토가 아님
+        }
+        if (review.getStatus() != TeamReviewStatus.CHANGES_REQUESTED) {
+            throw new BusinessException(ErrorCode.TEAM_REVIEW_NOT_CHANGES_REQUESTED);
+        }
+
+        review.updateResolved(resolved);
+        return TeamReviewItemResponse.of(review, review.getReviewer());
+    }
+
+    /**
+     * 섹션 본문이 수정될 때, 해당 섹션의 팀 검토를 모두 <b>만료(OUTDATED)</b> 시킨다. (§6.1)
+     *
+     * <p>본문 저장(초안 수정) 플로우가 <b>첫 실제 저장 시점</b>에 호출해야 한다.
+     * 외부 검토의 {@code ReviewLinkService#markSectionLinksOutdated} 와 대칭이며, 클라이언트가 직접 호출하는
+     * 엔드포인트가 아니라 본문 수정의 부수효과다.
+     */
+    @Transactional
+    public void markSectionTeamReviewsOutdated(Long sectionId) {
+        teamReviewRepository.findByProjectSection_Id(sectionId).forEach(TeamReview::markOutdated);
+    }
+
     private TeamReviewItemResponse toItem(User member, TeamReview review) {
         return review == null
                 ? TeamReviewItemResponse.pending(member)

@@ -3,11 +3,13 @@ package com.wevo.backend.review;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.wevo.backend.global.security.AuthPrincipal;
+import com.wevo.backend.review.service.TeamReviewService;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectMember;
@@ -46,6 +48,8 @@ class TeamReviewIntegrationTest {
     private MockMvc mockMvc;
     @Autowired
     private TeamReviewRepository teamReviewRepository;
+    @Autowired
+    private TeamReviewService teamReviewService;
 
     @PersistenceContext
     private EntityManager em;
@@ -168,7 +172,141 @@ class TeamReviewIntegrationTest {
                 .andExpect(jsonPath("$.code").value("P002"));
     }
 
+    @Test
+    @DisplayName("팀장이 수정 요청을 resolved 처리하면 resolved=true 가 된다")
+    void ownerResolvesChangeRequest() throws Exception {
+        User owner = persistUser("owner-r1@team.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistReviewingSectionWithDraft(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User m1 = persistUser("mr1@team.com");
+        persistMember(project, m1, ProjectMemberRole.MEMBER);
+        em.flush();
+
+        submit(section.getId(), m1, "CHANGES_REQUESTED", "근거 부족").andExpect(status().isOk());
+        Long reviewId = reviewIdOf(section.getId(), m1);
+
+        resolve(section.getId(), reviewId, owner, true)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("TEAM_REVIEW_RESOLVED"))
+                .andExpect(jsonPath("$.data.resolved").value(true))
+                .andExpect(jsonPath("$.data.status").value("CHANGES_REQUESTED"));
+    }
+
+    @Test
+    @DisplayName("팀원(MEMBER)은 수정 요청을 resolve 할 수 없다 (403)")
+    void memberCannotResolve() throws Exception {
+        User owner = persistUser("owner-r2@team.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistReviewingSectionWithDraft(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User m1 = persistUser("mr2@team.com");
+        persistMember(project, m1, ProjectMemberRole.MEMBER);
+        em.flush();
+
+        submit(section.getId(), m1, "CHANGES_REQUESTED", "근거 부족").andExpect(status().isOk());
+        Long reviewId = reviewIdOf(section.getId(), m1);
+
+        resolve(section.getId(), reviewId, m1, true)
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("동의(APPROVED) 검토는 resolve 할 수 없다 (422 R008)")
+    void cannotResolveApproved() throws Exception {
+        User owner = persistUser("owner-r3@team.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistReviewingSectionWithDraft(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User m1 = persistUser("mr3@team.com");
+        persistMember(project, m1, ProjectMemberRole.MEMBER);
+        em.flush();
+
+        submit(section.getId(), m1, "APPROVED", null).andExpect(status().isOk());
+        Long reviewId = reviewIdOf(section.getId(), m1);
+
+        resolve(section.getId(), reviewId, owner, true)
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("R008"));
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 검토를 resolve 하면 404(R007)")
+    void resolveUnknownReview() throws Exception {
+        User owner = persistUser("owner-r4@team.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistReviewingSectionWithDraft(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        resolve(section.getId(), 999_999L, owner, true)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("R007"));
+    }
+
+    @Test
+    @DisplayName("본문 수정으로 만료되면 동의는 outdated 로 빠지고 outdatedCount 로 잡힌다")
+    void contentEditOutdatesReviews() throws Exception {
+        User owner = persistUser("owner-o1@team.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistReviewingSectionWithDraft(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User m1 = persistUser("mo1@team.com");
+        persistMember(project, m1, ProjectMemberRole.MEMBER);
+        em.flush();
+
+        submit(section.getId(), m1, "APPROVED", null).andExpect(status().isOk());
+
+        // 본문 저장 플로우가 호출할 만료 처리
+        teamReviewService.markSectionTeamReviewsOutdated(section.getId());
+
+        mockMvc.perform(get("/api/project-sections/{id}/team-reviews", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.approvedCount").value(0))
+                .andExpect(jsonPath("$.data.outdatedCount").value(1))
+                .andExpect(jsonPath("$.data.items[0].outdated").value(true));
+    }
+
+    @Test
+    @DisplayName("만료 후 재검토하면 outdated 가 다시 꺼지고 동의로 잡힌다")
+    void resubmitClearsOutdated() throws Exception {
+        User owner = persistUser("owner-o2@team.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistReviewingSectionWithDraft(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User m1 = persistUser("mo2@team.com");
+        persistMember(project, m1, ProjectMemberRole.MEMBER);
+        em.flush();
+
+        submit(section.getId(), m1, "APPROVED", null).andExpect(status().isOk());
+        teamReviewService.markSectionTeamReviewsOutdated(section.getId());
+
+        // 팀원이 새 본문으로 다시 동의 → outdated 해제
+        submit(section.getId(), m1, "APPROVED", null).andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/project-sections/{id}/team-reviews", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(jsonPath("$.data.approvedCount").value(1))
+                .andExpect(jsonPath("$.data.outdatedCount").value(0));
+    }
+
     // --- 헬퍼 ---
+
+    private org.springframework.test.web.servlet.ResultActions resolve(
+            Long sectionId, Long reviewId, User user, boolean resolved) throws Exception {
+        return mockMvc.perform(patch("/api/project-sections/{sid}/team-reviews/{rid}", sectionId, reviewId)
+                .with(authentication(authOf(user)))
+                .contentType("application/json")
+                .content("{ \"resolved\": %s }".formatted(resolved)));
+    }
+
+    private Long reviewIdOf(Long sectionId, User reviewer) {
+        return teamReviewRepository
+                .findByProjectSection_IdAndReviewer_Id(sectionId, reviewer.getId())
+                .orElseThrow()
+                .getId();
+    }
 
     private org.springframework.test.web.servlet.ResultActions submit(
             Long sectionId, User user, String status, String reason) throws Exception {
