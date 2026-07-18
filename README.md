@@ -26,7 +26,7 @@ AI가 의견 사이의 충돌과 공백을 찾아 근거가 추적되는 초안�
 
 - Java 21
 - Spring Boot, Spring Data JPA
-- PostgreSQL 17, Redis 7
+- PostgreSQL 16, Redis 7
 - Docker Compose
 - Swagger / Springdoc OpenAPI
 - Gradle, JUnit

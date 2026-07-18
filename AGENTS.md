@@ -300,8 +300,6 @@ Content-Type: application/json
 - `409` = **저장된 리소스의 현재 상태·버전과 충돌**하는 요청.
   (예: 마감된 의견 수집에 의견 제출, AI 사전 검토 미완료 상태에서 섹션 확정 시도,
   허용되지 않은 섹션 상태 전이, 프로젝트 정원 초과, `contentVersion` 충돌)
-  ※ `OPINION_COLLECTION_CLOSED`(`O003`)는 현재 구현이 422이며, 이 기준에 맞춰
-  409로 바꾸는 변경이 후속 PR로 예정되어 있습니다. (완료 시 이 참고 문구 삭제)
   단, 이미 멤버인 사용자의 초대 링크 재참여는 오류가 아니라 **멱등 성공**입니다. (정책서 §2.1)
 - `422` = 저장 상태와 무관하게 **요청 내용 자체가 의미적으로 성립하지 않는** 요청
   (`BUSINESS_RULE_VIOLATION`, `C002`). (예: 기간 역전, 양립할 수 없는 입력 조합)
@@ -367,6 +365,7 @@ Content-Type: application/json
 | `P` | 프로젝트(Project) |
 | `S` | 섹션(Section) |
 | `O` | 의견(Opinion) |
+| `I` | 쟁점(Issue) |
 | `AI` | AI |
 | `R` | 리뷰(Review) |
 | `E` | 내보내기(Export) |
@@ -385,7 +384,7 @@ Content-Type: application/json
 ```java
 SECTION_TEMPLATE_DUPLICATED(
         HttpStatus.CONFLICT,
-        "S003",
+        "S010",
         "중복된 섹션 템플릿입니다."
 );
 ```

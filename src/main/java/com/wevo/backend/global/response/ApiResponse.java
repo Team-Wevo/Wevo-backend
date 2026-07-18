@@ -5,11 +5,15 @@ import com.wevo.backend.global.exception.ErrorCode;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Getter
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ApiResponse<T> {
+
+    // 시간 계약은 KST 고정 (CLAUDE.md §5.4) — JVM 기본 시간대에 의존하지 않는다
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final boolean success;
     private final String code;
@@ -25,7 +29,7 @@ public class ApiResponse<T> {
         this.message = message;
         this.data = data;
         this.errors = errors;
-        this.timestamp = LocalDateTime.now();
+        this.timestamp = LocalDateTime.now(KST);
     }
 
     public static <T> ApiResponse<T> success(String code, String message, T data) {
