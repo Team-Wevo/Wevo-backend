@@ -142,7 +142,7 @@ class SectionStatusServiceTest {
         ReflectionTestUtils.setField(project, "id", PROJECT_ID);
         return ProjectSection.builder()
                 .project(project).title("문제 정의").sectionOrder(1)
-                .status(status).needsReReview(false).build();
+                .status(status).build();
     }
 
     private ProjectMember member(User user, ProjectMemberRole role, Project project) {

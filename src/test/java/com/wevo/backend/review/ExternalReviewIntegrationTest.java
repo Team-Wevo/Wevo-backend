@@ -549,7 +549,6 @@ class ExternalReviewIntegrationTest {
                 .title("문제 정의")
                 .sectionOrder(1)
                 .status(ProjectSectionStatus.REVIEWING)
-                .needsReReview(false)
                 .build();
         em.persist(section);
         return section;

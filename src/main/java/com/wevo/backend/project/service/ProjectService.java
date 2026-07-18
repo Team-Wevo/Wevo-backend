@@ -152,7 +152,6 @@ public class ProjectService {
                         .title(template.getTitle())
                         .sectionOrder(template.getOrderNo())
                         .status(ProjectSectionStatus.COLLECTING)
-                        .needsReReview(false)
                         .build())
                 .toList();
 

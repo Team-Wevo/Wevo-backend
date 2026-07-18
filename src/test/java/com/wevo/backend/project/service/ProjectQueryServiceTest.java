@@ -159,7 +159,7 @@ class ProjectQueryServiceTest {
             result.add(ProjectSection.builder()
                     .project(project).template(template)
                     .title(template.getTitle()).sectionOrder(i + 1)
-                    .status(statuses[i]).needsReReview(false)
+                    .status(statuses[i])
                     .build());
         }
         return result;
