@@ -69,7 +69,7 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform {
-        excludeTags 'nvidia-integration'
+        excludeTags 'nvidia-integration', 'nvidia-evaluation'
     }
 }
 
@@ -80,6 +80,17 @@ tasks.register('nvidiaIntegrationTest', Test) {
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform {
         includeTags 'nvidia-integration'
+    }
+    shouldRunAfter tasks.named('test')
+}
+
+tasks.register('nvidiaEvaluationTest', Test) {
+    description = 'Runs budgeted opt-in NVIDIA Trial quality evaluation.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'nvidia-evaluation'
     }
     shouldRunAfter tasks.named('test')
 }

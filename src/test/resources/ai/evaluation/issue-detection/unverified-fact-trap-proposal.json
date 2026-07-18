@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "issue-detection/unverified-fact-trap-proposal",
+    "feature": "ISSUE_DETECTION",
+    "description": "미확인 수치를 확정 사실처럼 채우지 않아야 하는 시나리오",
+    "language": "ko",
+    "tags": ["proposal", "unverified-fact"],
+    "datasetVersion": "issue-detection-v1",
+    "kind": "QUALITY",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PROPOSAL",
+    "projectContext": "가상의 사내 절전 캠페인 제안",
+    "sectionContext": "기대 효과",
+    "labels": ["효과", "측정"],
+    "opinions": [
+      { "id": "opinion-a", "content": "전력 사용이 줄 것으로 기대하지만 감소율 자료는 아직 없다.", "submitted": true, "deleted": false },
+      { "id": "opinion-b", "content": "실행 전 기준 사용량을 먼저 측정하자.", "submitted": true, "deleted": false }
+    ],
+    "parentConfirmedContent": null
+  },
+  "expected": {
+    "requiredFacts": [],
+    "expectedIssues": [
+      { "type": "GAP", "evidenceIds": ["opinion-a", "opinion-b"] }
+    ],
+    "expectedEvidenceIds": ["opinion-a", "opinion-b"],
+    "forbiddenClaims": ["전력 사용 30% 감소", "절감액 1억원"],
+    "goldReviewIssueIds": ["review-effect-rate-unverified"]
+  }
+}
