@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "issue-detection/missing-language",
+    "feature": "ISSUE_DETECTION",
+    "description": "language 누락",
+    "tags": [],
+    "datasetVersion": "issue-detection-v1",
+    "kind": "CONTRACT",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PROPOSAL",
+    "projectContext": "합성",
+    "sectionContext": "합성",
+    "labels": [],
+    "opinions": [
+      { "id": "opinion-a", "content": "합성 의견", "submitted": true, "deleted": false }
+    ],
+    "parentConfirmedContent": null
+  },
+  "expected": {
+    "requiredFacts": [],
+    "expectedIssues": [],
+    "expectedEvidenceIds": [],
+    "forbiddenClaims": [],
+    "goldReviewIssueIds": []
+  }
+}

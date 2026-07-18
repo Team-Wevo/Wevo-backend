@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "issue-detection/hallucinated-evidence-contract",
+    "feature": "ISSUE_DETECTION",
+    "description": "존재하지 않는 opinion ID를 생성해도 의미 검증에서 차단해야 하는 계약 시나리오",
+    "language": "ko",
+    "tags": ["evidence-allowlist", "hallucination"],
+    "datasetVersion": "issue-detection-v1",
+    "kind": "CONTRACT",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PROPOSAL",
+    "projectContext": "가상의 교실 환경 개선 제안",
+    "sectionContext": "우선 구매 품목",
+    "labels": ["구매"],
+    "opinions": [
+      { "id": "opinion-only", "content": "흡음 패널 구매를 우선하자.", "submitted": true, "deleted": false }
+    ],
+    "parentConfirmedContent": null
+  },
+  "expected": {
+    "requiredFacts": ["흡음 패널"],
+    "expectedIssues": [],
+    "expectedEvidenceIds": ["opinion-only"],
+    "forbiddenClaims": ["opinion-missing"],
+    "goldReviewIssueIds": []
+  }
+}

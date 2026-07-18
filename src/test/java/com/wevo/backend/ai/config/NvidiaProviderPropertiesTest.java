@@ -8,10 +8,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class NvidiaProviderPropertiesTest {
 
     @Test
-    void defaultsTemperatureToRecommendedValueAndValidatesRange() {
-        assertThat(new NvidiaProviderProperties(null).temperature()).isEqualTo(1.0d);
-        assertThatThrownBy(() -> new NvidiaProviderProperties(1.1d))
+    void defaultsMistralOptionsAndValidatesValues() {
+        NvidiaProviderProperties defaults = new NvidiaProviderProperties(null, null);
+
+        assertThat(defaults.temperature()).isEqualTo(0.1d);
+        assertThat(defaults.reasoningEffort()).isEqualTo("none");
+        assertThat(new NvidiaProviderProperties(0.2d, "HIGH").reasoningEffort()).isEqualTo("high");
+        assertThatThrownBy(() -> new NvidiaProviderProperties(1.1d, "none"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("temperature");
+        assertThatThrownBy(() -> new NvidiaProviderProperties(0.1d, "medium"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("reasoning-effort");
     }
 }

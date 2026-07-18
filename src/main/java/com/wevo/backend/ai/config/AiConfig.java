@@ -30,6 +30,7 @@ public class AiConfig {
                         .maxTokens(options.maxOutputTokens())
                         .n(1)
                         .temperature(nvidiaProperties.temperature())
+                        .reasoningEffort(nvidiaProperties.reasoningEffort())
                         .timeout(options.timeout())
                         .customHeaders(Map.of("Accept", "application/json"))
                         .maxRetries(0))

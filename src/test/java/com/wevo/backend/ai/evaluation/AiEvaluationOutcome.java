@@ -1,0 +1,16 @@
+package com.wevo.backend.ai.evaluation;
+
+public enum AiEvaluationOutcome {
+    SUCCESS,
+    EMPTY_RESPONSE,
+    REFUSAL,
+    MAX_TOKENS,
+    JSON_PARSE_FAILURE,
+    SCHEMA_VALIDATION_FAILURE,
+    TYPE_CONVERSION_FAILURE,
+    SEMANTIC_VALIDATION_FAILURE,
+    CORRECTION_EXHAUSTED,
+    PROVIDER_FAILURE,
+    BUDGET_EXHAUSTED,
+    SKIPPED
+}

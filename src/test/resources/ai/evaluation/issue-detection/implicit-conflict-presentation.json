@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "issue-detection/implicit-conflict-presentation",
+    "feature": "ISSUE_DETECTION",
+    "description": "표현은 다르지만 발표 방식의 의미가 충돌하는 합성 의견",
+    "language": "ko",
+    "tags": ["implicit-conflict", "presentation"],
+    "datasetVersion": "issue-detection-v1",
+    "kind": "QUALITY",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PRESENTATION",
+    "projectContext": "가상의 친환경 캠페인 발표",
+    "sectionContext": "발표 구성과 정보 밀도",
+    "labels": ["발표방식"],
+    "opinions": [
+      { "id": "opinion-a", "content": "수치와 근거 표를 슬라이드마다 충분히 보여주자.", "submitted": true, "deleted": false },
+      { "id": "opinion-b", "content": "한 슬라이드에는 사진 한 장과 문장 한 줄만 두자.", "submitted": true, "deleted": false }
+    ],
+    "parentConfirmedContent": "발표 시간은 5분으로 확정되었다."
+  },
+  "expected": {
+    "requiredFacts": ["5분"],
+    "expectedIssues": [
+      { "type": "CONFLICT", "evidenceIds": ["opinion-a", "opinion-b"] }
+    ],
+    "expectedEvidenceIds": ["opinion-a", "opinion-b"],
+    "forbiddenClaims": ["정보 밀도에 합의"],
+    "goldReviewIssueIds": []
+  }
+}
