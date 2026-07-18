@@ -76,9 +76,19 @@ public class SectionStatusService {
     /**
      * 요청자가 해당 섹션 프로젝트의 팀장(OWNER)인지 검증한다.
      *
+     * <p>비멤버는 섹션 기반 API의 존재 숨김 규칙(CLAUDE.md §5.6)에 따라
+     * {@link ErrorCode#SECTION_NOT_FOUND}(404)로 숨긴다. 역할 부족(403)은 그대로 전파한다.
+     *
      * @return 상태 전이 이력의 실행자 정보로 사용할 프로젝트 멤버십
      */
     private ProjectMember requireOwner(ProjectSection section, Long actorUserId) {
-        return projectAccessGuard.requireOwner(section.getProject().getId(), actorUserId);
+        try {
+            return projectAccessGuard.requireOwner(section.getProject().getId(), actorUserId);
+        } catch (BusinessException e) {
+            if (e.getErrorCode() == ErrorCode.NOT_PROJECT_MEMBER) {
+                throw new BusinessException(ErrorCode.SECTION_NOT_FOUND);
+            }
+            throw e;
+        }
     }
 }
