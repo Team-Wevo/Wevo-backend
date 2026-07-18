@@ -11,12 +11,13 @@ class AiErrorMessageSanitizerTest {
     @Test
     void redactsKnownSecretsAndLimitsLength() {
         String message = "Authorization: Bearer secret-token ANTHROPIC_API_KEY=sk-ant-secret "
+                + "NVIDIA_API_KEY=" + "nvapi" + "-secret "
                 + "x".repeat(600);
 
         String sanitized = sanitizer.sanitize(message);
 
         assertThat(sanitized)
-                .doesNotContain("secret-token", "sk-ant-secret")
+                .doesNotContain("secret-token", "sk-ant-secret", "nvapi" + "-secret")
                 .hasSize(500);
     }
 }

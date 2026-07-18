@@ -18,10 +18,10 @@ class AiUsageExtractorTest {
                 .usage(new DefaultUsage(10, 4, 14, null, 3L, 2L))
                 .build();
 
-        AiUsageMetadata usage = extractor.extract(metadata, "fallback-model");
+        AiUsageMetadata usage = extractor.extract(metadata, "fallback-model", "nvidia");
 
         assertThat(usage).isEqualTo(new AiUsageMetadata(
-                "provider-1", "response-model", 10L, 4L, 3L, 2L
+                "nvidia", "provider-1", "response-model", 10L, 4L, 3L, 2L
         ));
         assertThat(usage.totalInputTokens()).isEqualTo(15L);
     }
