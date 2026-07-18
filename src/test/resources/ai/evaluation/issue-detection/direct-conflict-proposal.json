@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "issue-detection/direct-conflict-proposal",
+    "feature": "ISSUE_DETECTION",
+    "description": "예산 배분에 관해 정반대인 합성 의견",
+    "language": "ko",
+    "tags": ["direct-conflict", "proposal"],
+    "datasetVersion": "issue-detection-v1",
+    "kind": "QUALITY",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PROPOSAL",
+    "projectContext": "가상의 교내 축제 운영 제안",
+    "sectionContext": "예산 배분 원칙",
+    "labels": ["예산"],
+    "opinions": [
+      { "id": "opinion-a", "content": "전체 예산의 60%를 공연 장비에 배정하자.", "submitted": true, "deleted": false },
+      { "id": "opinion-b", "content": "공연 장비는 20% 이하로 제한하고 체험 부스에 우선 배정하자.", "submitted": true, "deleted": false }
+    ],
+    "parentConfirmedContent": null
+  },
+  "expected": {
+    "requiredFacts": [],
+    "expectedIssues": [
+      { "type": "CONFLICT", "evidenceIds": ["opinion-a", "opinion-b"] }
+    ],
+    "expectedEvidenceIds": ["opinion-a", "opinion-b"],
+    "forbiddenClaims": ["공연 장비 40%로 합의"],
+    "goldReviewIssueIds": []
+  }
+}

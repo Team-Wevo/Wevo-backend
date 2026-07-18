@@ -1,0 +1,16 @@
+{
+  "datasetVersion": "issue-detection-v1",
+  "fixtures": [
+    "all-agreed-proposal.json",
+    "direct-conflict-proposal.json",
+    "implicit-conflict-presentation.json",
+    "missing-information-gap-proposal.json",
+    "minority-opinion-presentation.json",
+    "excluded-opinions-proposal.json",
+    "long-token-boundary-presentation.json",
+    "hallucinated-evidence-contract.json",
+    "prompt-injection-presentation.json",
+    "unverified-fact-trap-proposal.json",
+    "all-agreed-presentation.json"
+  ]
+}

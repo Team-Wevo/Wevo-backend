@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "issue-detection/invalid-enum",
+    "feature": "ISSUE_DETECTION",
+    "description": "enum 오류",
+    "language": "ko",
+    "tags": [],
+    "datasetVersion": "issue-detection-v1",
+    "kind": "CONTRACT",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "DOCUMENT",
+    "projectContext": "합성",
+    "sectionContext": "합성",
+    "labels": [],
+    "opinions": [
+      { "id": "opinion-a", "content": "합성 의견", "submitted": true, "deleted": false }
+    ],
+    "parentConfirmedContent": null
+  },
+  "expected": {
+    "requiredFacts": [],
+    "expectedIssues": [],
+    "expectedEvidenceIds": [],
+    "forbiddenClaims": [],
+    "goldReviewIssueIds": []
+  }
+}
