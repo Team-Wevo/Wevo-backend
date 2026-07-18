@@ -10,5 +10,5 @@ public interface SectionDraftRepository extends JpaRepository<SectionDraft, Long
     /**
      * 섹션의 최신 버전 초안을 조회한다. (외부 검토자가 읽을 현재 본문)
      */
-    Optional<SectionDraft> findTopByProjectSection_IdOrderByVersionDesc(Long projectSectionId);
+    Optional<SectionDraft> findTopByProjectSection_IdOrderByVersionDesc(Long sectionId);
 }
