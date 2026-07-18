@@ -23,6 +23,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 
 import java.time.Duration;
@@ -83,6 +84,8 @@ class SpringAiNvidiaGatewayTest {
         assertThat(options.getModel()).isEqualTo("test-model");
         assertThat(options.getMaxTokens()).isEqualTo(128);
         assertThat(((OpenAiChatOptions) options).getMaxRetries()).isZero();
+        assertThat(((OpenAiChatOptions) options).getReasoningEffort()).isEqualTo("none");
+        assertThat(((OpenAiChatOptions) options).getResponseFormat()).isNull();
         assertThat(capturedPrompt.get().getInstructions())
                 .extracting(message -> message.getMessageType().getValue(), message -> message.getText())
                 .containsExactly(
@@ -188,7 +191,7 @@ class SpringAiNvidiaGatewayTest {
     }
 
     @Test
-    void validatesStructuredOutputWithoutProviderNativeSchema() {
+    void requestsProviderJsonModeAndStillAppliesServerSchemaValidation() {
         AtomicReference<Prompt> capturedPrompt = new AtomicReference<>();
         ChatModel chatModel = prompt -> {
             capturedPrompt.set(prompt);
@@ -206,7 +209,10 @@ class SpringAiNvidiaGatewayTest {
         assertThat(capturedPrompt.get().getInstructions().get(1).getText())
                 .contains("<output_contract>", "resourceId", "signal");
         OpenAiChatOptions options = (OpenAiChatOptions) capturedPrompt.get().getOptions();
-        assertThat(options.getResponseFormat()).isNull();
+        assertThat(options.getReasoningEffort()).isEqualTo("none");
+        assertThat(options.getResponseFormat()).isNotNull();
+        assertThat(options.getResponseFormat().getType())
+                .isEqualTo(OpenAiChatModel.ResponseFormat.Type.JSON_OBJECT);
     }
 
     @Test
@@ -347,7 +353,7 @@ class SpringAiNvidiaGatewayTest {
                                 .maxRetries(0))
                         .build(),
                 properties,
-                new NvidiaProviderProperties(1.0d),
+                new NvidiaProviderProperties(0.1d, "none"),
                 new NvidiaExceptionTranslator(),
                 executor,
                 new AiUsageExtractor(),

@@ -43,11 +43,11 @@ class AiEvaluationReportWriterTest {
         AiEvaluationRunMetadata run = new AiEvaluationRunMetadata(
                 "issue-detection-v1",
                 "nvidia",
-                "moonshotai/kimi-k2.6",
+                "mistralai/mistral-medium-3.5-128b",
                 "issue-detection:v1",
                 "issue-detection:v1",
                 Instant.parse("2026-07-18T00:00:00Z"),
-                1.0d,
+                0.1d,
                 256,
                 "abc123"
         );

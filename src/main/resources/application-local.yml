@@ -12,9 +12,9 @@ spring:
       timeout: ${NVIDIA_API_TIMEOUT:60s}
       max-retries: 0
       chat:
-        model: ${NVIDIA_API_MODEL:moonshotai/kimi-k2.6}
+        model: ${NVIDIA_API_MODEL:mistralai/mistral-medium-3.5-128b}
         max-tokens: ${NVIDIA_API_MAX_TOKENS:4096}
-        temperature: ${NVIDIA_API_TEMPERATURE:1}
+        temperature: ${NVIDIA_API_TEMPERATURE:0.1}
 
   datasource:
     url: jdbc:postgresql://localhost:${POSTGRES_PORT}/${POSTGRES_DB}

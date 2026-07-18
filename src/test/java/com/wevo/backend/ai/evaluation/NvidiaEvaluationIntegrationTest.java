@@ -5,6 +5,7 @@ import com.wevo.backend.ai.client.OutputSchemaId;
 import com.wevo.backend.ai.client.StructuredAiProviderRequest;
 import com.wevo.backend.ai.client.StructuredOutputDefinition;
 import com.wevo.backend.ai.client.StructuredOutputValidationContext;
+import com.wevo.backend.ai.config.NvidiaProviderProperties;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.prompt.PromptRegistry;
 import com.wevo.backend.ai.prompt.PromptRenderer;
@@ -31,10 +32,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(properties = {
         "spring.ai.openai.api-key=${NVIDIA_API_KEY}",
         "spring.ai.openai.base-url=${NVIDIA_API_BASE_URL:https://integrate.api.nvidia.com}/v1",
-        "spring.ai.openai.chat.model=${NVIDIA_API_MODEL:moonshotai/kimi-k2.6}",
+        "spring.ai.openai.timeout=${NVIDIA_API_TIMEOUT:60s}",
+        "spring.ai.openai.chat.model=${NVIDIA_API_MODEL:mistralai/mistral-medium-3.5-128b}",
         "spring.ai.openai.chat.max-tokens=128",
-        "wevo.ai.default-options.model=${NVIDIA_API_MODEL:moonshotai/kimi-k2.6}",
-        "wevo.ai.default-options.max-output-tokens=128"
+        "spring.ai.openai.chat.temperature=${NVIDIA_API_TEMPERATURE:0.1}",
+        "wevo.ai.default-options.model=${NVIDIA_API_MODEL:mistralai/mistral-medium-3.5-128b}",
+        "wevo.ai.default-options.timeout=${NVIDIA_API_TIMEOUT:60s}",
+        "wevo.ai.default-options.max-output-tokens=128",
+        "wevo.ai.nvidia.temperature=${NVIDIA_API_TEMPERATURE:0.1}",
+        "wevo.ai.nvidia.reasoning-effort=${NVIDIA_API_REASONING_EFFORT:none}"
 })
 @EnabledIfEnvironmentVariable(named = "NVIDIA_API_KEY", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "NVIDIA_EVALUATION_ENABLED", matches = "(?i)true")
@@ -54,6 +60,9 @@ class NvidiaEvaluationIntegrationTest {
 
     @Autowired
     private AiErrorClassifier errorClassifier;
+
+    @Autowired
+    private NvidiaProviderProperties nvidiaProviderProperties;
 
     @Test
     void evaluatesOnlySyntheticFixtureWithinBudgetsAndWritesSanitizedReport() {
@@ -90,7 +99,7 @@ class NvidiaEvaluationIntegrationTest {
                         "contract-summary:v1",
                         "evaluation-summary:v1",
                         Instant.now(),
-                        1.0d,
+                        nvidiaProviderProperties.temperature(),
                         128,
                         environmentOrDefault("GIT_COMMIT", "unknown")
                 ),

@@ -73,6 +73,11 @@ NVIDIA_EVALUATION_ENABLED=true \
 ./gradlew nvidiaEvaluationTest
 ```
 
+기본 개발·평가 모델은 `mistralai/mistral-medium-3.5-128b`, temperature는 `0.1`, reasoning effort는
+`none`이다. 구조화 호출은 JSON object 모드를 요청한 뒤에도 공통 JSON Schema·record·semantic 검증을
+반드시 통과해야 한다. 다른 모델이나 옵션을 평가할 때는 `NVIDIA_API_MODEL` 등 환경 변수로 명시적으로
+override하고 report metadata가 실제 실행 설정과 일치하는지 확인한다.
+
 `NVIDIA_INTEGRATION_ENABLED`는 smoke 전용이므로 evaluation을 활성화하지 않는다. live runner에는
 항상 fixture 수, Provider 요청 수, 출력 token, deadline을 설정하고 pricing이 있는 모델에서만 비용
 budget을 추가한다. 현재 integration scaffold는 synthetic fixture 1개, 최대 Provider 시도 3회,
