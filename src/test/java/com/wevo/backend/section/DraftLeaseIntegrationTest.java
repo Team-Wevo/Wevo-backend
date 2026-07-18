@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -252,6 +253,119 @@ class DraftLeaseIntegrationTest {
 
         mockMvc.perform(get("/api/project-sections/{id}/draft/lease", Long.MAX_VALUE)
                         .with(authentication(authOf(user))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("S001"));
+    }
+
+    @Test
+    @DisplayName("편집 잠금 보유자가 갱신하면 만료 시각이 현재 시각부터 5분 연장된다")
+    void holderRenewsActiveLease() throws Exception {
+        User owner = persistUser("owner-lease-renew-1@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        DraftLease lease = DraftLease.builder()
+                .projectSection(section)
+                .holderUserId(owner.getId())
+                .leaseUntil(LocalDateTime.now(KST).plusSeconds(10))
+                .build();
+        em.persist(lease);
+        em.flush();
+
+        LocalDateTime requestedAt = LocalDateTime.now(KST);
+
+        mockMvc.perform(put("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("DRAFT_LEASE_RENEWED"))
+                .andExpect(jsonPath("$.data.expiresAt").exists())
+                .andExpect(jsonPath("$.data.leaseId").doesNotExist())
+                .andExpect(jsonPath("$.data.leaseUntil").doesNotExist());
+
+        em.flush();
+        em.clear();
+        DraftLease renewed = draftLeaseRepository.findById(lease.getId()).orElseThrow();
+        assertThat(renewed.getLeaseUntil()).isAfterOrEqualTo(requestedAt.plusMinutes(5));
+    }
+
+    @Test
+    @DisplayName("다른 멤버가 보유한 편집 잠금을 갱신하면 S004를 반환한다")
+    void nonHolderCannotRenewLease() throws Exception {
+        User owner = persistUser("owner-lease-renew-2@wevo.com");
+        User member = persistUser("member-lease-renew-2@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistMember(project, member, ProjectMemberRole.MEMBER);
+        DraftLease lease = DraftLease.builder()
+                .projectSection(section)
+                .holderUserId(owner.getId())
+                .leaseUntil(LocalDateTime.now(KST).plusSeconds(30))
+                .build();
+        em.persist(lease);
+        em.flush();
+
+        mockMvc.perform(put("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(member))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S004"));
+    }
+
+    @Test
+    @DisplayName("편집 잠금이 없으면 S005를 반환한다")
+    void missingLeaseCannotBeRenewed() throws Exception {
+        User owner = persistUser("owner-lease-renew-3@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        mockMvc.perform(put("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S005"))
+                .andExpect(jsonPath("$.errors").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("만료된 편집 잠금을 갱신하면 errors 없이 S005를 반환한다")
+    void expiredLeaseCannotBeRenewed() throws Exception {
+        User owner = persistUser("owner-lease-renew-4@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        DraftLease lease = DraftLease.builder()
+                .projectSection(section)
+                .holderUserId(owner.getId())
+                .leaseUntil(LocalDateTime.now(KST).minusSeconds(1))
+                .build();
+        em.persist(lease);
+        em.flush();
+
+        mockMvc.perform(put("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S005"))
+                .andExpect(jsonPath("$.errors").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("비멤버의 편집 잠금 갱신은 섹션 존재를 숨겨 S001을 반환한다")
+    void nonMemberCannotDetectLeaseByRenewal() throws Exception {
+        User owner = persistUser("owner-lease-renew-5@wevo.com");
+        User outsider = persistUser("outsider-lease-renew-5@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        em.persist(DraftLease.builder()
+                .projectSection(section)
+                .holderUserId(owner.getId())
+                .leaseUntil(LocalDateTime.now(KST).plusMinutes(1))
+                .build());
+        em.flush();
+
+        mockMvc.perform(put("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(outsider))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("S001"));
     }

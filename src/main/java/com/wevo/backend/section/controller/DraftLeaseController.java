@@ -3,6 +3,7 @@ package com.wevo.backend.section.controller;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.section.dto.response.DraftLeaseAcquireResponse;
+import com.wevo.backend.section.dto.response.DraftLeaseRenewResponse;
 import com.wevo.backend.section.dto.response.DraftLeaseStatusResponse;
 import com.wevo.backend.section.service.DraftLeaseService;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +11,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -46,5 +48,16 @@ public class DraftLeaseController {
         DraftLeaseStatusResponse response =
                 draftLeaseService.getStatus(projectSectionId, principal.userId());
         return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", response));
+    }
+
+    @PutMapping("/{projectSectionId}/draft/lease")
+    public ResponseEntity<ApiResponse<DraftLeaseRenewResponse>> renew(
+            @PathVariable Long projectSectionId,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        DraftLeaseRenewResponse response =
+                draftLeaseService.renew(projectSectionId, principal.userId());
+        return ResponseEntity.ok(
+                ApiResponse.success("DRAFT_LEASE_RENEWED", "편집권이 연장되었습니다.", response));
     }
 }
