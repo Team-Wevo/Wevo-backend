@@ -70,6 +70,24 @@ public class SectionAccessGuard {
     }
 
     /**
+     * 섹션 행을 <b>배타 잠금(PESSIMISTIC_WRITE)</b>으로 조회하고 요청자가 프로젝트 참여자인지 검증한다.
+     *
+     * <p>"섹션의 최신 상태 확인 후 쓰기"가 이어지는 참여자 공용 경로(초안 저장 등) 전용 —
+     * 같은 섹션에 대한 동시 저장을 직렬화해 버전 경합("조회한 최신 버전 위에 두 요청이 각각 append")을
+     * 막는다. 읽기 전용 경로에는 {@link #requireParticipantSection}을 사용한다.
+     *
+     * @return 참여 권한이 확인된, 잠금이 걸린 섹션
+     * @throws BusinessException 섹션이 없으면 {@link ErrorCode#SECTION_NOT_FOUND}, 프로젝트에
+     *                           참여하지 않았으면 {@link ErrorCode#NOT_PROJECT_MEMBER}
+     */
+    public ProjectSection requireParticipantSectionForUpdate(Long sectionId, Long userId) {
+        ProjectSection section = projectSectionRepository.findByIdForUpdate(sectionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_NOT_FOUND));
+        projectAccessGuard.requireParticipant(section.getProject().getId(), userId);
+        return section;
+    }
+
+    /**
      * 섹션 행을 <b>배타 잠금(PESSIMISTIC_WRITE)</b>으로 조회하고 요청자가 팀장(OWNER)인지 검증한다.
      *
      * <p>"섹션의 최신 상태 확인 후 쓰기"가 이어지는 팀장 전용 경로(외부 검토 링크 발급 등) 전용 —

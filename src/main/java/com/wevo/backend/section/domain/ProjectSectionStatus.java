@@ -48,4 +48,19 @@ public enum ProjectSectionStatus {
     public boolean canTransitionTo(ProjectSectionStatus target) {
         return ALLOWED_TRANSITIONS.getOrDefault(this, Set.of()).contains(target);
     }
+
+    /**
+     * 본문(초안) 저장을 허용하는 단계인지 반환한다.
+     *
+     * <ul>
+     *   <li>{@code DRAFTING} — 초안 작성 단계</li>
+     *   <li>{@code REVIEWING} — 검토 중 수정 반영(기존 검토는 만료 처리된다, §6.1)</li>
+     * </ul>
+     *
+     * <p>수집/정리 단계({@code COLLECTING}·{@code SYNTHESIZING})는 아직 초안 단계가 아니고,
+     * 확정({@code CONFIRMED})은 잠긴 상태라 저장을 허용하지 않는다. (확정 후 변경은 드리프트 §6.4)
+     */
+    public boolean allowsDraftEditing() {
+        return this == DRAFTING || this == REVIEWING;
+    }
 }

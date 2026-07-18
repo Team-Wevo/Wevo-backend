@@ -36,6 +36,9 @@ public enum ErrorCode {
     // Section
     SECTION_NOT_FOUND(HttpStatus.NOT_FOUND, "S001", "섹션을 찾을 수 없습니다."),
     INVALID_SECTION_STATUS_TRANSITION(HttpStatus.CONFLICT, "S002", "허용되지 않은 섹션 상태 전이입니다."),
+    SECTION_DRAFT_VERSION_CONFLICT(HttpStatus.CONFLICT, "S003",
+            "다른 사용자가 먼저 저장해 본문 버전이 바뀌었습니다. 최신 본문을 불러온 뒤 다시 저장해주세요."),
+    SECTION_DRAFT_NOT_EDITABLE(HttpStatus.CONFLICT, "S004", "초안 작성·검토 단계에서만 본문을 저장할 수 있습니다."),
 
     // Opinion
     OPINION_NOT_FOUND(HttpStatus.NOT_FOUND, "O001", "의견을 찾을 수 없습니다."),
