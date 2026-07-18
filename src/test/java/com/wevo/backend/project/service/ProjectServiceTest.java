@@ -80,13 +80,39 @@ class ProjectServiceTest {
         assertThat(response.myRole()).isEqualTo(ProjectMemberRole.OWNER);
         assertThat(response.sections()).hasSize(6);
         assertThat(response.sections())
-                .allSatisfy(section -> assertThat(section.status()).isEqualTo(ProjectSectionStatus.COLLECTING));
+                .allSatisfy(section -> assertThat(section.sectionStatus()).isEqualTo(ProjectSectionStatus.COLLECTING));
         assertThat(response.sections().get(0).keyQuestion()).isNotBlank();
 
         ArgumentCaptor<ProjectMember> memberCaptor = ArgumentCaptor.forClass(ProjectMember.class);
         verify(projectMemberRepository).save(memberCaptor.capture());
         assertThat(memberCaptor.getValue().getRole()).isEqualTo(ProjectMemberRole.OWNER);
         verify(projectSectionRepository).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("title 을 생략하면 서버 기본값으로 저장해 응답 title 이 항상 값을 갖는다 (API_SPEC §3.2.1)")
+    void create_withoutTitle_savesDefaultTitle() {
+        Long userId = 1L;
+        User owner = User.builder().name("Wevo").status(UserStatus.ACTIVE).build();
+        ReflectionTestUtils.setField(owner, "id", userId);
+        ProjectCreateRequest request = new ProjectCreateRequest(
+                "  ", "우리 팀 아이디어 발표를 준비합니다.", OutputType.PRESENTATION, "심사위원");
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(owner));
+        given(projectRepository.save(any(Project.class))).willAnswer(invocation -> {
+            Project project = invocation.getArgument(0);
+            ReflectionTestUtils.setField(project, "id", 100L);
+            return project;
+        });
+        given(sectionTemplateRepository.findByResultTypeOrderByOrderNo(OutputType.PRESENTATION))
+                .willReturn(sixTemplates());
+        given(projectSectionRepository.saveAll(anyList())).willAnswer(invocation -> invocation.getArgument(0));
+
+        projectService.create(userId, request);
+
+        ArgumentCaptor<Project> projectCaptor = ArgumentCaptor.forClass(Project.class);
+        verify(projectRepository).save(projectCaptor.capture());
+        assertThat(projectCaptor.getValue().getTitle()).isEqualTo(ProjectService.DEFAULT_TITLE);
     }
 
     @Test

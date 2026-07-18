@@ -9,18 +9,19 @@ import com.wevo.backend.section.domain.ProjectSectionStatus;
  * <p>{@code keyQuestion}/{@code guide} 는 연결된 SectionTemplate 의 baseline 에서 온다.
  * ({@code description} = 기본 핵심 질문, {@code guideText} = 작성 가이드 — ERD 준수)
  *
- * @param sectionId   섹션 ID (의견·초안 등이 매달리는 기준)
- * @param order       섹션 순서
- * @param title       섹션명
- * @param status      섹션 상태 (초기값 COLLECTING)
- * @param keyQuestion 기본 핵심 질문
- * @param guide       작성 가이드
+ * @param sectionId     섹션 ID (의견·초안 등이 매달리는 기준)
+ * @param order         섹션 순서
+ * @param title         섹션명
+ * @param sectionStatus 섹션 상태 (초기값 COLLECTING) — overlay 플래그(driftStatus 등)와 구분되는
+ *                      필드명 (API_SPEC §3.2.1·§3.2.4, CLAUDE.md §5.7)
+ * @param keyQuestion   기본 핵심 질문
+ * @param guide         작성 가이드
  */
 public record SectionSummaryResponse(
         Long sectionId,
         Integer order,
         String title,
-        ProjectSectionStatus status,
+        ProjectSectionStatus sectionStatus,
         String keyQuestion,
         String guide
 ) {

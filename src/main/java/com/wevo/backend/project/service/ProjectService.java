@@ -34,6 +34,12 @@ import java.util.List;
 @Service
 public class ProjectService {
 
+    /**
+     * 제목 미입력 시 서버가 저장하는 기본값 — 응답·목록의 title이 항상 값을 갖도록 보장한다.
+     * (API_SPEC §3.2.1 — §2.2 생성 흐름에 이름 입력 단계가 없어 title은 선택이다)
+     */
+    static final String DEFAULT_TITLE = "제목 없는 프로젝트";
+
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
@@ -57,9 +63,13 @@ public class ProjectService {
         User owner = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
+        String title = (request.title() == null || request.title().isBlank())
+                ? DEFAULT_TITLE
+                : request.title();
+
         Project project = projectRepository.save(Project.builder()
                 .owner(owner)
-                .title(request.title())
+                .title(title)
                 .ideaText(request.ideaText())
                 .resultType(request.resultType())
                 .audience(request.audience())
