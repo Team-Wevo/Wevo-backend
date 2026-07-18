@@ -82,8 +82,15 @@ public class Opinion extends BaseTimeEntity {
     /**
      * 작업본을 덮어쓴다. 제출본({@code submittedContent})과 상태는 바꾸지 않는다 —
      * 제출 후 재편집 중에도 팀에는 기존 제출본이 유지된다. (§4.1)
+     *
+     * <p>재제출 모델 도입 전에 제출된 레거시 행(제출본 컬럼이 비어 있음)은 덮어쓰기 직전의
+     * 본문이 곧 제출본이므로, 첫 재편집 시점에 제출본으로 고정(백필)한다 — 그래야 재편집 중에도
+     * 팀 목록에 작업본이 아닌 제출 당시 본문이 유지된다.
      */
     public void updateContent(String content) {
+        if (status == OpinionStatus.SUBMITTED && submittedContent == null) {
+            this.submittedContent = this.content;
+        }
         this.content = content;
     }
 

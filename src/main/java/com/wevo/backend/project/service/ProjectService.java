@@ -65,7 +65,7 @@ public class ProjectService {
 
         String title = (request.title() == null || request.title().isBlank())
                 ? DEFAULT_TITLE
-                : request.title();
+                : request.title().trim();
 
         Project project = projectRepository.save(Project.builder()
                 .owner(owner)
