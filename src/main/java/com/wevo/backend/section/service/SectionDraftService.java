@@ -10,9 +10,10 @@ import com.wevo.backend.section.domain.SectionDraft;
 import com.wevo.backend.section.dto.request.SectionDraftSaveRequest;
 import com.wevo.backend.section.dto.response.SectionDraftSaveResponse;
 import com.wevo.backend.section.repository.SectionDraftRepository;
-import com.wevo.backend.user.repository.UserRepository;
+import com.wevo.backend.user.service.UserService;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,18 +36,18 @@ public class SectionDraftService {
 
     private final SectionAccessGuard sectionAccessGuard;
     private final SectionDraftRepository sectionDraftRepository;
-    private final UserRepository userRepository;
+    private final UserService userService;
     private final ReviewLinkService reviewLinkService;
     private final TeamReviewService teamReviewService;
 
     public SectionDraftService(SectionAccessGuard sectionAccessGuard,
                                SectionDraftRepository sectionDraftRepository,
-                               UserRepository userRepository,
+                               UserService userService,
                                ReviewLinkService reviewLinkService,
                                TeamReviewService teamReviewService) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.sectionDraftRepository = sectionDraftRepository;
-        this.userRepository = userRepository;
+        this.userService = userService;
         this.reviewLinkService = reviewLinkService;
         this.teamReviewService = teamReviewService;
     }
@@ -77,9 +78,6 @@ public class SectionDraftService {
         }
 
         // 본문이 그대로면 새 버전을 만들지 않고 현재 버전을 그대로 돌려준다(멱등).
-        // 정책서 §5.2.3("초안이 수정되어 저장되면")·§6.2.2("본문이 수정되면")는 모두 실제 수정이
-        // 전제다. 편집창을 열었다 그대로 저장하거나 고쳤다 되돌린 경우까지 버전을 올리면
-        // 내용 변화 없이 팀 동의와 외부 검토 링크가 전부 만료된다.
         if (latest.isPresent() && Objects.equals(latest.get().getContent(), request.content())) {
             return SectionDraftSaveResponse.from(latest.get(), section.getStatus());
         }
@@ -88,10 +86,14 @@ public class SectionDraftService {
                 .projectSection(section)
                 .content(request.content())
                 .version(latestVersion + 1)
-                .lastEditor(userRepository.getReferenceById(userId))
+                .lastEditor(userService.getUserReference(userId))
                 .build();
-        // auditing(updatedAt)을 응답에 싣기 위해 저장 후 flush 한다.
-        sectionDraftRepository.saveAndFlush(draft);
+        try {
+            // auditing(updatedAt)을 응답에 싣기 위해 저장 후 flush 한다.
+            sectionDraftRepository.saveAndFlush(draft);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.CONFLICT);
+        }
 
         // 기존 검토·외부 링크를 만료 처리한다.
         reviewLinkService.markSectionLinksOutdated(sectionId);

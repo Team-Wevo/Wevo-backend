@@ -39,6 +39,17 @@ public class UserService {
         return MyProfileResponse.from(user);
     }
 
+    /**
+     * 다른 도메인이 사용자 연관관계(FK)를 걸 때 쓰는 <b>지연 참조</b>를 돌려준다.
+     *
+     * <p>타 도메인이 {@code UserRepository}를 직접 참조하지 않게 하기 위한 공개 진입점이다.
+     * (CLAUDE.md §6 — 도메인 간 접근) 실제 SELECT 없이 프록시만 만들므로, 저장할 엔티티의
+     * 연관 필드를 채우는 용도로만 사용하고 필드 값을 읽는 용도로는 쓰지 않는다.
+     */
+    public User getUserReference(Long userId) {
+        return userRepository.getReferenceById(userId);
+    }
+
     private User findUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
