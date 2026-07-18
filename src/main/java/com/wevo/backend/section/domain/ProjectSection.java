@@ -72,6 +72,9 @@ public class ProjectSection extends BaseTimeEntity {
     @Column(name = "ai_check_status", length = 30)
     private AiCheckStatus aiCheckStatus;
 
+    // 클래스 @Getter가 nullable Boolean을 그대로 노출하지 않도록 막는다 — 조회는 null→false
+    // 보정이 있는 isSynthesisStale()로만 한다.
+    @Getter(AccessLevel.NONE)
     @Column(name = "synthesis_stale")
     private Boolean synthesisStale;
 
