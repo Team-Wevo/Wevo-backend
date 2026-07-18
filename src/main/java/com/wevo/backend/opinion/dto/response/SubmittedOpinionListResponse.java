@@ -42,7 +42,8 @@ public record SubmittedOpinionListResponse(
             return new SubmittedOpinionResponse(
                     opinion.getId(),
                     AuthorResponse.from(opinion.getAuthor()),
-                    opinion.getContent(),
+                    // 팀에 공개되는 본문은 작업본이 아니라 제출본이다 (재제출 모델 §4.1)
+                    opinion.getSubmittedContentOrLegacy(),
                     opinion.getSubmittedAt()
             );
         }

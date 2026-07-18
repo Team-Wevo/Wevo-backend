@@ -60,6 +60,16 @@ public class TeamReviewService {
 
     /**
      * 섹션의 팀 검토 현황을 조회한다. (역할 무관)
+     *
+     * <p>목록은 <b>조회 시점의 프로젝트 멤버 기준</b>으로 구성한다 — 검토 시작 후 합류한 팀원도
+     * {@code PENDING}으로 파생 포함된다. {@code currentContentVersion}은 검토 제출(§3.5.7)의
+     * {@code contentVersion} 값으로 그대로 사용된다.
+     *
+     * <p>검토 목록과 최신 본문 버전은 별도 조회라, 그 사이에 본문 저장이 커밋되면 응답에
+     * 새 버전과 만료 전 검토가 섞일 수 있다. 이는 <b>표시상의 순간 불일치로 수용</b>한다 —
+     * 쓰기 경로는 섹션 배타 잠금과 제출 시 {@code contentVersion} 바인딩 검사로 보호되어
+     * 잘못된 버전에 검토가 기록될 수 없고, 조회 불일치는 다음 폴링에서 수렴한다.
+     * (격리 수준 격상 없이 READ_COMMITTED 유지 — 의도된 결정)
      */
     public TeamReviewStatusResponse getStatus(Long sectionId, Long userId) {
         ProjectSection section = sectionAccessGuard.requireParticipantSection(sectionId, userId);
@@ -74,7 +84,12 @@ public class TeamReviewService {
                 .map(member -> toItem(member, reviewByReviewer.get(member.getId())))
                 .toList();
 
-        return TeamReviewStatusResponse.from(items);
+        Integer currentContentVersion = sectionDraftRepository
+                .findTopByProjectSection_IdOrderByVersionDesc(sectionId)
+                .map(SectionDraft::getVersion)
+                .orElse(null);
+
+        return TeamReviewStatusResponse.from(items, currentContentVersion);
     }
 
     /**
@@ -108,6 +123,14 @@ public class TeamReviewService {
                 .findTopByProjectSection_IdOrderByVersionDesc(sectionId)
                 .map(SectionDraft::getVersion)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONFLICT));
+
+        // contentVersion 바인딩 (§6.1 "검토 대상은 최신 본문") — 검토 화면이 읽은 버전과 서버의
+        // 현재 버전이 다르면, 읽는 사이 바뀐 본문에 대한 검토가 새 버전에 기록되는 것을 막는다.
+        if (!reviewedVersion.equals(request.contentVersion())) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    List.of(new FieldError("contentVersion",
+                            "본문이 수정되었습니다. 다시 읽고 검토해주세요.")));
+        }
 
         // 수정 요청이면 사유 필수
         String reason = request.status() == TeamReviewStatus.CHANGES_REQUESTED

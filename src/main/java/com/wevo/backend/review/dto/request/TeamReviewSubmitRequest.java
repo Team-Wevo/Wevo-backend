@@ -6,17 +6,21 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
- * 팀원(MEMBER)의 팀 검토 제출 요청. (1인 1검토 업서트)
+ * 팀원(MEMBER)의 팀 검토 제출 요청. (1인 1검토 업서트 — API_SPEC §3.5.7)
  *
  * <p>제출 가능한 상태는 {@code APPROVED}(동의) 또는 {@code CHANGES_REQUESTED}(수정 요청) 뿐이다.
  * {@code CHANGES_REQUESTED} 는 사유(changeRequestReason)가 필수(≥1자)다.
  *
  * @param status              동의 여부 (APPROVED / CHANGES_REQUESTED)
  * @param changeRequestReason 수정 요청 사유 — CHANGES_REQUESTED 필수, APPROVED 시 무시
+ * @param contentVersion      검토 화면이 표시 중인 본문 버전 — 검토가 어느 본문에 대한 것인지 바인딩.
+ *                            서버의 현재 버전과 다르면 409 (읽는 사이 본문이 바뀐 검토가
+ *                            새 버전에 기록되는 것을 방지 — §6.1 "검토 대상은 최신 본문")
  */
 public record TeamReviewSubmitRequest(
         @NotNull TeamReviewStatus status,
-        @Size(max = 1000) String changeRequestReason
+        @Size(max = 1000) String changeRequestReason,
+        @NotNull Integer contentVersion
 ) {
 
     /** 제출 가능한 상태는 APPROVED / CHANGES_REQUESTED 뿐이다. (PENDING 제출 불가) */

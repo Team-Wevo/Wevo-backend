@@ -1,22 +1,21 @@
 package com.wevo.backend.opinion.dto.response;
 
 import com.wevo.backend.opinion.domain.Opinion;
-import com.wevo.backend.opinion.domain.OpinionStatus;
 import java.time.LocalDateTime;
 
 /**
- * 내 의견 제출 응답.
+ * 내 의견 제출 응답. (API_SPEC §3.4.3 — {@code id}/{@code submittedAt})
+ *
+ * @param submittedAt 최초 제출 시각 — 재제출해도 갱신되지 않는다 (§4.3 제출 이력)
  */
 public record OpinionSubmitResponse(
         Long id,
-        OpinionStatus status,
         LocalDateTime submittedAt
 ) {
 
     public static OpinionSubmitResponse from(Opinion opinion) {
         return new OpinionSubmitResponse(
                 opinion.getId(),
-                opinion.getStatus(),
                 opinion.getSubmittedAt()
         );
     }
