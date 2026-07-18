@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
  * @param understandingSignal 이해도 (CLEAR/PARTIAL/UNCLEAR)
  * @param reviewerName        외부 검토자 표시 이름 (없을 수 있음)
  * @param summary             외부 검토자 코멘트 (없을 수 있음)
+ * @param contentVersion      검토한 본문 버전 (제출이 달린 링크에 고정된 발급 시점 버전)
  * @param submittedAt         제출 시각
  */
 public record ExternalReviewItemResponse(
@@ -18,6 +19,7 @@ public record ExternalReviewItemResponse(
         UnderstandingSignal understandingSignal,
         String reviewerName,
         String summary,
+        Integer contentVersion,
         LocalDateTime submittedAt
 ) {
 
@@ -27,6 +29,7 @@ public record ExternalReviewItemResponse(
                 submission.getUnderstandingSignal(),
                 submission.getReviewerName(),
                 submission.getSummary(),
+                submission.getReviewLink().getContentVersion(),
                 submission.getCreatedAt());
     }
 }

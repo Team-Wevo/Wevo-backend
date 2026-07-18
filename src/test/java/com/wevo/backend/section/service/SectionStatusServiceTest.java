@@ -7,7 +7,7 @@ import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.domain.ProjectStatus;
-import com.wevo.backend.project.repository.ProjectMemberRepository;
+import com.wevo.backend.project.service.ProjectAccessGuard;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionStatusHistory;
@@ -43,7 +43,7 @@ class SectionStatusServiceTest {
     @Mock
     private ProjectSectionRepository projectSectionRepository;
     @Mock
-    private ProjectMemberRepository projectMemberRepository;
+    private ProjectAccessGuard projectAccessGuard;
     @Mock
     private SectionStatusHistoryRepository sectionStatusHistoryRepository;
 
@@ -56,8 +56,8 @@ class SectionStatusServiceTest {
         User owner = user(OWNER_ID);
         ProjectSection section = section(ProjectSectionStatus.COLLECTING);
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
-                .willReturn(Optional.of(member(owner, ProjectMemberRole.OWNER, section.getProject())));
+        given(projectAccessGuard.requireOwner(PROJECT_ID, OWNER_ID))
+                .willReturn(member(owner, ProjectMemberRole.OWNER, section.getProject()));
 
         sectionStatusService.markSynthesizing(SECTION_ID, OWNER_ID);
 
@@ -77,8 +77,8 @@ class SectionStatusServiceTest {
         User owner = user(OWNER_ID);
         ProjectSection section = section(ProjectSectionStatus.DRAFTING);
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
-                .willReturn(Optional.of(member(owner, ProjectMemberRole.OWNER, section.getProject())));
+        given(projectAccessGuard.requireOwner(PROJECT_ID, OWNER_ID))
+                .willReturn(member(owner, ProjectMemberRole.OWNER, section.getProject()));
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> sectionStatusService.markSynthesizing(SECTION_ID, OWNER_ID));
@@ -93,8 +93,8 @@ class SectionStatusServiceTest {
     void markSynthesizing_notOwner_throwsForbidden() {
         ProjectSection section = section(ProjectSectionStatus.COLLECTING);
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
-                .willReturn(Optional.of(member(user(OWNER_ID), ProjectMemberRole.MEMBER, section.getProject())));
+        given(projectAccessGuard.requireOwner(PROJECT_ID, OWNER_ID))
+                .willThrow(new BusinessException(ErrorCode.FORBIDDEN));
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> sectionStatusService.markSynthesizing(SECTION_ID, OWNER_ID));
@@ -104,17 +104,17 @@ class SectionStatusServiceTest {
     }
 
     @Test
-    @DisplayName("프로젝트 멤버가 아니면 NOT_PROJECT_MEMBER 를 던진다")
-    void markSynthesizing_notMember_throws() {
+    @DisplayName("프로젝트 멤버가 아니면 SECTION_NOT_FOUND 로 숨긴다 (존재 숨김 — CLAUDE.md §5.6)")
+    void markSynthesizing_notMember_hiddenAsNotFound() {
         ProjectSection section = section(ProjectSectionStatus.COLLECTING);
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
-                .willReturn(Optional.empty());
+        given(projectAccessGuard.requireOwner(PROJECT_ID, OWNER_ID))
+                .willThrow(new BusinessException(ErrorCode.NOT_PROJECT_MEMBER));
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> sectionStatusService.markSynthesizing(SECTION_ID, OWNER_ID));
 
-        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_PROJECT_MEMBER);
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
     }
 
     @Test

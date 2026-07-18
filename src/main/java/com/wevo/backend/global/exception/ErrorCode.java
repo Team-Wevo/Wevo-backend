@@ -30,14 +30,25 @@ public enum ErrorCode {
     // Project
     PROJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "P001", "프로젝트를 찾을 수 없습니다."),
     NOT_PROJECT_MEMBER(HttpStatus.FORBIDDEN, "P002", "프로젝트 멤버가 아닙니다."),
+    INVITE_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "P003", "유효하지 않은 초대 링크입니다."),
+    PROJECT_MEMBER_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "P004", "프로젝트 최대 인원을 초과했습니다."),
 
     // Section
     SECTION_NOT_FOUND(HttpStatus.NOT_FOUND, "S001", "섹션을 찾을 수 없습니다."),
     INVALID_SECTION_STATUS_TRANSITION(HttpStatus.CONFLICT, "S002", "허용되지 않은 섹션 상태 전이입니다."),
+    SECTION_DRAFT_NOT_FOUND(HttpStatus.NOT_FOUND, "S003", "초안이 없습니다."),
+    DRAFT_LEASE_HELD_BY_OTHER(HttpStatus.CONFLICT, "S004", "다른 사용자가 편집 중입니다."),
+    DRAFT_LEASE_NOT_HELD(HttpStatus.CONFLICT, "S005", "편집권이 없습니다."),
 
     // Opinion
     OPINION_NOT_FOUND(HttpStatus.NOT_FOUND, "O001", "의견을 찾을 수 없습니다."),
-    OPINION_COLLECTION_CLOSED(HttpStatus.UNPROCESSABLE_ENTITY, "O003", "의견 수집이 마감되었습니다."),
+    OPINION_COLLECTION_CLOSED(HttpStatus.CONFLICT, "O003", "의견 수집이 마감되었습니다."),
+    NO_SUBMITTED_OPINION(HttpStatus.CONFLICT, "O004", "제출된 의견이 없습니다."),
+
+    // Issue
+    ISSUE_NOT_FOUND(HttpStatus.NOT_FOUND, "I001", "쟁점을 찾을 수 없습니다."),
+    ISSUE_CONFLICT_UNDECIDED(HttpStatus.CONFLICT, "I002", "결정되지 않은 충돌 쟁점이 있습니다."),
+    EVIDENCE_REQUEST_ALREADY_SENT(HttpStatus.CONFLICT, "I003", "추가 근거 요청은 쟁점당 1회만 가능합니다."),
 
     // AI
     AI_INVALID_REQUEST(HttpStatus.BAD_REQUEST, "AI001", "AI 요청 형식이 올바르지 않습니다."),
@@ -63,10 +74,19 @@ public enum ErrorCode {
     AI_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "AI021", "AI 작업을 찾을 수 없습니다."),
     AI_JOB_INVALID_STATE_TRANSITION(HttpStatus.CONFLICT, "AI022", "허용되지 않은 AI 작업 상태 전이입니다."),
     AI_JOB_RETRY_LIMIT_EXCEEDED(HttpStatus.UNPROCESSABLE_ENTITY, "AI023", "AI 작업 재실행 한도를 초과했습니다."),
+    AI_JOB_INPUT_CHANGED(HttpStatus.CONFLICT, "AI024", "입력이 변경되어 결과를 폐기했습니다."),
     AI_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "AI999", "AI 처리 중 오류가 발생했습니다."),
 
     // Review
-    REVIEW_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "R001", "검토 링크를 찾을 수 없습니다.");
+    REVIEW_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "R001", "검토 링크를 찾을 수 없습니다."),
+    REVIEW_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "R002", "이미 검토를 제출했어요."),
+    REVIEW_SUBMISSION_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "R003", "이 링크는 검토 정원(20명)이 모두 찼어요."),
+    REVIEW_LINK_OUTDATED(HttpStatus.CONFLICT, "R004", "외부 검토 링크가 이전 본문 기준이라 만료됐어요."),
+    REVIEW_LINK_CLOSED(HttpStatus.CONFLICT, "R005", "종료된 외부 검토 링크예요."),
+    TEAM_REVIEW_SECTION_NOT_REVIEWING(HttpStatus.CONFLICT, "R006", "검토 단계(REVIEWING)의 섹션만 검토할 수 있습니다."),
+    TEAM_REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "R007", "팀 검토를 찾을 수 없습니다."),
+    TEAM_REVIEW_NOT_CHANGES_REQUESTED(HttpStatus.CONFLICT, "R008", "수정 요청 상태의 검토만 처리할 수 있습니다."),
+    REVIEW_LINK_DRAFT_REQUIRED(HttpStatus.CONFLICT, "R009", "본문 초안이 없어 외부 검토 링크를 발급할 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;

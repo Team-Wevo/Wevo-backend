@@ -11,10 +11,9 @@ import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
 import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
 import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
 import com.wevo.backend.opinion.repository.OpinionRepository;
-import com.wevo.backend.project.repository.ProjectMemberRepository;
+import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
-import com.wevo.backend.section.repository.ProjectSectionRepository;
 import com.wevo.backend.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -23,31 +22,32 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 의견(my-opinion) 관련 로직. (제품 정책서 §5)
+ * 의견(my-opinion) 관련 로직. (제품 정책서 §4·§5)
  *
  * <ul>
  *   <li>한 멤버는 한 섹션에 <b>하나의 의견</b>만 가진다 — 임시저장(upsert)이 생성을 겸한다.</li>
  *   <li>의견 저장은 섹션이 의견 수집 단계({@code COLLECTING})일 때만 가능하다.
  *       수집 마감(gate CLOSED) 시 섹션은 {@code SYNTHESIZING} 으로 전이되므로,
  *       별도 게이트 컬럼 없이 섹션 상태로 판정한다.</li>
- *   <li>SUBMITTED 의견을 다시 임시저장해도 상태는 SUBMITTED 로 유지된다(재제출 절차 없음).</li>
+ *   <li><b>재제출 모델(§4.1)</b> — 임시저장은 작업본만 갱신하고 제출본은 유지된다.
+ *       재제출하면 제출본이 최신 작업본으로 갱신된다.</li>
  * </ul>
+ *
+ * <p>의견 API는 OWNER와 MEMBER 모두 사용할 수 있으므로 프로젝트 참여 여부만 확인하며,
+ * 공통 인가 규칙(비멤버 404 존재 숨김 포함)은 {@link SectionAccessGuard}에 위임한다.
  */
 @Service
 @Transactional(readOnly = true)
 public class OpinionService {
 
-    private final ProjectSectionRepository projectSectionRepository;
-    private final ProjectMemberRepository projectMemberRepository;
+    private final SectionAccessGuard sectionAccessGuard;
     private final OpinionRepository opinionRepository;
     private final UserRepository userRepository;
 
-    public OpinionService(ProjectSectionRepository projectSectionRepository,
-                          ProjectMemberRepository projectMemberRepository,
+    public OpinionService(SectionAccessGuard sectionAccessGuard,
                           OpinionRepository opinionRepository,
                           UserRepository userRepository) {
-        this.projectSectionRepository = projectSectionRepository;
-        this.projectMemberRepository = projectMemberRepository;
+        this.sectionAccessGuard = sectionAccessGuard;
         this.opinionRepository = opinionRepository;
         this.userRepository = userRepository;
     }
@@ -64,7 +64,8 @@ public class OpinionService {
      */
     @Transactional
     public OpinionDraftResponse saveDraft(Long projectSectionId, Long userId, OpinionDraftRequest request) {
-        ProjectSection section = requireMemberSectionForUpdate(projectSectionId, userId);
+        ProjectSection section =
+                sectionAccessGuard.requireParticipantSectionForUpdate(projectSectionId, userId);
         if (section.getStatus() != ProjectSectionStatus.COLLECTING) {
             throw new BusinessException(ErrorCode.OPINION_COLLECTION_CLOSED);
         }
@@ -87,10 +88,10 @@ public class OpinionService {
     }
 
     /**
-     * 내 의견을 조회한다. 아직 작성하지 않았으면 예외가 아니라 {@code exists=false} 응답을 반환한다.
+     * 내 의견(작업본 기준)을 조회한다. 아직 작성하지 않았으면 예외가 아니라 {@code exists=false} 응답을 반환한다.
      */
     public MyOpinionResponse getMyOpinion(Long projectSectionId, Long userId) {
-        requireMemberSection(projectSectionId, userId);
+        sectionAccessGuard.requireParticipantSection(projectSectionId, userId);
         return opinionRepository.findByProjectSection_IdAndAuthor_Id(projectSectionId, userId)
                 .map(MyOpinionResponse::from)
                 .orElseGet(MyOpinionResponse::empty);
@@ -107,7 +108,7 @@ public class OpinionService {
      * 팀이 근거 의견을 봐야 한다. DRAFT 의견은 쿼리 단계에서 제외되어 어떤 경우에도 노출되지 않는다.
      */
     public SubmittedOpinionListResponse getSubmittedOpinions(Long projectSectionId, Long userId) {
-        requireMemberSection(projectSectionId, userId);
+        sectionAccessGuard.requireParticipantSection(projectSectionId, userId);
         List<Opinion> submitted = opinionRepository
                 .findAllWithAuthorByProjectSectionIdAndStatus(projectSectionId, OpinionStatus.SUBMITTED);
 
@@ -120,19 +121,22 @@ public class OpinionService {
     }
 
     /**
-     * 임시저장된 내 의견을 제출한다.
+     * 내 작업본을 팀에 제출한다. 재편집 후 재제출하면 제출본이 최신 작업본으로 갱신된다. (§4.1)
      *
-     * <p>섹션 단위 배타 잠금으로 임시저장·제출·수집 마감 경합을 직렬화한다. 이미 제출된
-     * 의견은 수집 마감 이후 재호출하더라도 최초 제출 시각을 유지한 채 멱등 성공으로 응답한다.
+     * <p>섹션 단위 배타 잠금으로 임시저장·제출·수집 마감 경합을 직렬화한다.
+     * <b>작업본 변경 없이 다시 호출하면</b> 수집 마감 이후라도 최초 제출 시각을 유지한 채
+     * 멱등 성공으로 응답한다. 작업본이 바뀐 재제출은 게이트가 열려 있어야 한다(§4.4).
      */
     @Transactional
     public OpinionSubmitResponse submitMyOpinion(Long projectSectionId, Long userId) {
-        ProjectSection section = requireMemberSectionForUpdate(projectSectionId, userId);
+        ProjectSection section =
+                sectionAccessGuard.requireParticipantSectionForUpdate(projectSectionId, userId);
         Optional<Opinion> opinionOptional = opinionRepository
                 .findByProjectSection_IdAndAuthor_Id(projectSectionId, userId);
 
         if (opinionOptional.isPresent()
-                && opinionOptional.get().getStatus() == OpinionStatus.SUBMITTED) {
+                && opinionOptional.get().getStatus() == OpinionStatus.SUBMITTED
+                && !opinionOptional.get().hasUnsubmittedChanges()) {
             return OpinionSubmitResponse.from(opinionOptional.get());
         }
 
@@ -151,37 +155,6 @@ public class OpinionService {
         validateContentForSubmit(opinion.getContent());
         opinion.submit(LocalDateTime.now());
         return OpinionSubmitResponse.from(opinion);
-    }
-
-    /**
-     * 섹션을 조회하고 요청자가 그 프로젝트의 멤버인지 검증한 뒤 섹션을 반환한다. (읽기 전용 — 잠금 없음)
-     *
-     * @throws BusinessException SECTION_NOT_FOUND(섹션 없음) / NOT_PROJECT_MEMBER(멤버 아님)
-     */
-    private ProjectSection requireMemberSection(Long projectSectionId, Long userId) {
-        ProjectSection section = projectSectionRepository.findById(projectSectionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_NOT_FOUND));
-        validateMember(section, userId);
-        return section;
-    }
-
-    /**
-     * 섹션을 배타 잠금으로 조회하고 요청자가 그 프로젝트의 멤버인지 검증한 뒤 섹션을 반환한다.
-     * 상태 확인 후 쓰기가 이어지는 경로 전용 — 읽기 전용 조회에는 {@link #requireMemberSection} 을 쓴다.
-     *
-     * @throws BusinessException SECTION_NOT_FOUND(섹션 없음) / NOT_PROJECT_MEMBER(멤버 아님)
-     */
-    private ProjectSection requireMemberSectionForUpdate(Long projectSectionId, Long userId) {
-        ProjectSection section = projectSectionRepository.findByIdForUpdate(projectSectionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_NOT_FOUND));
-        validateMember(section, userId);
-        return section;
-    }
-
-    private void validateMember(ProjectSection section, Long userId) {
-        if (!projectMemberRepository.existsByProjectIdAndUserId(section.getProject().getId(), userId)) {
-            throw new BusinessException(ErrorCode.NOT_PROJECT_MEMBER);
-        }
     }
 
     private void validateContentForSubmit(String content) {

@@ -1,5 +1,6 @@
 package com.wevo.backend.review.service;
 
+import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.review.dto.response.ExternalReviewResultResponse;
 import com.wevo.backend.review.repository.ReviewSubmissionRepository;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,6 @@ public class ExternalReviewQueryService {
         sectionAccessGuard.requireOwnedSection(sectionId, userId);
 
         return ExternalReviewResultResponse.from(
-                reviewSubmissionRepository.findByReviewLink_ProjectSection_IdOrderByCreatedAtDesc(sectionId));
+                reviewSubmissionRepository.findAllWithLinkByProjectSectionId(sectionId));
     }
 }

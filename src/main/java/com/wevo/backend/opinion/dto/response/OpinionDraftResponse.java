@@ -1,16 +1,14 @@
 package com.wevo.backend.opinion.dto.response;
 
 import com.wevo.backend.opinion.domain.Opinion;
-import com.wevo.backend.opinion.domain.OpinionStatus;
 import java.time.LocalDateTime;
 
 /**
- * 내 의견 임시저장 응답.
+ * 내 의견 임시저장 응답. (API_SPEC §3.4.2 — {@code id}/{@code content}/{@code updatedAt})
  */
 public record OpinionDraftResponse(
         Long id,
         String content,
-        OpinionStatus status,
         LocalDateTime updatedAt
 ) {
 
@@ -18,7 +16,6 @@ public record OpinionDraftResponse(
         return new OpinionDraftResponse(
                 opinion.getId(),
                 opinion.getContent(),
-                opinion.getStatus(),
                 opinion.getUpdatedAt()
         );
     }
