@@ -93,6 +93,16 @@ class SectionAccessGuardTest {
     }
 
     @Test
+    @DisplayName("참여자 공용 쓰기 경로 검사는 배타 잠금 조회를 사용하고 참여자 검사를 수행한다")
+    void requireParticipantSectionForUpdate_locksAndDelegatesParticipantCheck() {
+        given(projectSectionRepository.findByIdForUpdate(SECTION_ID)).willReturn(Optional.of(section));
+
+        assertThat(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, USER_ID))
+                .isSameAs(section);
+        verify(projectAccessGuard).requireParticipant(PROJECT_ID, USER_ID);
+    }
+
+    @Test
     @DisplayName("섹션이 없으면 역할 조회 전에 SECTION_NOT_FOUND를 던진다")
     void requireOwnedSection_rejectsMissingSection() {
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.empty());
@@ -102,5 +112,31 @@ class SectionAccessGuardTest {
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
         verifyNoInteractions(projectAccessGuard);
+    }
+
+    @Test
+    @DisplayName("비멤버는 SECTION_NOT_FOUND 로 숨긴다 (존재 숨김 — CLAUDE.md §5.6)")
+    void requireParticipantSection_hidesNonMemberAsNotFound() {
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectAccessGuard.requireParticipant(PROJECT_ID, USER_ID))
+                .willThrow(new BusinessException(ErrorCode.NOT_PROJECT_MEMBER));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> sectionAccessGuard.requireParticipantSection(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("멤버지만 역할이 부족하면 FORBIDDEN 을 그대로 전파한다 (403 유지)")
+    void requireOwnedSection_propagatesForbiddenForWrongRole() {
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectAccessGuard.requireOwner(PROJECT_ID, USER_ID))
+                .willThrow(new BusinessException(ErrorCode.FORBIDDEN));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> sectionAccessGuard.requireOwnedSection(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN);
     }
 }

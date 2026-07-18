@@ -1,19 +1,27 @@
 package com.wevo.backend.ai.client;
 
 import com.wevo.backend.ai.config.AiProperties;
-import com.wevo.backend.ai.exception.ClaudeExceptionTranslator;
-import com.wevo.backend.ai.exception.ClaudeProviderException;
+import com.wevo.backend.ai.config.NvidiaProviderProperties;
+import com.wevo.backend.ai.exception.AiProviderException;
+import com.wevo.backend.ai.exception.NvidiaExceptionTranslator;
 import com.wevo.backend.global.exception.ErrorCode;
-import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ResponseEntity;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
-import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -21,48 +29,54 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 @Component
-public class SpringAiClaudeGateway implements ClaudeGateway {
+@ConditionalOnProperty(prefix = "wevo.ai", name = "provider", havingValue = "nvidia")
+public class SpringAiNvidiaGateway implements AiProviderGateway {
+
+    public static final String PROVIDER_ID = "nvidia";
 
     private final ChatClient chatClient;
     private final AiProperties properties;
-    private final ClaudeExceptionTranslator exceptionTranslator;
-    private final ExecutorService claudeRequestExecutor;
+    private final NvidiaProviderProperties nvidiaProperties;
+    private final NvidiaExceptionTranslator exceptionTranslator;
+    private final ExecutorService providerRequestExecutor;
     private final AiUsageExtractor usageExtractor;
     private final AiRetrySleeper retrySleeper;
 
-    public SpringAiClaudeGateway(
+    public SpringAiNvidiaGateway(
             ChatClient chatClient,
             AiProperties properties,
-            ClaudeExceptionTranslator exceptionTranslator,
-            ExecutorService claudeRequestExecutor,
+            NvidiaProviderProperties nvidiaProperties,
+            NvidiaExceptionTranslator exceptionTranslator,
+            ExecutorService providerRequestExecutor,
             AiUsageExtractor usageExtractor,
             AiRetrySleeper retrySleeper
     ) {
         this.chatClient = chatClient;
         this.properties = properties;
+        this.nvidiaProperties = nvidiaProperties;
         this.exceptionTranslator = exceptionTranslator;
-        this.claudeRequestExecutor = claudeRequestExecutor;
+        this.providerRequestExecutor = providerRequestExecutor;
         this.usageExtractor = usageExtractor;
         this.retrySleeper = retrySleeper;
     }
 
     @Override
-    public ClaudeResponse generate(ClaudeRequest request) {
+    public AiProviderResponse generate(AiProviderRequest request) {
         AiProperties.ModelOptions options = properties.optionsFor(request.feature());
         int attempts = 0;
 
         while (true) {
             attempts++;
             try {
-                ClaudeResponse response = generateOnce(request, options);
-                return new ClaudeResponse(
+                AiProviderResponse response = generateOnce(request, options);
+                return new AiProviderResponse(
                         response.content(),
                         response.usageMetadata(),
                         response.finishReason(),
                         attempts
                 );
-            } catch (ClaudeProviderException exception) {
-                ClaudeProviderException contextual = exception.withAttemptContext(attempts);
+            } catch (AiProviderException exception) {
+                AiProviderException contextual = exception.withAttemptContext(attempts);
                 if (attempts > options.maxRetries() || !isRetryable(contextual.getErrorCode())) {
                     throw contextual;
                 }
@@ -72,14 +86,15 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
     }
 
     @Override
-    public <T> StructuredClaudeResponse<T> generateStructured(StructuredClaudeRequest<T> request) {
+    public <T> StructuredAiProviderResponse<T> generateStructured(StructuredAiProviderRequest<T> request) {
         AiProperties.ModelOptions options = properties.optionsFor(request.feature());
         UsageAccumulator usageAccumulator = new UsageAccumulator();
         AttemptCounter attemptCounter = new AttemptCounter();
-        String userPrompt = request.prompt().userPrompt();
+        StructuredConversionFailure previousFailure = null;
         int maxCorrectionRetries = properties.structuredOutput().maxCorrectionRetries();
 
         for (int correctionAttempt = 0; correctionAttempt <= maxCorrectionRetries; correctionAttempt++) {
+            String userPrompt = structuredUserPrompt(request, previousFailure);
             ProviderStructuredResponse<T> providerResponse = invokeStructuredWithProviderRetry(
                     request,
                     userPrompt,
@@ -104,7 +119,7 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
             }
             if (conversion.isSuccess()) {
                 validateSemantics(request, conversion.value(), usageAccumulator.snapshot(), attemptCounter.value());
-                return new StructuredClaudeResponse<>(
+                return new StructuredAiProviderResponse<>(
                         conversion.value(),
                         request.prompt().id(),
                         request.outputDefinition().schemaId(),
@@ -114,14 +129,14 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
                 );
             }
 
+            previousFailure = conversion.failure();
             if (correctionAttempt == maxCorrectionRetries) {
                 throw structuredException(
-                        errorCodeFor(conversion.failure()),
+                        errorCodeFor(previousFailure),
                         usageAccumulator.snapshot(),
                         attemptCounter.value()
                 );
             }
-            userPrompt = correctionPrompt(request.prompt().userPrompt(), conversion.failure());
         }
 
         throw structuredException(
@@ -132,7 +147,7 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
     }
 
     private <T> ProviderStructuredResponse<T> invokeStructuredWithProviderRetry(
-            StructuredClaudeRequest<T> request,
+            StructuredAiProviderRequest<T> request,
             String userPrompt,
             AiProperties.ModelOptions options,
             UsageAccumulator usageAccumulator,
@@ -144,24 +159,26 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
             attemptCounter.increment();
             try {
                 return generateStructuredOnce(request, userPrompt, options);
-            } catch (ClaudeProviderException exception) {
+            } catch (AiProviderException exception) {
                 if (transportAttempts > options.maxRetries() || !isRetryable(exception.getErrorCode())) {
                     AiUsageMetadata usage = mergeUsage(usageAccumulator.snapshot(), exception.getUsageMetadata());
-                    throw new ClaudeProviderException(
+                    throw new AiProviderException(
                             exception.getErrorCode(),
                             exception.getCause(),
                             usage,
-                            attemptCounter.value()
+                            attemptCounter.value(),
+                            exception.getRetryAfter()
                     );
                 }
                 try {
                     sleepBeforeRetry(options, transportAttempts, exception);
-                } catch (ClaudeProviderException interrupted) {
-                    throw new ClaudeProviderException(
+                } catch (AiProviderException interrupted) {
+                    throw new AiProviderException(
                             interrupted.getErrorCode(),
                             interrupted.getCause(),
                             mergeUsage(usageAccumulator.snapshot(), interrupted.getUsageMetadata()),
-                            attemptCounter.value()
+                            attemptCounter.value(),
+                            interrupted.getRetryAfter()
                     );
                 }
             }
@@ -169,12 +186,12 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
     }
 
     private <T> ProviderStructuredResponse<T> generateStructuredOnce(
-            StructuredClaudeRequest<T> request,
+            StructuredAiProviderRequest<T> request,
             String userPrompt,
             AiProperties.ModelOptions options
     ) {
-        Future<ResponseEntity<ChatResponse, StructuredConversionResult<T>>> future = claudeRequestExecutor.submit(
-                () -> callClaudeStructured(request, userPrompt, options)
+        Future<ResponseEntity<ChatResponse, StructuredConversionResult<T>>> future = providerRequestExecutor.submit(
+                () -> callProviderStructured(request, userPrompt, options)
         );
 
         try {
@@ -195,8 +212,8 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
         }
     }
 
-    private <T> ResponseEntity<ChatResponse, StructuredConversionResult<T>> callClaudeStructured(
-            StructuredClaudeRequest<T> request,
+    private <T> ResponseEntity<ChatResponse, StructuredConversionResult<T>> callProviderStructured(
+            StructuredAiProviderRequest<T> request,
             String userPrompt,
             AiProperties.ModelOptions options
     ) {
@@ -204,13 +221,13 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
                 request.outputDefinition()
         );
         return chatClient.prompt()
-                .system(request.prompt().systemPrompt())
-                .user(userPrompt)
-                .options(AnthropicChatOptions.builder()
-                        .model(options.model())
-                        .maxTokens(options.maxOutputTokens()))
+                .messages(List.of(
+                        new SystemMessage(request.prompt().systemPrompt()),
+                        new UserMessage(userPrompt)
+                ))
+                .options(providerOptions(options))
                 .call()
-                .responseEntity(converter, spec -> spec.useProviderStructuredOutput());
+                .responseEntity(converter);
     }
 
     private <T> ProviderStructuredResponse<T> toStructuredResponse(
@@ -218,19 +235,19 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
             String requestedModel
     ) {
         if (responseEntity == null || responseEntity.response() == null) {
-            throw new ClaudeProviderException(
+            throw new AiProviderException(
                     ErrorCode.AI_PROVIDER_INVALID_RESPONSE,
-                    new IllegalStateException("Claude structured response is null")
+                    new IllegalStateException("NVIDIA structured response is null")
             );
         }
 
         ChatResponse response = responseEntity.response();
-        AiUsageMetadata usage = usageExtractor.extract(response.getMetadata(), requestedModel);
+        AiUsageMetadata usage = usageExtractor.extract(response.getMetadata(), requestedModel, PROVIDER_ID);
         Generation generation = response.getResult();
         if (generation == null || generation.getOutput() == null) {
-            throw new ClaudeProviderException(
+            throw new AiProviderException(
                     ErrorCode.AI_PROVIDER_INVALID_RESPONSE,
-                    new IllegalStateException("Claude structured result is empty"),
+                    new IllegalStateException("NVIDIA structured result is empty"),
                     usage,
                     0
             );
@@ -238,13 +255,16 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
         String finishReason = generation.getMetadata() == null
                 ? null
                 : generation.getMetadata().getFinishReason();
+        if (hasProviderRefusal(generation)) {
+            finishReason = "refusal";
+        }
         boolean contentEmpty = generation.getOutput().getText() == null
                 || generation.getOutput().getText().isBlank();
         return new ProviderStructuredResponse<>(responseEntity.entity(), usage, finishReason, contentEmpty);
     }
 
     private <T> void validateSemantics(
-            StructuredClaudeRequest<T> request,
+            StructuredAiProviderRequest<T> request,
             T value,
             AiUsageMetadata usage,
             int attempts
@@ -252,7 +272,7 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
         try {
             request.outputDefinition().validator().validate(value, request.validationContext());
         } catch (StructuredOutputSemanticException exception) {
-            throw new ClaudeProviderException(
+            throw new AiProviderException(
                     ErrorCode.AI_STRUCTURED_OUTPUT_SEMANTIC_VALIDATION_FAILED,
                     exception,
                     usage,
@@ -262,13 +282,14 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
     }
 
     private ErrorCode finishReasonError(String finishReason) {
-        if (finishReason == null) {
-            return null;
+        if (finishReason == null || finishReason.isBlank()) {
+            return ErrorCode.AI_PROVIDER_INVALID_RESPONSE;
         }
         return switch (finishReason.toLowerCase(Locale.ROOT)) {
-            case "refusal" -> ErrorCode.AI_PROVIDER_REFUSAL;
-            case "max_tokens" -> ErrorCode.AI_PROVIDER_MAX_TOKENS;
-            default -> null;
+            case "stop" -> null;
+            case "length", "max_tokens" -> ErrorCode.AI_PROVIDER_MAX_TOKENS;
+            case "content_filter", "refusal" -> ErrorCode.AI_PROVIDER_REFUSAL;
+            default -> ErrorCode.AI_PROVIDER_INVALID_RESPONSE;
         };
     }
 
@@ -280,24 +301,35 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
         };
     }
 
-    private String correctionPrompt(String originalUserPrompt, StructuredConversionFailure failure) {
-        String reason = switch (failure) {
-            case JSON_PARSE -> "The previous output was not valid JSON.";
-            case SCHEMA_VALIDATION -> "The previous output did not match the required JSON schema.";
-            case TYPE_CONVERSION -> "The previous output could not be converted to the required result type.";
-        };
-        return originalUserPrompt + "\n\n<output_correction>\n"
-                + reason
-                + " Return only one complete JSON object that matches the provided schema."
-                + "\n</output_correction>";
+    private <T> String structuredUserPrompt(
+            StructuredAiProviderRequest<T> request,
+            StructuredConversionFailure previousFailure
+    ) {
+        StringBuilder prompt = new StringBuilder(request.prompt().userPrompt())
+                .append("\n\n<output_contract>\n")
+                .append("Return only one complete JSON object matching this JSON Schema:\n")
+                .append(request.outputDefinition().jsonSchema())
+                .append("\n</output_contract>");
+        if (previousFailure != null) {
+            String reason = switch (previousFailure) {
+                case JSON_PARSE -> "The previous output was not valid JSON.";
+                case SCHEMA_VALIDATION -> "The previous output did not match the required JSON schema.";
+                case TYPE_CONVERSION -> "The previous output could not be converted to the required result type.";
+            };
+            prompt.append("\n\n<output_correction>\n")
+                    .append(reason)
+                    .append(" Return a corrected JSON object only.")
+                    .append("\n</output_correction>");
+        }
+        return prompt.toString();
     }
 
-    private ClaudeProviderException structuredException(
+    private AiProviderException structuredException(
             ErrorCode errorCode,
             AiUsageMetadata usage,
             int attempts
     ) {
-        return new ClaudeProviderException(
+        return new AiProviderException(
                 errorCode,
                 new IllegalStateException(errorCode.name()),
                 usage,
@@ -313,6 +345,7 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
             return accumulated;
         }
         return new AiUsageMetadata(
+                current.providerId() != null ? current.providerId() : accumulated.providerId(),
                 current.providerRequestId() != null ? current.providerRequestId() : accumulated.providerRequestId(),
                 current.modelId() != null ? current.modelId() : accumulated.modelId(),
                 addNullable(accumulated.inputTokens(), current.inputTokens()),
@@ -332,8 +365,8 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
         return left + right;
     }
 
-    private ClaudeResponse generateOnce(ClaudeRequest request, AiProperties.ModelOptions options) {
-        Future<ChatResponse> future = claudeRequestExecutor.submit(() -> callClaude(request, options));
+    private AiProviderResponse generateOnce(AiProviderRequest request, AiProperties.ModelOptions options) {
+        Future<ChatResponse> future = providerRequestExecutor.submit(() -> callProvider(request, options));
 
         try {
             ChatResponse response = future.get(options.timeout().toMillis(), TimeUnit.MILLISECONDS);
@@ -353,22 +386,26 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
     private void sleepBeforeRetry(
             AiProperties.ModelOptions options,
             int attempts,
-            ClaudeProviderException lastException
+            AiProviderException lastException
     ) {
-        long multiplier = 1L << Math.min(attempts - 1, 30);
         long backoffMillis;
-        try {
-            backoffMillis = Math.multiplyExact(options.initialBackoff().toMillis(), multiplier);
-        } catch (ArithmeticException ignored) {
-            backoffMillis = Long.MAX_VALUE;
+        if (lastException.getRetryAfter() != null) {
+            backoffMillis = lastException.getRetryAfter().toMillis();
+        } else {
+            long multiplier = 1L << Math.min(attempts - 1, 30);
+            try {
+                backoffMillis = Math.multiplyExact(options.initialBackoff().toMillis(), multiplier);
+            } catch (ArithmeticException ignored) {
+                backoffMillis = Long.MAX_VALUE;
+            }
         }
         long cappedMillis = Math.min(backoffMillis, options.maxBackoff().toMillis());
 
         try {
-            retrySleeper.sleep(java.time.Duration.ofMillis(cappedMillis));
+            retrySleeper.sleep(Duration.ofMillis(cappedMillis));
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new ClaudeProviderException(
+            throw new AiProviderException(
                     ErrorCode.AI_PROVIDER_ERROR,
                     exception,
                     lastException.getUsageMetadata(),
@@ -383,49 +420,97 @@ public class SpringAiClaudeGateway implements ClaudeGateway {
                 || errorCode == ErrorCode.AI_PROVIDER_UNAVAILABLE;
     }
 
-    private ChatResponse callClaude(ClaudeRequest request, AiProperties.ModelOptions options) {
+    private ChatResponse callProvider(AiProviderRequest request, AiProperties.ModelOptions options) {
         ChatResponse response = chatClient.prompt()
-                .system(request.systemPrompt())
-                .user(request.userPrompt())
-                .options(AnthropicChatOptions.builder()
-                        .model(options.model())
-                        .maxTokens(options.maxOutputTokens()))
+                .messages(toSpringMessages(request.messages()))
+                .options(providerOptions(options))
                 .call()
                 .chatResponse();
 
         if (response == null) {
-            throw new ClaudeProviderException(
+            throw new AiProviderException(
                     ErrorCode.AI_PROVIDER_INVALID_RESPONSE,
-                    new IllegalStateException("Claude response is null")
+                    new IllegalStateException("NVIDIA response is null")
             );
         }
         return response;
     }
 
-    private ClaudeResponse toResponse(ChatResponse response, String requestedModel) {
+    private List<Message> toSpringMessages(List<AiChatMessage> messages) {
+        return messages.stream()
+                .map(message -> switch (message.role()) {
+                    case SYSTEM -> new SystemMessage(message.content());
+                    case USER -> new UserMessage(message.content());
+                    case ASSISTANT -> new AssistantMessage(message.content());
+                })
+                .map(Message.class::cast)
+                .toList();
+    }
+
+    private OpenAiChatOptions.Builder providerOptions(AiProperties.ModelOptions options) {
+        return OpenAiChatOptions.builder()
+                .model(options.model())
+                .maxTokens(options.maxOutputTokens())
+                .n(1)
+                .temperature(nvidiaProperties.temperature())
+                .timeout(options.timeout())
+                .customHeaders(Map.of("Accept", "application/json"))
+                .maxRetries(0);
+    }
+
+    private AiProviderResponse toResponse(ChatResponse response, String requestedModel) {
         Generation generation = response.getResult();
-        ChatResponseMetadata metadata = response.getMetadata();
-        AiUsageMetadata usageMetadata = usageExtractor.extract(metadata, requestedModel);
-        if (generation == null
-                || generation.getOutput() == null
-                || generation.getOutput().getText() == null
-                || generation.getOutput().getText().isBlank()) {
-            throw new ClaudeProviderException(
+        AiUsageMetadata usageMetadata = usageExtractor.extract(
+                response.getMetadata(), requestedModel, PROVIDER_ID
+        );
+        if (generation == null || generation.getOutput() == null) {
+            throw new AiProviderException(
                     ErrorCode.AI_PROVIDER_INVALID_RESPONSE,
-                    new IllegalStateException("Claude response content is empty"),
+                    new IllegalStateException("NVIDIA response result is empty"),
+                    usageMetadata,
+                    0
+            );
+        }
+        if (hasProviderRefusal(generation)) {
+            throw new AiProviderException(
+                    ErrorCode.AI_PROVIDER_REFUSAL,
+                    new IllegalStateException("NVIDIA provider refused the request"),
+                    usageMetadata,
+                    0
+            );
+        }
+        if (generation.getOutput().getText() == null || generation.getOutput().getText().isBlank()) {
+            throw new AiProviderException(
+                    ErrorCode.AI_PROVIDER_INVALID_RESPONSE,
+                    new IllegalStateException("NVIDIA response content is empty"),
                     usageMetadata,
                     0
             );
         }
 
         ChatGenerationMetadata generationMetadata = generation.getMetadata();
+        String finishReason = generationMetadata == null ? null : generationMetadata.getFinishReason();
+        ErrorCode finishError = finishReasonError(finishReason);
+        if (finishError != null) {
+            throw new AiProviderException(
+                    finishError,
+                    new IllegalStateException("NVIDIA response finish reason is not successful"),
+                    usageMetadata,
+                    0
+            );
+        }
 
-        return new ClaudeResponse(
+        return new AiProviderResponse(
                 generation.getOutput().getText(),
                 usageMetadata,
-                generationMetadata.getFinishReason(),
+                finishReason,
                 0
         );
+    }
+
+    private boolean hasProviderRefusal(Generation generation) {
+        Object refusal = generation.getOutput().getMetadata().get("refusal");
+        return refusal instanceof String text && !text.isBlank();
     }
 
     private final class UsageAccumulator {

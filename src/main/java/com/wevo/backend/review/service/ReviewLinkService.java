@@ -68,12 +68,17 @@ public class ReviewLinkService {
     }
 
     /**
-     * 외부 검토 링크를 발급한다. (팀장 전용)
+     * 외부 검토 링크를 발급한다. (팀장 전용 — <b>대체 발급</b>, API_SPEC §3.5.1 팀 확정 3)
      *
      * <p>링크는 발급 시점의 <b>최신 초안 버전에 고정</b>된다 — 제목·본문·버전 스냅샷은 발급 이후
      * 불변이며, 이후 본문이 수정돼도 이 링크는 스냅샷을 그대로 보여준다. 새 본문에 대한 외부 검토는
      * 재발급으로만 가능하다.
      * 원문 토큰은 저장하지 않고(해시만 저장) 응답으로만 한 번 반환한다.
+     *
+     * <p>섹션당 {@code ACTIVE} 링크는 <b>최대 1개</b> — 재발급하면 같은 트랜잭션에서 기존
+     * {@code ACTIVE} 링크를 {@code CLOSED}로 닫고 새 토큰을 발급한다. 토큰이 해시로만 저장되어
+     * 원문 재반환이 불가능하므로 멱등 재사용이 아니라 대체 발급이다. 기존 링크로 들어온 제출
+     * 결과는 보존된다.
      */
     @Transactional
     public ReviewLinkResponse issueExternalLink(Long sectionId, Long userId) {
@@ -85,6 +90,10 @@ public class ReviewLinkService {
         SectionDraft latestDraft = sectionDraftRepository
                 .findTopByProjectSection_IdOrderByVersionDesc(section.getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.REVIEW_LINK_DRAFT_REQUIRED));
+
+        // 대체 발급 — 기존 ACTIVE 링크를 닫는다 (섹션 행 잠금을 잡고 있어 발급·만료와 직렬화됨)
+        reviewLinkRepository.findByProjectSection_IdAndStatus(sectionId, ReviewLinkStatus.ACTIVE)
+                .forEach(ReviewLink::close);
 
         String rawToken = tokenHasher.generateRawToken();
         ReviewLink link = ReviewLink.builder()

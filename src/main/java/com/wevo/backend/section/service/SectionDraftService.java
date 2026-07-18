@@ -54,15 +54,15 @@ public class SectionDraftService {
      * <p>섹션 행을 배타 잠금으로 잡아 "최신 버전 조회 → append" 를 직렬화한다. 같은 잠금을
      * 만료 처리(외부 링크·팀 검토)도 사용하므로, 저장과 만료가 원자적으로 커밋된다.
      *
-     * @throws BusinessException 섹션 없음/미참여(존재 숨김 규칙), 편집 불가 단계({@code S004}),
-     *                           기준 버전 불일치({@code S003})
+     * @throws BusinessException 섹션 없음/미참여(존재 숨김 규칙, {@code S001}), 초안이 없는
+     *                           단계에서의 저장 시도({@code S002}), 기준 버전 불일치({@code C003})
      */
     @Transactional
     public SectionDraftSaveResponse saveDraft(Long sectionId, Long userId, SectionDraftSaveRequest request) {
         ProjectSection section = sectionAccessGuard.requireParticipantSectionForUpdate(sectionId, userId);
 
         if (!section.getStatus().allowsDraftEditing()) {
-            throw new BusinessException(ErrorCode.SECTION_DRAFT_NOT_EDITABLE);
+            throw new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
         }
 
         // 초안이 없으면 최신 버전 0 으로 본다(최초 저장 → version 1).
@@ -71,7 +71,7 @@ public class SectionDraftService {
                 .map(SectionDraft::getVersion)
                 .orElse(0);
         if (!request.baseVersion().equals(latestVersion)) {
-            throw new BusinessException(ErrorCode.SECTION_DRAFT_VERSION_CONFLICT);
+            throw new BusinessException(ErrorCode.CONFLICT);
         }
 
         SectionDraft draft = SectionDraft.builder()

@@ -11,18 +11,26 @@ import java.util.Map;
 /**
  * Wevo AI 기능에서 사용하는 모델 실행 정책.
  *
- * <p>Anthropic 연결 자체의 설정은 {@code spring.ai.anthropic}이 담당하고,
+ * <p>Provider 연결 자체의 설정은 Spring AI provider 설정이 담당하고,
  * 이 설정은 기능별 모델, 제한 시간, 출력 토큰 한도를 선택하는 데 사용한다.</p>
  */
 @Validated
 @ConfigurationProperties(prefix = "wevo.ai")
 public record AiProperties(
+        String provider,
         ModelOptions defaultOptions,
         Map<String, FeatureOptions> features,
         StructuredOutputOptions structuredOutput
 ) {
 
     public AiProperties {
+        provider = provider == null || provider.isBlank() ? "none" : provider.toLowerCase(java.util.Locale.ROOT);
+        if (!provider.matches("[a-z][a-z0-9-]{0,29}")) {
+            throw new IllegalArgumentException("wevo.ai.provider는 소문자 provider 식별자여야 합니다.");
+        }
+        if (!provider.equals("none") && !provider.equals("nvidia")) {
+            throw new IllegalArgumentException("지원하지 않는 AI provider입니다: " + provider);
+        }
         if (defaultOptions == null) {
             throw new IllegalArgumentException("wevo.ai.default-options 설정은 필수입니다.");
         }
@@ -81,8 +89,8 @@ public record AiProperties(
             if (timeout == null || timeout.isZero() || timeout.isNegative()) {
                 throw new IllegalArgumentException(path + ".timeout은 0보다 커야 합니다.");
             }
-            if (maxOutputTokens == null || maxOutputTokens <= 0) {
-                throw new IllegalArgumentException(path + ".max-output-tokens는 0보다 커야 합니다.");
+            if (maxOutputTokens == null || maxOutputTokens <= 0 || maxOutputTokens > 65_536) {
+                throw new IllegalArgumentException(path + ".max-output-tokens는 1 이상 65536 이하여야 합니다.");
             }
             if (maxRetries == null || maxRetries < 0) {
                 throw new IllegalArgumentException(path + ".max-retries는 0 이상이어야 합니다.");

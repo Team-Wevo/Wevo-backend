@@ -97,7 +97,7 @@ class SectionDraftIntegrationTest {
     }
 
     @Test
-    @DisplayName("기준 버전(baseVersion)이 최신과 다르면 409(S003) 로 덮어쓰기를 막는다")
+    @DisplayName("기준 버전(baseVersion)이 최신과 다르면 409(C003) 로 덮어쓰기를 막는다")
     void staleBaseVersionRejected() throws Exception {
         User owner = persistUser("owner-d3@wevo.com");
         Project project = persistProject(owner);
@@ -109,13 +109,13 @@ class SectionDraftIntegrationTest {
         // 최신은 1인데 0을 기준으로 보냄 → 충돌
         save(section.getId(), owner, "덮어쓰기 시도", 0)
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("S003"));
+                .andExpect(jsonPath("$.code").value("C003"));
 
         assertThat(sectionDraftRepository.findAll()).hasSize(1);
     }
 
     @Test
-    @DisplayName("편집 불가 단계(COLLECTING)에서 저장하면 409(S004)")
+    @DisplayName("초안이 없는 단계(COLLECTING)에서 저장하면 409(S002)")
     void notEditableStageRejected() throws Exception {
         User owner = persistUser("owner-d4@wevo.com");
         Project project = persistProject(owner);
@@ -125,14 +125,14 @@ class SectionDraftIntegrationTest {
 
         save(section.getId(), owner, "본문", 0)
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("S004"));
+                .andExpect(jsonPath("$.code").value("S002"));
 
         assertThat(sectionDraftRepository.findAll()).isEmpty();
     }
 
     @Test
-    @DisplayName("프로젝트 참여자가 아니면 저장 시 403(P002)")
-    void nonMemberForbidden() throws Exception {
+    @DisplayName("프로젝트 참여자가 아니면 저장 시 404(S001) — 섹션 존재를 숨긴다")
+    void nonMemberHiddenAsNotFound() throws Exception {
         User owner = persistUser("owner-d5@wevo.com");
         Project project = persistProject(owner);
         ProjectSection section = persistSection(project, ProjectSectionStatus.DRAFTING);
@@ -140,9 +140,10 @@ class SectionDraftIntegrationTest {
         User outsider = persistUser("outsider-d5@wevo.com");
         em.flush();
 
+        // 비멤버는 "섹션 없음"과 구분되지 않아야 한다 (CLAUDE.md §5.6 · API_SPEC §3.7)
         save(section.getId(), outsider, "본문", 0)
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("P002"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("S001"));
     }
 
     @Test

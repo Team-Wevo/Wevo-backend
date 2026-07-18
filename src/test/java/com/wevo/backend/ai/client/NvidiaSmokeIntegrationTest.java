@@ -14,13 +14,21 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Tag("claude-integration")
-@SpringBootTest
-@EnabledIfEnvironmentVariable(named = "ANTHROPIC_API_KEY", matches = ".+")
-class ClaudeSmokeIntegrationTest {
+@Tag("nvidia-integration")
+@SpringBootTest(properties = {
+        "spring.ai.openai.api-key=${NVIDIA_API_KEY}",
+        "spring.ai.openai.base-url=${NVIDIA_API_BASE_URL:https://integrate.api.nvidia.com}/v1",
+        "spring.ai.openai.chat.model=${NVIDIA_API_MODEL:moonshotai/kimi-k2.6}",
+        "spring.ai.openai.chat.max-tokens=128",
+        "wevo.ai.default-options.model=${NVIDIA_API_MODEL:moonshotai/kimi-k2.6}",
+        "wevo.ai.default-options.max-output-tokens=128"
+})
+@EnabledIfEnvironmentVariable(named = "NVIDIA_API_KEY", matches = ".+")
+@EnabledIfEnvironmentVariable(named = "NVIDIA_INTEGRATION_ENABLED", matches = "(?i)true")
+class NvidiaSmokeIntegrationTest {
 
     @Autowired
-    private ClaudeGateway claudeGateway;
+    private AiProviderGateway providerGateway;
 
     @Autowired
     private PromptRegistry promptRegistry;
@@ -29,32 +37,37 @@ class ClaudeSmokeIntegrationTest {
     private PromptRenderer promptRenderer;
 
     @Test
-    void callsClaudeAndReturnsMetadata() {
-        ClaudeResponse response = claudeGateway.generate(new ClaudeRequest(
+    void callsNvidiaWithSyntheticTextAndReturnsMetadata() {
+        AiProviderResponse response = providerGateway.generate(new AiProviderRequest(
                 AiFeature.DRAFT_REVIEW,
                 "You are a connectivity test. Follow the user's instruction exactly.",
-                "Reply with only the word pong."
+                "Reply with only the word pong. This is synthetic test data."
         ));
 
         assertThat(response.content()).isNotBlank();
+        assertThat(response.usageMetadata().providerId()).isEqualTo("nvidia");
         assertThat(response.usageMetadata().modelId()).isNotBlank();
-        assertThat(response.usageMetadata().inputTokens()).isNotNegative();
-        assertThat(response.usageMetadata().outputTokens()).isPositive();
+        if (response.usageMetadata().inputTokens() != null) {
+            assertThat(response.usageMetadata().inputTokens()).isNotNegative();
+        }
+        if (response.usageMetadata().outputTokens() != null) {
+            assertThat(response.usageMetadata().outputTokens()).isPositive();
+        }
     }
 
     @Test
-    void callsClaudeWithProviderNativeStructuredOutput() {
+    void validatesNvidiaStructuredOutputWithCommonSchemaPipeline() {
         var prompt = promptRenderer.render(
                 promptRegistry.get(new PromptTemplateId("contract-summary", 1)),
-                Map.of("sourceText", "Wevo turns team opinions into a shared project draft.")
+                Map.of("sourceText", "Synthetic: Wevo turns team opinions into a shared project draft.")
         );
         StructuredOutputDefinition<SmokeStructuredOutput> definition = StructuredOutputDefinition.of(
                 new OutputSchemaId("smoke-structured-output", 1),
                 SmokeStructuredOutput.class
         );
 
-        StructuredClaudeResponse<SmokeStructuredOutput> response = claudeGateway.generateStructured(
-                new StructuredClaudeRequest<>(
+        StructuredAiProviderResponse<SmokeStructuredOutput> response = providerGateway.generateStructured(
+                new StructuredAiProviderRequest<>(
                         AiFeature.DRAFT_REVIEW,
                         prompt,
                         definition,
@@ -63,7 +76,7 @@ class ClaudeSmokeIntegrationTest {
         );
 
         assertThat(response.result().summary()).isNotBlank();
-        assertThat(response.usageMetadata().modelId()).isNotBlank();
+        assertThat(response.usageMetadata().providerId()).isEqualTo("nvidia");
         assertThat(response.schemaId()).isEqualTo(new OutputSchemaId("smoke-structured-output", 1));
     }
 
