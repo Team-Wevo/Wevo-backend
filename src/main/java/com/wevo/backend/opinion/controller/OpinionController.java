@@ -5,6 +5,8 @@ import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
+import com.wevo.backend.opinion.dto.response.OpinionGateCloseResponse;
+import com.wevo.backend.opinion.dto.response.OpinionGateReopenResponse;
 import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
 import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
 import com.wevo.backend.opinion.service.OpinionService;
@@ -81,5 +83,23 @@ public class OpinionController {
     ) {
         OpinionSubmitResponse response = opinionService.submitMyOpinion(projectSectionId, principal.userId());
         return ResponseEntity.ok(ApiResponse.success("OPINION_SUBMITTED", "의견이 제출되었습니다.", response));
+    }
+
+    @PostMapping("/{projectSectionId}/opinion-gate/close")
+    public ResponseEntity<ApiResponse<OpinionGateCloseResponse>> closeOpinionGate(
+            @PathVariable Long projectSectionId,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        OpinionGateCloseResponse response = opinionService.closeOpinionGate(projectSectionId, principal.userId());
+        return ResponseEntity.ok(ApiResponse.success("OPINION_GATE_CLOSED", "의견 수집이 마감되었습니다.", response));
+    }
+
+    @PostMapping("/{projectSectionId}/opinion-gate/reopen")
+    public ResponseEntity<ApiResponse<OpinionGateReopenResponse>> reopenOpinionGate(
+            @PathVariable Long projectSectionId,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        OpinionGateReopenResponse response = opinionService.reopenOpinionGate(projectSectionId, principal.userId());
+        return ResponseEntity.ok(ApiResponse.success("OPINION_GATE_REOPENED", "의견 수집이 다시 열렸습니다.", response));
     }
 }

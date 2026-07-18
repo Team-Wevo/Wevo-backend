@@ -12,6 +12,7 @@ import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionStatusHistory;
 import com.wevo.backend.section.repository.ProjectSectionRepository;
+import com.wevo.backend.section.repository.SectionDraftRepository;
 import com.wevo.backend.section.repository.SectionStatusHistoryRepository;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
@@ -44,6 +45,8 @@ class SectionStatusServiceTest {
     private ProjectSectionRepository projectSectionRepository;
     @Mock
     private ProjectAccessGuard projectAccessGuard;
+    @Mock
+    private SectionDraftRepository sectionDraftRepository;
     @Mock
     private SectionStatusHistoryRepository sectionStatusHistoryRepository;
 
@@ -126,6 +129,27 @@ class SectionStatusServiceTest {
                 () -> sectionStatusService.markSynthesizing(SECTION_ID, OWNER_ID));
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("팀장이 미확정 섹션을 재오픈하면 COLLECTING 전이 이력과 stale 표시를 남긴다")
+    void markCollecting_fromDrafting_marksStaleWhenDraftExists() {
+        User owner = user(OWNER_ID);
+        ProjectSection section = section(ProjectSectionStatus.DRAFTING);
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectAccessGuard.requireOwner(PROJECT_ID, OWNER_ID))
+                .willReturn(member(owner, ProjectMemberRole.OWNER, section.getProject()));
+        given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
+
+        ProjectSection reopened = sectionStatusService.markCollecting(SECTION_ID, OWNER_ID);
+
+        assertThat(reopened.getStatus()).isEqualTo(ProjectSectionStatus.COLLECTING);
+        assertThat(reopened.isSynthesisStale()).isTrue();
+        ArgumentCaptor<SectionStatusHistory> captor = ArgumentCaptor.forClass(SectionStatusHistory.class);
+        verify(sectionStatusHistoryRepository).save(captor.capture());
+        assertThat(captor.getValue().getEventType()).isEqualTo("COLLECT_REOPENED");
+        assertThat(captor.getValue().getFromStatus()).isEqualTo(ProjectSectionStatus.DRAFTING);
+        assertThat(captor.getValue().getToStatus()).isEqualTo(ProjectSectionStatus.COLLECTING);
     }
 
     // ── 픽스처 ──

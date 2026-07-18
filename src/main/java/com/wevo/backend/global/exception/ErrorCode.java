@@ -39,11 +39,12 @@ public enum ErrorCode {
     SECTION_DRAFT_NOT_FOUND(HttpStatus.NOT_FOUND, "S003", "초안이 없습니다."),
     DRAFT_LEASE_HELD_BY_OTHER(HttpStatus.CONFLICT, "S004", "다른 사용자가 편집 중입니다."),
     DRAFT_LEASE_NOT_HELD(HttpStatus.CONFLICT, "S005", "편집권이 없습니다."),
+    INVALID_OPINION_GATE_STATUS(HttpStatus.CONFLICT, "S008", "섹션 상태가 올바르지 않습니다."),
 
     // Opinion
     OPINION_NOT_FOUND(HttpStatus.NOT_FOUND, "O001", "의견을 찾을 수 없습니다."),
     OPINION_COLLECTION_CLOSED(HttpStatus.CONFLICT, "O003", "의견 수집이 마감되었습니다."),
-    NO_SUBMITTED_OPINION(HttpStatus.CONFLICT, "O004", "제출된 의견이 없습니다."),
+    NO_SUBMITTED_OPINION(HttpStatus.UNPROCESSABLE_ENTITY, "O004", "제출된 의견이 없습니다."),
 
     // Issue
     ISSUE_NOT_FOUND(HttpStatus.NOT_FOUND, "I001", "쟁점을 찾을 수 없습니다."),

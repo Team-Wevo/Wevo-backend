@@ -8,6 +8,8 @@ import com.wevo.backend.opinion.domain.OpinionStatus;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
+import com.wevo.backend.opinion.dto.response.OpinionGateCloseResponse;
+import com.wevo.backend.opinion.dto.response.OpinionGateReopenResponse;
 import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
 import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
 import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse.AuthorResponse;
@@ -46,6 +48,8 @@ class OpinionControllerWebMvcTest {
     private static final String GET_URL = "/api/project-sections/10/my-opinion";
     private static final String SUBMIT_URL = "/api/project-sections/10/my-opinion/submit";
     private static final String OPINIONS_URL = "/api/project-sections/10/opinions";
+    private static final String CLOSE_GATE_URL = "/api/project-sections/10/opinion-gate/close";
+    private static final String REOPEN_GATE_URL = "/api/project-sections/10/opinion-gate/reopen";
     private static final String VALID_CONTENT = "타겟을 공모전 참가 대학생 팀으로 좁히는 게 좋겠습니다.";
 
     @Autowired
@@ -286,6 +290,69 @@ class OpinionControllerWebMvcTest {
                 .andExpect(jsonPath("$.data.totalSubmittedCount").value(2))
                 .andExpect(jsonPath("$.data.opinions").isArray())
                 .andExpect(jsonPath("$.data.opinions").isEmpty());
+    }
+
+    @Test
+    @DisplayName("의견 수집 마감은 인증 없이 호출하면 A001 공통 응답을 반환한다")
+    void closeOpinionGate_withoutAuthentication_returnsA001() throws Exception {
+        mockMvc.perform(post(CLOSE_GATE_URL))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("A001"));
+    }
+
+    @Test
+    @DisplayName("OWNER의 의견 수집 마감은 OPINION_GATE_CLOSED 성공 응답을 반환한다")
+    void closeOpinionGate_returnsSuccess() throws Exception {
+        given(opinionService.closeOpinionGate(10L, 7L)).willReturn(new OpinionGateCloseResponse(
+                com.wevo.backend.section.domain.ProjectSectionStatus.SYNTHESIZING,
+                LocalDateTime.of(2026, 7, 19, 12, 20)));
+
+        mockMvc.perform(post(CLOSE_GATE_URL).with(authenticatedUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OPINION_GATE_CLOSED"))
+                .andExpect(jsonPath("$.data.sectionStatus").value("SYNTHESIZING"))
+                .andExpect(jsonPath("$.data.closedAt").value("2026-07-19T12:20:00"));
+    }
+
+    @Test
+    @DisplayName("제출 의견 없이 마감하면 O004와 422 응답을 반환한다")
+    void closeOpinionGate_withoutSubmittedOpinion_returnsO004() throws Exception {
+        given(opinionService.closeOpinionGate(10L, 7L))
+                .willThrow(new BusinessException(ErrorCode.NO_SUBMITTED_OPINION));
+
+        mockMvc.perform(post(CLOSE_GATE_URL).with(authenticatedUser()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("O004"));
+    }
+
+    @Test
+    @DisplayName("OWNER의 의견 수집 재오픈은 OPINION_GATE_REOPENED 성공 응답을 반환한다")
+    void reopenOpinionGate_returnsSuccess() throws Exception {
+        given(opinionService.reopenOpinionGate(10L, 7L)).willReturn(new OpinionGateReopenResponse(
+                10L,
+                com.wevo.backend.section.domain.ProjectSectionStatus.COLLECTING,
+                true,
+                LocalDateTime.of(2026, 7, 19, 12, 30)));
+
+        mockMvc.perform(post(REOPEN_GATE_URL).with(authenticatedUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OPINION_GATE_REOPENED"))
+                .andExpect(jsonPath("$.data.id").value(10))
+                .andExpect(jsonPath("$.data.sectionStatus").value("COLLECTING"))
+                .andExpect(jsonPath("$.data.synthesisStale").value(true))
+                .andExpect(jsonPath("$.data.reopenedAt").value("2026-07-19T12:30:00"));
+    }
+
+    @Test
+    @DisplayName("재오픈할 수 없는 섹션 상태면 S008과 409 응답을 반환한다")
+    void reopenOpinionGate_invalidStatus_returnsS008() throws Exception {
+        given(opinionService.reopenOpinionGate(10L, 7L))
+                .willThrow(new BusinessException(ErrorCode.INVALID_OPINION_GATE_STATUS));
+
+        mockMvc.perform(post(REOPEN_GATE_URL).with(authenticatedUser()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S008"));
     }
 
     private RequestPostProcessor authenticatedUser() {

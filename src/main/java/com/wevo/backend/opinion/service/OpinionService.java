@@ -8,14 +8,18 @@ import com.wevo.backend.opinion.domain.OpinionStatus;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
+import com.wevo.backend.opinion.dto.response.OpinionGateCloseResponse;
+import com.wevo.backend.opinion.dto.response.OpinionGateReopenResponse;
 import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
 import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
 import com.wevo.backend.opinion.repository.OpinionRepository;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
+import com.wevo.backend.section.service.SectionStatusService;
 import com.wevo.backend.user.repository.UserRepository;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
@@ -40,15 +44,20 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class OpinionService {
 
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+
     private final SectionAccessGuard sectionAccessGuard;
     private final OpinionRepository opinionRepository;
+    private final SectionStatusService sectionStatusService;
     private final UserRepository userRepository;
 
     public OpinionService(SectionAccessGuard sectionAccessGuard,
                           OpinionRepository opinionRepository,
+                          SectionStatusService sectionStatusService,
                           UserRepository userRepository) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.opinionRepository = opinionRepository;
+        this.sectionStatusService = sectionStatusService;
         this.userRepository = userRepository;
     }
 
@@ -153,8 +162,42 @@ public class OpinionService {
                         ))
                 ));
         validateContentForSubmit(opinion.getContent());
-        opinion.submit(LocalDateTime.now());
+        opinion.submit(LocalDateTime.now(KST));
         return OpinionSubmitResponse.from(opinion);
+    }
+
+    /**
+     * 의견 수집을 마감한다. 마감은 OWNER만 실행할 수 있고 제출 의견이 하나 이상 있어야 한다.
+     * 섹션 잠금을 먼저 획득해 늦게 도착한 임시저장·제출 요청과 상태 전이가 섞이지 않게 한다.
+     */
+    @Transactional
+    public OpinionGateCloseResponse closeOpinionGate(Long projectSectionId, Long userId) {
+        ProjectSection section = sectionAccessGuard.requireOwnedSectionForUpdate(projectSectionId, userId);
+        if (section.getStatus() != ProjectSectionStatus.COLLECTING) {
+            throw new BusinessException(ErrorCode.INVALID_OPINION_GATE_STATUS);
+        }
+        if (!opinionRepository.existsByProjectSection_IdAndStatus(projectSectionId, OpinionStatus.SUBMITTED)) {
+            throw new BusinessException(ErrorCode.NO_SUBMITTED_OPINION);
+        }
+
+        sectionStatusService.markSynthesizing(projectSectionId, userId);
+        return OpinionGateCloseResponse.from(section, LocalDateTime.now(KST));
+    }
+
+    /**
+     * 미확정 섹션의 의견 수집을 다시 연다. 확정 섹션은 재오픈할 수 없고, 기존 초안이 있으면
+     * 재정리 필요 플래그가 설정된다.
+     */
+    @Transactional
+    public OpinionGateReopenResponse reopenOpinionGate(Long projectSectionId, Long userId) {
+        ProjectSection section = sectionAccessGuard.requireOwnedSectionForUpdate(projectSectionId, userId);
+        if (section.getStatus() == ProjectSectionStatus.COLLECTING
+                || section.getStatus() == ProjectSectionStatus.CONFIRMED) {
+            throw new BusinessException(ErrorCode.INVALID_OPINION_GATE_STATUS);
+        }
+
+        ProjectSection reopened = sectionStatusService.markCollecting(projectSectionId, userId);
+        return OpinionGateReopenResponse.from(reopened, LocalDateTime.now(KST));
     }
 
     private void validateContentForSubmit(String content) {

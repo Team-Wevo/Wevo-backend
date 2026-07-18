@@ -7,6 +7,8 @@ import java.util.Optional;
 
 public interface SectionDraftRepository extends JpaRepository<SectionDraft, Long> {
 
+    boolean existsByProjectSection_Id(Long projectSectionId);
+
     /**
      * 섹션의 최신 버전 초안을 조회한다. (외부 검토자가 읽을 현재 본문)
      */
