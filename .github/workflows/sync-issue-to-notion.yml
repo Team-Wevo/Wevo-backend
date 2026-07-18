@@ -7,10 +7,6 @@ on:
       - edited
       - closed
       - reopened
-      - assigned
-      - unassigned
-      - labeled
-      - unlabeled
 
 concurrency:
   group: notion-issue-${{ github.repository }}-${{ github.event.issue.number }}
