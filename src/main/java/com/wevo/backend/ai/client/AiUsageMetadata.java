@@ -5,6 +5,7 @@ package com.wevo.backend.ai.client;
  * 원본 prompt나 completion은 포함하지 않는다.
  */
 public record AiUsageMetadata(
+        String providerId,
         String providerRequestId,
         String modelId,
         Long inputTokens,
@@ -12,6 +13,17 @@ public record AiUsageMetadata(
         Long cacheReadInputTokens,
         Long cacheWriteInputTokens
 ) {
+
+    public AiUsageMetadata(
+            String providerRequestId,
+            String modelId,
+            Long inputTokens,
+            Long outputTokens,
+            Long cacheReadInputTokens,
+            Long cacheWriteInputTokens
+    ) {
+        this(null, providerRequestId, modelId, inputTokens, outputTokens, cacheReadInputTokens, cacheWriteInputTokens);
+    }
 
     public Long totalInputTokens() {
         if (inputTokens == null) {

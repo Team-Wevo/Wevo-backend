@@ -27,7 +27,7 @@ public final class StructuredOutputDefinition<T> {
             throw new IllegalArgumentException("schema id, output type, JSON schema, validator는 필수입니다.");
         }
         if (!outputType.isRecord()) {
-            throw new IllegalArgumentException("Claude 구조화 출력 타입은 Java record여야 합니다.");
+            throw new IllegalArgumentException("AI 구조화 출력 타입은 Java record여야 합니다.");
         }
         this.schemaId = schemaId;
         this.outputType = outputType;

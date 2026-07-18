@@ -5,7 +5,7 @@ import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiJobStatus;
 import com.wevo.backend.ai.domain.AiUsageLog;
-import com.wevo.backend.ai.exception.ClaudeProviderException;
+import com.wevo.backend.ai.exception.AiProviderException;
 import com.wevo.backend.ai.repository.AiJobRepository;
 import com.wevo.backend.ai.repository.AiUsageLogRepository;
 import com.wevo.backend.global.exception.BusinessException;
@@ -287,7 +287,7 @@ class AiJobServiceIntegrationTest {
             String snapshot = Integer.toHexString(++index).repeat(64);
             UUID requestId = jobService.createOrGet(command(snapshot)).requestId();
             jobService.start(requestId, snapshot);
-            jobService.fail(requestId, new ClaudeProviderException(
+            jobService.fail(requestId, new AiProviderException(
                     entry.getKey(),
                     new IllegalStateException("invalid output sk-ant-secret-value"),
                     null,
@@ -370,7 +370,7 @@ class AiJobServiceIntegrationTest {
                 "opinions:v1",
                 "opinion-synthesis:v1",
                 "opinion-synthesis:v1",
-                "claude-haiku-4-5",
+                "test-model",
                 128
         );
     }

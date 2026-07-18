@@ -1,8 +1,17 @@
 spring:
   ai:
-    anthropic:
-      api-key: ${ANTHROPIC_API_KEY:test-anthropic-api-key}
+    model:
+      chat: openai
+      embedding: none
+    openai:
+      api-key: test-nvidia-api-key
+      base-url: http://127.0.0.1:1/v1
+      timeout: 1s
       max-retries: 0
+      chat:
+        model: test-model
+        max-tokens: 128
+        temperature: 1
 
   datasource:
     url: jdbc:h2:mem:wevo-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
@@ -21,13 +30,16 @@ spring:
 
 wevo:
   ai:
+    provider: nvidia
     default-options:
-      model: claude-haiku-4-5
+      model: test-model
       timeout: 1s
       max-output-tokens: 128
       max-retries: 0
       initial-backoff: 0ms
       max-backoff: 0ms
+    nvidia:
+      temperature: 1
     structured-output:
       max-correction-retries: 2
     jobs:
@@ -61,3 +73,7 @@ app:
   cors:
     allowed-origins:
       - http://localhost:3000
+
+logging:
+  level:
+    org.springframework.ai.openai: ERROR
