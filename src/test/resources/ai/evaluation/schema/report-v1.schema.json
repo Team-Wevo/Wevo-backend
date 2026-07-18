@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wevo.local/schema/ai-evaluation-report-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reportSchemaVersion", "run", "metrics", "gate", "baselineDeltas", "fixtureResults", "failures"],
+  "properties": {
+    "reportSchemaVersion": { "const": "1.0" },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["datasetVersion", "providerId", "modelId", "promptVersion", "schemaVersion", "executedAt", "temperature", "maxOutputTokens", "gitCommit"],
+      "properties": {
+        "datasetVersion": { "type": "string" },
+        "providerId": { "type": "string" },
+        "modelId": { "type": "string" },
+        "promptVersion": { "type": "string" },
+        "schemaVersion": { "type": "string" },
+        "executedAt": { "type": "string", "format": "date-time" },
+        "temperature": { "type": "number" },
+        "maxOutputTokens": { "type": "integer", "minimum": 1 },
+        "gitCommit": { "type": "string" }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixtureCount", "executedCount", "totalAttemptCount", "qualityFixtureCount",
+        "schemaValidRate", "missingRequiredFieldCount", "invalidEnumValueCount",
+        "correctionExhaustedCount", "unknownEvidenceIdCount", "evidenceCoverage",
+        "issuePrecision", "issueRecall", "mergedConflictCount", "unverifiedFactCount",
+        "forbiddenClaimCount", "missingRequiredFactCount", "reviewGoldRecall",
+        "reviewFalsePositiveRate", "inputTokens", "outputTokens", "cacheReadTokens",
+        "cacheWriteTokens", "cost", "latencyP50Millis", "latencyP95Millis",
+        "errorDistribution"
+      ],
+      "properties": {
+        "fixtureCount": { "type": "integer", "minimum": 0 },
+        "executedCount": { "type": "integer", "minimum": 0 },
+        "totalAttemptCount": { "type": "integer", "minimum": 0 },
+        "qualityFixtureCount": { "type": "integer", "minimum": 0 },
+        "schemaValidRate": { "$ref": "#/$defs/rateMetric" },
+        "missingRequiredFieldCount": { "$ref": "#/$defs/countMetric" },
+        "invalidEnumValueCount": { "$ref": "#/$defs/countMetric" },
+        "correctionExhaustedCount": { "$ref": "#/$defs/countMetric" },
+        "unknownEvidenceIdCount": { "$ref": "#/$defs/countMetric" },
+        "evidenceCoverage": { "$ref": "#/$defs/rateMetric" },
+        "issuePrecision": { "$ref": "#/$defs/rateMetric" },
+        "issueRecall": { "$ref": "#/$defs/rateMetric" },
+        "mergedConflictCount": { "$ref": "#/$defs/countMetric" },
+        "unverifiedFactCount": { "$ref": "#/$defs/countMetric" },
+        "forbiddenClaimCount": { "$ref": "#/$defs/countMetric" },
+        "missingRequiredFactCount": { "$ref": "#/$defs/countMetric" },
+        "reviewGoldRecall": { "$ref": "#/$defs/rateMetric" },
+        "reviewFalsePositiveRate": { "$ref": "#/$defs/rateMetric" },
+        "inputTokens": { "$ref": "#/$defs/nullableLongSummary" },
+        "outputTokens": { "$ref": "#/$defs/nullableLongSummary" },
+        "cacheReadTokens": { "$ref": "#/$defs/nullableLongSummary" },
+        "cacheWriteTokens": { "$ref": "#/$defs/nullableLongSummary" },
+        "cost": { "$ref": "#/$defs/costSummary" },
+        "latencyP50Millis": { "type": ["integer", "null"], "minimum": 0 },
+        "latencyP95Millis": { "type": ["integer", "null"], "minimum": 0 },
+        "errorDistribution": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automaticStatus", "overallStatus", "reasons"],
+      "properties": {
+        "automaticStatus": { "enum": ["PASS", "FAIL", "INSUFFICIENT_SAMPLES"] },
+        "overallStatus": { "enum": ["PASS", "FAIL", "REVIEW_REQUIRED"] },
+        "reasons": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "baselineDeltas": {
+      "type": "object",
+      "additionalProperties": { "type": "number" }
+    },
+    "fixtureResults": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fixtureId", "outcome", "latencyMillis", "attemptCount", "providerId", "providerRequestId", "modelId", "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "estimatedCost", "costStatus"],
+        "properties": {
+          "fixtureId": { "type": "string" },
+          "outcome": { "type": "string" },
+          "latencyMillis": { "type": "integer", "minimum": 0 },
+          "attemptCount": { "type": "integer", "minimum": 0 },
+          "providerId": { "type": ["string", "null"] },
+          "providerRequestId": { "type": ["string", "null"] },
+          "modelId": { "type": ["string", "null"] },
+          "inputTokens": { "type": ["integer", "null"], "minimum": 0 },
+          "outputTokens": { "type": ["integer", "null"], "minimum": 0 },
+          "cacheReadTokens": { "type": ["integer", "null"], "minimum": 0 },
+          "cacheWriteTokens": { "type": ["integer", "null"], "minimum": 0 },
+          "estimatedCost": { "type": ["number", "null"], "minimum": 0 },
+          "costStatus": { "enum": ["PRICED", "UNPRICED", "NOT_MEASURABLE"] }
+        }
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fixtureId", "reason"],
+        "properties": {
+          "fixtureId": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "rateMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["numerator", "denominator", "value", "status"],
+      "properties": {
+        "numerator": { "type": "integer", "minimum": 0 },
+        "denominator": { "type": "integer", "minimum": 0 },
+        "value": { "type": ["number", "null"] },
+        "status": { "$ref": "#/$defs/measurementStatus" }
+      }
+    },
+    "countMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "measuredSamples", "totalSamples", "status"],
+      "properties": {
+        "value": { "type": ["integer", "null"], "minimum": 0 },
+        "measuredSamples": { "type": "integer", "minimum": 0 },
+        "totalSamples": { "type": "integer", "minimum": 0 },
+        "status": { "$ref": "#/$defs/measurementStatus" }
+      }
+    },
+    "nullableLongSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "measuredSamples", "totalSamples", "status"],
+      "properties": {
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "measuredSamples": { "type": "integer", "minimum": 0 },
+        "totalSamples": { "type": "integer", "minimum": 0 },
+        "status": { "$ref": "#/$defs/measurementStatus" }
+      }
+    },
+    "costSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estimatedCost", "status", "pricedSamples", "totalSamples"],
+      "properties": {
+        "estimatedCost": { "type": ["number", "null"], "minimum": 0 },
+        "status": { "enum": ["PRICED", "UNPRICED", "NOT_MEASURABLE"] },
+        "pricedSamples": { "type": "integer", "minimum": 0 },
+        "totalSamples": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "measurementStatus": {
+      "enum": ["MEASURED", "PARTIALLY_MEASURED", "NOT_MEASURABLE"]
+    }
+  }
+}

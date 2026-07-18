@@ -14,6 +14,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -225,7 +226,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
                         new SystemMessage(request.prompt().systemPrompt()),
                         new UserMessage(userPrompt)
                 ))
-                .options(providerOptions(options))
+                .options(structuredProviderOptions(options))
                 .call()
                 .responseEntity(converter);
     }
@@ -453,9 +454,17 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
                 .maxTokens(options.maxOutputTokens())
                 .n(1)
                 .temperature(nvidiaProperties.temperature())
+                .reasoningEffort(nvidiaProperties.reasoningEffort())
                 .timeout(options.timeout())
                 .customHeaders(Map.of("Accept", "application/json"))
                 .maxRetries(0);
+    }
+
+    private OpenAiChatOptions.Builder structuredProviderOptions(AiProperties.ModelOptions options) {
+        return providerOptions(options)
+                .responseFormat(OpenAiChatModel.ResponseFormat.builder()
+                        .type(OpenAiChatModel.ResponseFormat.Type.JSON_OBJECT)
+                        .build());
     }
 
     private AiProviderResponse toResponse(ChatResponse response, String requestedModel) {

@@ -16,14 +16,15 @@ wevo:
   ai:
     provider: none
     default-options:
-      model: ${NVIDIA_API_MODEL:moonshotai/kimi-k2.6}
+      model: ${NVIDIA_API_MODEL:mistralai/mistral-medium-3.5-128b}
       timeout: ${NVIDIA_API_TIMEOUT:60s}
       max-output-tokens: ${NVIDIA_API_MAX_TOKENS:4096}
       max-retries: ${AI_MAX_RETRIES:2}
       initial-backoff: 500ms
       max-backoff: 8s
     nvidia:
-      temperature: ${NVIDIA_API_TEMPERATURE:1}
+      temperature: ${NVIDIA_API_TEMPERATURE:0.1}
+      reasoning-effort: ${NVIDIA_API_REASONING_EFFORT:none}
     structured-output:
       max-correction-retries: ${AI_STRUCTURED_OUTPUT_MAX_CORRECTION_RETRIES:2}
     jobs:

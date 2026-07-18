@@ -16,7 +16,7 @@ AI가 의견 사이의 충돌과 공백을 찾아 근거가 추적되는 초안�
 | --- | --- |
 | 인증·팀·프로젝트 | Google·Kakao 로그인, 회원 및 팀 관리, 프로젝트와 섹션 생성 |
 | 의견 수집·실시간 협업 | 의견 작성·제출, 수집 상태 관리, 상태 변화 실시간 공유 |
-| AI 퍼실리테이터 | Claude API 기반 쟁점 감지, 의견 종합, 근거가 포함된 초안 생성 |
+| AI 퍼실리테이터 | Provider 중립 AI gateway 기반 쟁점 감지, 의견 종합, 근거가 포함된 초안 생성 |
 | 검토·확정·결과물 | 팀·외부 검토, 수정 요청, 섹션 확정, 결과물 내보내기 |
 | 인프라·공통·DevOps | 공통 응답, 전역 예외 처리, API 문서, 로컬·배포 환경 관리 |
 
@@ -31,8 +31,27 @@ AI가 의견 사이의 충돌과 공백을 찾아 근거가 추적되는 초안�
 - Swagger / Springdoc OpenAPI
 - Gradle, JUnit
 
-구현 단계에서는 Spring Security·JWT·Google/Kakao OAuth, SSE 또는 WebSocket/STOMP,
-Claude API의 JSON 구조화 출력을 적용할 예정입니다.
+구현 단계에서는 Spring Security·JWT·Google/Kakao OAuth, SSE 또는 WebSocket/STOMP와
+서버 검증을 거치는 AI JSON 구조화 출력을 적용합니다.
+
+## 로컬 AI 개발 Provider
+
+로컬 개발과 명시적 통합 테스트에서는 NVIDIA API Catalog Free Endpoint의
+`mistralai/mistral-medium-3.5-128b`를 사용합니다. 일반·구조화 호출은
+`reasoning_effort=none`, temperature `0.1`을 기준으로 하며 구조화 호출은 JSON object 모드 이후에도
+서버의 JSON Schema·record·semantic validation을 통과해야 합니다.
+
+```properties
+AI_PROVIDER=nvidia
+NVIDIA_API_KEY=
+NVIDIA_API_BASE_URL=https://integrate.api.nvidia.com
+NVIDIA_API_MODEL=mistralai/mistral-medium-3.5-128b
+NVIDIA_API_TEMPERATURE=0.1
+NVIDIA_API_REASONING_EFFORT=none
+```
+
+Free Endpoint는 synthetic 데이터 기반 개발·평가에만 사용하며 운영 트래픽과 실제 사용자 의견을
+전송하지 않습니다. 전체 설정은 `.env.example`을 기준으로 합니다.
 
 ## 패키지 구조
 

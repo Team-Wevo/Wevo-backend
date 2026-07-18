@@ -11,7 +11,7 @@ spring:
       chat:
         model: test-model
         max-tokens: 128
-        temperature: 1
+        temperature: 0.1
 
   datasource:
     url: jdbc:h2:mem:wevo-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
@@ -39,7 +39,8 @@ wevo:
       initial-backoff: 0ms
       max-backoff: 0ms
     nvidia:
-      temperature: 1
+      temperature: 0.1
+      reasoning-effort: none
     structured-output:
       max-correction-retries: 2
     jobs:

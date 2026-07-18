@@ -18,10 +18,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(properties = {
         "spring.ai.openai.api-key=${NVIDIA_API_KEY}",
         "spring.ai.openai.base-url=${NVIDIA_API_BASE_URL:https://integrate.api.nvidia.com}/v1",
-        "spring.ai.openai.chat.model=${NVIDIA_API_MODEL:moonshotai/kimi-k2.6}",
+        "spring.ai.openai.timeout=${NVIDIA_API_TIMEOUT:60s}",
+        "spring.ai.openai.chat.model=${NVIDIA_API_MODEL:mistralai/mistral-medium-3.5-128b}",
         "spring.ai.openai.chat.max-tokens=128",
-        "wevo.ai.default-options.model=${NVIDIA_API_MODEL:moonshotai/kimi-k2.6}",
-        "wevo.ai.default-options.max-output-tokens=128"
+        "spring.ai.openai.chat.temperature=${NVIDIA_API_TEMPERATURE:0.1}",
+        "wevo.ai.default-options.model=${NVIDIA_API_MODEL:mistralai/mistral-medium-3.5-128b}",
+        "wevo.ai.default-options.timeout=${NVIDIA_API_TIMEOUT:60s}",
+        "wevo.ai.default-options.max-output-tokens=128",
+        "wevo.ai.nvidia.temperature=${NVIDIA_API_TEMPERATURE:0.1}",
+        "wevo.ai.nvidia.reasoning-effort=${NVIDIA_API_REASONING_EFFORT:none}"
 })
 @EnabledIfEnvironmentVariable(named = "NVIDIA_API_KEY", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "NVIDIA_INTEGRATION_ENABLED", matches = "(?i)true")

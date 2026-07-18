@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "issue-detection/minority-opinion-presentation",
+    "feature": "ISSUE_DETECTION",
+    "description": "다수 의견과 다른 소수 의견을 합의로 덮지 않는 시나리오",
+    "language": "ko",
+    "tags": ["minority", "presentation"],
+    "datasetVersion": "issue-detection-v1",
+    "kind": "QUALITY",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PRESENTATION",
+    "projectContext": "가상의 신제품 아이디어 발표",
+    "sectionContext": "시연 포함 여부",
+    "labels": ["시연"],
+    "opinions": [
+      { "id": "opinion-a", "content": "발표 중 실제 시연을 넣자.", "submitted": true, "deleted": false },
+      { "id": "opinion-b", "content": "실제 시연을 넣는 데 동의한다.", "submitted": true, "deleted": false },
+      { "id": "opinion-c", "content": "현장 오류 위험 때문에 녹화 영상만 사용하자.", "submitted": true, "deleted": false }
+    ],
+    "parentConfirmedContent": null
+  },
+  "expected": {
+    "requiredFacts": [],
+    "expectedIssues": [
+      { "type": "CONFLICT", "evidenceIds": ["opinion-a", "opinion-b", "opinion-c"] }
+    ],
+    "expectedEvidenceIds": ["opinion-a", "opinion-b", "opinion-c"],
+    "forbiddenClaims": ["모두 실제 시연에 동의"],
+    "goldReviewIssueIds": []
+  }
+}

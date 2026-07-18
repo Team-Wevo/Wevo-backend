@@ -4,6 +4,8 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.exception.AiProviderException;
+import com.wevo.backend.ai.prompt.PromptTemplateId;
+import com.wevo.backend.ai.prompt.RenderedPrompt;
 import com.wevo.backend.global.exception.ErrorCode;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -87,7 +89,7 @@ class NvidiaProviderContractTest {
         assertThat(response.content()).isEqualTo("contract-ok");
         assertThat(response.finishReason()).isEqualTo("STOP");
         assertThat(response.usageMetadata()).isEqualTo(new AiUsageMetadata(
-                "nvidia", "chatcmpl-contract-1", "moonshotai/kimi-k2.6", 12L, 3L, null, null
+                "nvidia", "chatcmpl-contract-1", "mistralai/mistral-medium-3.5-128b", 12L, 3L, null, null
         ));
 
         CapturedRequest captured = takeRequest();
@@ -101,7 +103,9 @@ class NvidiaProviderContractTest {
         assertThat(request.get("model").asText()).isEqualTo("test-model");
         assertThat(request.get("max_tokens").asInt()).isEqualTo(128);
         assertThat(request.get("n").asInt()).isEqualTo(1);
-        assertThat(request.get("temperature").asDouble()).isEqualTo(1.0d);
+        assertThat(request.get("temperature").asDouble()).isEqualTo(0.1d);
+        assertThat(request.get("reasoning_effort").asText()).isEqualTo("none");
+        assertThat(request.get("response_format")).isNull();
         assertThat(request.get("messages")).extracting(
                 message -> message.get("role").asText(),
                 message -> message.get("content").asText()
@@ -114,6 +118,35 @@ class NvidiaProviderContractTest {
     }
 
     @Test
+    void requestsMistralJsonModeForStructuredOutput() throws Exception {
+        enqueue(200, structuredSuccessBody());
+
+        StructuredAiProviderResponse<ContractSummary> response = providerGateway.generateStructured(
+                new StructuredAiProviderRequest<>(
+                        AiFeature.ISSUE_DETECTION,
+                        new RenderedPrompt(
+                                new PromptTemplateId("contract-summary", 1),
+                                "Return only valid JSON.",
+                                "Summarize the synthetic source."
+                        ),
+                        StructuredOutputDefinition.of(
+                                new OutputSchemaId("contract-summary", 1),
+                                ContractSummary.class
+                        ),
+                        StructuredOutputValidationContext.empty()
+                )
+        );
+
+        assertThat(response.result()).isEqualTo(new ContractSummary("contract-ok"));
+
+        JsonNode request = objectMapper.readTree(takeRequest().body());
+        assertThat(request.get("reasoning_effort").asText()).isEqualTo("none");
+        assertThat(request.get("response_format").get("type").asText()).isEqualTo("json_object");
+        assertThat(request.get("messages").get(1).get("content").asText())
+                .contains("<output_contract>", "summary");
+    }
+
+    @Test
     void preservesMissingUsageAsNullAndRejectsMissingChoicesOrContent() {
         enqueue(200, successBody(false));
         AiProviderResponse response = providerGateway.generate(request());
@@ -122,13 +155,13 @@ class NvidiaProviderContractTest {
 
         enqueue(200, """
                 {"id":"empty","object":"chat.completion","created":1,
-                 "model":"moonshotai/kimi-k2.6","choices":[]}
+                 "model":"mistralai/mistral-medium-3.5-128b","choices":[]}
                 """);
         assertError(ErrorCode.AI_PROVIDER_INVALID_RESPONSE);
 
         enqueue(200, """
                 {"id":"null-content","object":"chat.completion","created":1,
-                 "model":"moonshotai/kimi-k2.6","choices":[
+                 "model":"mistralai/mistral-medium-3.5-128b","choices":[
                    {"index":0,"message":{"role":"assistant","content":null},"finish_reason":"stop"}
                  ]}
                 """);
@@ -139,7 +172,7 @@ class NvidiaProviderContractTest {
     void mapsProviderRefusalFieldWithoutPersistingItAsContent() {
         enqueue(200, """
                 {"id":"refusal","object":"chat.completion","created":1,
-                 "model":"moonshotai/kimi-k2.6","choices":[
+                 "model":"mistralai/mistral-medium-3.5-128b","choices":[
                    {"index":0,"message":{"role":"assistant","content":null,"refusal":"not allowed"},
                     "finish_reason":"stop"}
                  ]}
@@ -152,7 +185,7 @@ class NvidiaProviderContractTest {
     void doesNotLogPromptWhenProviderReturnsNoChoices(CapturedOutput output) {
         enqueue(200, """
                 {"id":"empty","object":"chat.completion","created":1,
-                 "model":"moonshotai/kimi-k2.6","choices":[]}
+                 "model":"mistralai/mistral-medium-3.5-128b","choices":[]}
                 """);
 
         assertThatThrownBy(() -> providerGateway.generate(new AiProviderRequest(
@@ -219,10 +252,20 @@ class NvidiaProviderContractTest {
                 : "";
         return """
                 {"id":"chatcmpl-contract-1","object":"chat.completion","created":1,
-                 "model":"moonshotai/kimi-k2.6","choices":[
+                 "model":"mistralai/mistral-medium-3.5-128b","choices":[
                    {"index":0,"message":{"role":"assistant","content":"contract-ok"},"finish_reason":"stop"}
                  ]%s}
                 """.formatted(usage);
+    }
+
+    private static String structuredSuccessBody() {
+        return """
+                {"id":"chatcmpl-structured-1","object":"chat.completion","created":1,
+                 "model":"mistralai/mistral-medium-3.5-128b","choices":[
+                   {"index":0,"message":{"role":"assistant","content":"{\\"summary\\":\\"contract-ok\\"}"},
+                    "finish_reason":"stop"}
+                 ],"usage":{"prompt_tokens":20,"completion_tokens":5,"total_tokens":25}}
+                """;
     }
 
     private static void enqueue(int status, String body) {
@@ -277,5 +320,8 @@ class NvidiaProviderContractTest {
             Map<String, List<String>> headers,
             String body
     ) {
+    }
+
+    private record ContractSummary(String summary) {
     }
 }
