@@ -100,7 +100,7 @@ class AiEvaluationMetricsCalculatorTest {
     }
 
     @Test
-    void countsSchemaViolationDetailsAlongsideNormalizedFailureDistribution() {
+    void countsSchemaViolationDetailsWithoutInferringCorrectionExhaustionFromAttempts() {
         AiEvaluationFixture fixture = fixture("all-agreed-proposal.json");
         AiEvaluationSample failed = new AiEvaluationSample(
                 fixture.metadata().id(),
@@ -122,7 +122,11 @@ class AiEvaluationMetricsCalculatorTest {
         assertThat(metrics.totalAttemptCount()).isEqualTo(2);
         assertThat(metrics.missingRequiredFieldCount().value()).isEqualTo(1);
         assertThat(metrics.invalidEnumValueCount().value()).isEqualTo(1);
-        assertThat(metrics.correctionExhaustedCount().value()).isEqualTo(1);
+        assertThat(metrics.correctionExhaustedCount().value()).isNull();
+        assertThat(metrics.correctionExhaustedCount().measuredSamples()).isZero();
+        assertThat(metrics.correctionExhaustedCount().totalSamples()).isEqualTo(1);
+        assertThat(metrics.correctionExhaustedCount().status())
+                .isEqualTo(AiEvaluationMetrics.MeasurementStatus.NOT_MEASURABLE);
         assertThat(metrics.errorDistribution())
                 .containsEntry(AiEvaluationOutcome.SCHEMA_VALIDATION_FAILURE, 1);
     }

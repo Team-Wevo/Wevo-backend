@@ -40,8 +40,10 @@ enum 값 변경은 새 schema version과 새 dataset version을 만든다. 배�
 - latency는 Provider 호출 시작부터 공통 JSON parse → schema → record → semantic validation 완료까지의
   runner 경계 시간이다. 시작된 성공·실패 실행은 percentile에 포함하고 호출 전 skip/budget 차단은
   제외한다. p50/p95는 nearest-rank 방식이며 0건은 `null`이다.
-- 공통 응답은 전체 `attemptCount`만 제공하므로 transport retry와 schema correction을 report에서
-  분리하지 않는다.
+- 공통 응답은 transport retry와 schema correction을 합산한 전체 `attemptCount`만 제공하므로 둘을
+  report에서 분리하거나 `attemptCount`로 보정 재시도 소진을 추론하지 않는다. 현재
+  `correctionExhaustedCount`는 `NOT_MEASURABLE`이며, 공통 응답에 두 시도를 구분하는 metadata가 추가된
+  뒤에만 집계한다.
 
 기본 자동 gate 제안은 schema valid rate 99%, unknown evidence 0건, evidence coverage 100%,
 미확인/금지 사실 0건이다. 비율과 percentile은 실행 표본 20건 미만이면 gate에 사용하지 않고

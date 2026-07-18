@@ -74,16 +74,7 @@ public final class AiEvaluationMetricsCalculator {
                 AiEvaluationMetrics.CountMetric.of(
                         counters.invalidEnumValues, schemaDetailSamples, schemaRelevantSamples
                 ),
-                AiEvaluationMetrics.CountMetric.of((int) executed.stream()
-                        .filter(sample -> sample.attemptCount() > 1)
-                        .filter(sample -> switch (sample.outcome()) {
-                            case JSON_PARSE_FAILURE,
-                                 SCHEMA_VALIDATION_FAILURE,
-                                 TYPE_CONVERSION_FAILURE,
-                                 CORRECTION_EXHAUSTED -> true;
-                            default -> false;
-                        })
-                        .count(), executed.size(), executed.size()),
+                AiEvaluationMetrics.CountMetric.of(0, 0, executed.size()),
                 AiEvaluationMetrics.CountMetric.of(
                         counters.unknownEvidenceIds, successful.size(), executed.size()
                 ),
