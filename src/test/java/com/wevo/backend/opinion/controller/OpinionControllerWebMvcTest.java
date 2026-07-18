@@ -66,16 +66,32 @@ class OpinionControllerWebMvcTest {
     }
 
     @Test
-    @DisplayName("content 가 20자 미만이면 C001 과 필드 오류를 반환한다")
-    void saveDraft_tooShortContent_returnsC001() throws Exception {
+    @DisplayName("content 가 공백뿐이면 C001 과 필드 오류를 반환한다")
+    void saveDraft_blankContent_returnsC001() throws Exception {
         mockMvc.perform(patch(URL)
                         .with(authenticatedUser())
                         .contentType("application/json")
-                        .content("{\"content\": \"너무 짧은 의견\"}"))
+                        .content("{\"content\": \"   \"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("C001"))
                 .andExpect(jsonPath("$.errors[0].field").value("content"));
+    }
+
+    @Test
+    @DisplayName("20자 미만도 임시저장은 허용된다 — 하한은 제출 시점에 검증 (API_SPEC §3.4.2)")
+    void saveDraft_shortContent_isAllowed() throws Exception {
+        String shortContent = "너무 짧은 의견";
+        given(opinionService.saveDraft(eq(10L), eq(7L), any(OpinionDraftRequest.class)))
+                .willReturn(new OpinionDraftResponse(
+                        501L, shortContent, LocalDateTime.of(2026, 7, 14, 12, 0)));
+
+        mockMvc.perform(patch(URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"content\": \"" + shortContent + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OPINION_DRAFT_SAVED"));
     }
 
     @Test
@@ -97,7 +113,7 @@ class OpinionControllerWebMvcTest {
     void saveDraft_validRequest_returnsSuccess() throws Exception {
         given(opinionService.saveDraft(eq(10L), eq(7L), any(OpinionDraftRequest.class)))
                 .willReturn(new OpinionDraftResponse(
-                        501L, VALID_CONTENT, OpinionStatus.DRAFT,
+                        501L, VALID_CONTENT,
                         LocalDateTime.of(2026, 7, 14, 12, 0)));
 
         mockMvc.perform(patch(URL)
@@ -110,7 +126,6 @@ class OpinionControllerWebMvcTest {
                 .andExpect(jsonPath("$.message").value("의견이 임시저장되었습니다."))
                 .andExpect(jsonPath("$.data.id").value(501))
                 .andExpect(jsonPath("$.data.content").value(VALID_CONTENT))
-                .andExpect(jsonPath("$.data.status").value("DRAFT"))
                 .andExpect(jsonPath("$.data.updatedAt").exists())
                 .andExpect(jsonPath("$.timestamp").exists());
     }
@@ -129,7 +144,7 @@ class OpinionControllerWebMvcTest {
     void getMyOpinion_present_returnsOpinion() throws Exception {
         given(opinionService.getMyOpinion(10L, 7L))
                 .willReturn(new MyOpinionResponse(
-                        true, 501L, VALID_CONTENT, OpinionStatus.DRAFT,
+                        true, 501L, VALID_CONTENT, OpinionStatus.DRAFT, false, null,
                         LocalDateTime.of(2026, 7, 14, 12, 0)));
 
         mockMvc.perform(get(GET_URL).with(authenticatedUser()))
@@ -140,6 +155,7 @@ class OpinionControllerWebMvcTest {
                 .andExpect(jsonPath("$.data.id").value(501))
                 .andExpect(jsonPath("$.data.content").value(VALID_CONTENT))
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))
+                .andExpect(jsonPath("$.data.hasUnsubmittedChanges").value(false))
                 .andExpect(jsonPath("$.data.updatedAt").exists());
     }
 
@@ -178,7 +194,6 @@ class OpinionControllerWebMvcTest {
         given(opinionService.submitMyOpinion(10L, 7L))
                 .willReturn(new OpinionSubmitResponse(
                         501L,
-                        OpinionStatus.SUBMITTED,
                         LocalDateTime.of(2026, 7, 14, 12, 5)));
 
         mockMvc.perform(post(SUBMIT_URL).with(authenticatedUser()))
@@ -187,7 +202,6 @@ class OpinionControllerWebMvcTest {
                 .andExpect(jsonPath("$.code").value("OPINION_SUBMITTED"))
                 .andExpect(jsonPath("$.message").value("의견이 제출되었습니다."))
                 .andExpect(jsonPath("$.data.id").value(501))
-                .andExpect(jsonPath("$.data.status").value("SUBMITTED"))
                 .andExpect(jsonPath("$.data.submittedAt").value("2026-07-14T12:05:00"))
                 .andExpect(jsonPath("$.timestamp").exists());
     }
