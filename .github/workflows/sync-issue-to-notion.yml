@@ -1,0 +1,44 @@
+name: Sync GitHub Issues to Notion
+
+on:
+  issues:
+    types:
+      - opened
+      - edited
+      - closed
+      - reopened
+
+concurrency:
+  group: notion-issue-${{ github.repository }}-${{ github.event.issue.number }}
+  queue: max
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Sync issue
+    if: >-
+      contains(
+        fromJSON(vars.NOTION_SYNC_ALLOWED_USERS || '[]'),
+        github.event.issue.user.login
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Sync issue to Notion
+        run: node .github/scripts/sync-notion-issue.mjs
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}

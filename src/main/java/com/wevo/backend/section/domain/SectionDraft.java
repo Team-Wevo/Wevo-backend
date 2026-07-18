@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -20,7 +21,13 @@ import lombok.NoArgsConstructor;
  * 섹션의 버전별 초안 본문. (AI 통합 초안 / 편집 이력)
  */
 @Entity
-@Table(name = "section_drafts")
+@Table(
+        name = "section_drafts",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_section_drafts_section_version",
+                columnNames = {"project_section_id", "version"}
+        )
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class SectionDraft extends BaseTimeEntity {
@@ -36,7 +43,7 @@ public class SectionDraft extends BaseTimeEntity {
     @Column(columnDefinition = "TEXT")
     private String content;
 
-    @Column
+    @Column(nullable = false)
     private Integer version;
 
     @ManyToOne(fetch = FetchType.LAZY)

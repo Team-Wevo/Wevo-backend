@@ -3,16 +3,23 @@ package com.wevo.backend.global.exception;
 import com.wevo.backend.auth.domain.AuthProvider;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.response.FieldError;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.ErrorResponse;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import tools.jackson.databind.exc.InvalidFormatException;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 모든 REST Controller에서 발생하는 예외를 공통 형식으로 처리.
@@ -22,6 +29,10 @@ import java.util.List;
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final String INVALID_FORMAT_REASON = "올바른 형식의 값이어야 합니다.";
+    private static final String REQUIRED_VALUE_REASON = "필수 값입니다.";
 
     /**
      * 서비스 계층에서 발생한 BusinessException을 처리.
@@ -67,6 +78,47 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Path variable 또는 Query parameter의 타입 변환 실패를 처리한다.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentTypeMismatch(
+            MethodArgumentTypeMismatchException exception
+    ) {
+        return invalidInput(new FieldError(exception.getName(), INVALID_FORMAT_REASON));
+    }
+
+    /**
+     * 필수 Query parameter 누락을 처리한다.
+     */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingServletRequestParameter(
+            MissingServletRequestParameterException exception
+    ) {
+        return invalidInput(new FieldError(exception.getParameterName(), REQUIRED_VALUE_REASON));
+    }
+
+    /**
+     * Controller 메서드 파라미터의 Bean Validation 실패를 처리한다.
+     */
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHandlerMethodValidation(
+            HandlerMethodValidationException exception
+    ) {
+        List<FieldError> errors = exception.getParameterValidationResults().stream()
+                .flatMap(result -> result.getResolvableErrors().stream()
+                        .map(error -> new FieldError(
+                                Objects.requireNonNullElse(
+                                        result.getMethodParameter().getParameterName(),
+                                        "arg" + result.getMethodParameter().getParameterIndex()
+                                ),
+                                Objects.requireNonNullElse(error.getDefaultMessage(), INVALID_FORMAT_REASON)
+                        )))
+                .toList();
+
+        return invalidInput(errors);
+    }
+
+    /**
      * JSON 본문 파싱 실패를 공통 실패 응답으로 변환한다.
      *
      * <p>{@link AuthProvider} enum 역직렬화 실패는 문서화된 A006으로 내려주고,
@@ -107,6 +159,38 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(ErrorCode.CONFLICT.getStatus())
                 .body(ApiResponse.error(ErrorCode.CONFLICT));
+    }
+
+    /**
+     * 처리되지 않은 서버 예외를 안전한 공통 응답으로 변환한다.
+     *
+     * <p>Spring MVC가 상태 코드를 이미 정의한 예외는 해당 상태를 그대로 유지하고,
+     * 그 밖의 예상하지 못한 예외만 내부 서버 오류로 변환한다.
+     *
+     * <p>예외 메시지와 요청 데이터는 민감정보를 포함할 수 있으므로 로그에 남기지 않고,
+     * 진단에 필요한 예외 타입만 기록한다.
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<?> handleUnexpectedException(Exception exception) {
+        if (exception instanceof ErrorResponse errorResponse) {
+            return ResponseEntity.status(errorResponse.getStatusCode()).build();
+        }
+
+        log.error("Unhandled server exception. exceptionType={}", exception.getClass().getName());
+
+        return ResponseEntity
+                .status(ErrorCode.INTERNAL_SERVER_ERROR.getStatus())
+                .body(ApiResponse.error(ErrorCode.INTERNAL_SERVER_ERROR));
+    }
+
+    private ResponseEntity<ApiResponse<Void>> invalidInput(FieldError error) {
+        return invalidInput(List.of(error));
+    }
+
+    private ResponseEntity<ApiResponse<Void>> invalidInput(List<FieldError> errors) {
+        return ResponseEntity
+                .status(ErrorCode.INVALID_INPUT.getStatus())
+                .body(ApiResponse.error(ErrorCode.INVALID_INPUT, errors));
     }
 
     private boolean isUnsupportedAuthProvider(HttpMessageNotReadableException exception) {
