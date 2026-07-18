@@ -35,8 +35,11 @@ class AiUsageLogTest {
         AiUsageLog log = start(startedAt);
 
         assertThat(log.getRequestStatus()).isEqualTo(AiRequestStatus.REQUESTED);
+        assertThat(log.getProvider()).isEqualTo("nvidia");
 
-        AiUsageMetadata usage = new AiUsageMetadata("provider-1", "model-2", 10L, 5L, 3L, 2L);
+        AiUsageMetadata usage = new AiUsageMetadata(
+                "nvidia", "provider-1", "model-2", 10L, 5L, 3L, 2L
+        );
         AiCostSnapshot cost = new AiCostSnapshot(
                 "v1",
                 new BigDecimal("1.0"),
@@ -85,7 +88,7 @@ class AiUsageLogTest {
     private AiUsageLog start(LocalDateTime startedAt) {
         return AiUsageLog.start(
                 UUID.randomUUID(), project, null, user, AiFeature.DRAFT_GENERATION,
-                "model-1", "v1", "abc123", startedAt
+                "nvidia", "model-1", "v1", "abc123", startedAt
         );
     }
 }

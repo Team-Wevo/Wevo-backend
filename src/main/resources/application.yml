@@ -3,13 +3,9 @@ spring:
     name: Wevo-backend
 
   ai:
-    anthropic:
-      api-key: ${ANTHROPIC_API_KEY}
-      timeout: ${ANTHROPIC_TIMEOUT:60s}
-      max-retries: 0
-      chat:
-        model: ${ANTHROPIC_MODEL:claude-haiku-4-5}
-        max-tokens: ${ANTHROPIC_MAX_TOKENS:4096}
+    model:
+      chat: none
+      embedding: none
     chat:
       client:
         observations:
@@ -18,13 +14,16 @@ spring:
 
 wevo:
   ai:
+    provider: none
     default-options:
-      model: ${ANTHROPIC_MODEL:claude-haiku-4-5}
-      timeout: ${ANTHROPIC_TIMEOUT:60s}
-      max-output-tokens: ${ANTHROPIC_MAX_TOKENS:4096}
-      max-retries: ${ANTHROPIC_MAX_RETRIES:2}
+      model: ${NVIDIA_API_MODEL:moonshotai/kimi-k2.6}
+      timeout: ${NVIDIA_API_TIMEOUT:60s}
+      max-output-tokens: ${NVIDIA_API_MAX_TOKENS:4096}
+      max-retries: ${AI_MAX_RETRIES:2}
       initial-backoff: 500ms
       max-backoff: 8s
+    nvidia:
+      temperature: ${NVIDIA_API_TEMPERATURE:1}
     structured-output:
       max-correction-retries: ${AI_STRUCTURED_OUTPUT_MAX_CORRECTION_RETRIES:2}
     jobs:
@@ -59,3 +58,8 @@ app:
     allowed-origins:
       - http://localhost:3000
       - http://localhost:5173
+
+# OpenAiChatModel은 빈 choices 경고에 Prompt 객체를 포함하므로 원문 노출을 막는다.
+logging:
+  level:
+    org.springframework.ai.openai: ERROR

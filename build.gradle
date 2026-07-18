@@ -64,9 +64,22 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
 
     // AI
-    implementation 'org.springframework.ai:spring-ai-starter-model-anthropic'
+    implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 }
 
 tasks.named('test') {
-	useJUnitPlatform()
+	useJUnitPlatform {
+        excludeTags 'nvidia-integration'
+    }
+}
+
+tasks.register('nvidiaIntegrationTest', Test) {
+    description = 'Runs opt-in NVIDIA Trial API integration tests.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'nvidia-integration'
+    }
+    shouldRunAfter tasks.named('test')
 }

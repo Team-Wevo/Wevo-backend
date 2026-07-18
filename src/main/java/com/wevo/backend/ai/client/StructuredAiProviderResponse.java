@@ -2,7 +2,7 @@ package com.wevo.backend.ai.client;
 
 import com.wevo.backend.ai.prompt.PromptTemplateId;
 
-public record StructuredClaudeResponse<T>(
+public record StructuredAiProviderResponse<T>(
         T result,
         PromptTemplateId promptId,
         OutputSchemaId schemaId,
@@ -11,7 +11,7 @@ public record StructuredClaudeResponse<T>(
         int attemptCount
 ) {
 
-    public StructuredClaudeResponse {
+    public StructuredAiProviderResponse {
         if (result == null || promptId == null || schemaId == null || attemptCount <= 0) {
             throw new IllegalArgumentException("result, promptId, schemaId와 유효한 attemptCount는 필수입니다.");
         }

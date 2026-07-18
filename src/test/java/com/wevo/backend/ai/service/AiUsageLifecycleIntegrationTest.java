@@ -1,19 +1,19 @@
 package com.wevo.backend.ai.service;
 
 import com.wevo.backend.ai.client.AiUsageMetadata;
-import com.wevo.backend.ai.client.ClaudeGateway;
-import com.wevo.backend.ai.client.ClaudeRequest;
-import com.wevo.backend.ai.client.ClaudeResponse;
+import com.wevo.backend.ai.client.AiProviderGateway;
+import com.wevo.backend.ai.client.AiProviderRequest;
+import com.wevo.backend.ai.client.AiProviderResponse;
 import com.wevo.backend.ai.client.OutputSchemaId;
-import com.wevo.backend.ai.client.StructuredClaudeRequest;
-import com.wevo.backend.ai.client.StructuredClaudeResponse;
+import com.wevo.backend.ai.client.StructuredAiProviderRequest;
+import com.wevo.backend.ai.client.StructuredAiProviderResponse;
 import com.wevo.backend.ai.client.StructuredOutputDefinition;
 import com.wevo.backend.ai.client.StructuredOutputValidationContext;
 import com.wevo.backend.ai.domain.AiErrorType;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiRequestStatus;
 import com.wevo.backend.ai.domain.AiUsageLog;
-import com.wevo.backend.ai.exception.ClaudeProviderException;
+import com.wevo.backend.ai.exception.AiProviderException;
 import com.wevo.backend.ai.repository.AiUsageLogRepository;
 import com.wevo.backend.ai.prompt.PromptTemplateId;
 import com.wevo.backend.ai.prompt.RenderedPrompt;
@@ -95,6 +95,7 @@ class AiUsageLifecycleIntegrationTest {
 
         AiUsageLog completed = usageLogRepository.findByRequestId(handle.requestId()).orElseThrow();
         assertThat(completed.getRequestStatus()).isEqualTo(AiRequestStatus.SUCCEEDED);
+        assertThat(completed.getProvider()).isEqualTo("nvidia");
         assertThat(completed.getProviderRequestId()).isEqualTo("provider-1");
         assertThat(completed.getTotalInputTokens()).isEqualTo(108L);
         assertThat(completed.getAttemptCount()).isEqualTo(2);
@@ -105,8 +106,8 @@ class AiUsageLifecycleIntegrationTest {
 
     @Test
     void invocationFailureIsPersistedAndDoesNotRemainRequested() {
-        ClaudeGateway failingGateway = request -> {
-            throw new ClaudeProviderException(
+        AiProviderGateway failingGateway = request -> {
+            throw new AiProviderException(
                     ErrorCode.AI_RATE_LIMITED,
                     new IllegalStateException("provider error"),
                     null,
@@ -117,9 +118,9 @@ class AiUsageLifecycleIntegrationTest {
 
         assertThatThrownBy(() -> invocationService.invoke(
                 startCommand(),
-                new ClaudeRequest(AiFeature.DRAFT_GENERATION, "system prompt", "user prompt"),
+                new AiProviderRequest(AiFeature.DRAFT_GENERATION, "system prompt", "user prompt"),
                 response -> new AiProcessedResult<>(response.content(), null)
-        )).isInstanceOf(ClaudeProviderException.class);
+        )).isInstanceOf(AiProviderException.class);
 
         AiUsageLog failed = usageLogRepository.findAll().getFirst();
         assertThat(failed.getRequestStatus()).isEqualTo(AiRequestStatus.FAILED);
@@ -139,7 +140,7 @@ class AiUsageLifecycleIntegrationTest {
 
         assertThatThrownBy(() -> invocationService.invoke(
                 startCommand(),
-                new ClaudeRequest(AiFeature.DRAFT_GENERATION, "system prompt", "user prompt"),
+                new AiProviderRequest(AiFeature.DRAFT_GENERATION, "system prompt", "user prompt"),
                 response -> {
                     throw new IllegalStateException("result persistence failed");
                 }
@@ -167,7 +168,7 @@ class AiUsageLifecycleIntegrationTest {
 
         assertThatThrownBy(() -> invocationService.invoke(
                 startCommand(),
-                new ClaudeRequest(AiFeature.DRAFT_GENERATION, "system prompt", "user prompt"),
+                new AiProviderRequest(AiFeature.DRAFT_GENERATION, "system prompt", "user prompt"),
                 response -> null
         ))
                 .isInstanceOf(IllegalStateException.class)
@@ -186,15 +187,15 @@ class AiUsageLifecycleIntegrationTest {
         AiUsageMetadata usage = new AiUsageMetadata(
                 "provider-structured", "response-model", 30L, 10L, null, null
         );
-        ClaudeGateway failingGateway = new ClaudeGateway() {
+        AiProviderGateway failingGateway = new AiProviderGateway() {
             @Override
-            public ClaudeResponse generate(ClaudeRequest request) {
+            public AiProviderResponse generate(AiProviderRequest request) {
                 throw new UnsupportedOperationException();
             }
 
             @Override
-            public <T> StructuredClaudeResponse<T> generateStructured(StructuredClaudeRequest<T> request) {
-                throw new ClaudeProviderException(
+            public <T> StructuredAiProviderResponse<T> generateStructured(StructuredAiProviderRequest<T> request) {
+                throw new AiProviderException(
                         ErrorCode.AI_STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED,
                         new IllegalStateException("invalid structured output"),
                         usage,
@@ -212,7 +213,7 @@ class AiUsageLifecycleIntegrationTest {
                     handlerCalled.set(true);
                     return new AiProcessedResult<>(response.result(), 91L);
                 }
-        )).isInstanceOf(ClaudeProviderException.class);
+        )).isInstanceOf(AiProviderException.class);
 
         assertThat(handlerCalled).isFalse();
         AiUsageLog failed = usageLogRepository.findAll().getFirst();
@@ -229,11 +230,11 @@ class AiUsageLifecycleIntegrationTest {
         LocalDateTime now = LocalDateTime.now();
         AiUsageLog orphan = usageLogRepository.save(AiUsageLog.start(
                 UUID.randomUUID(), project, null, user, AiFeature.DRAFT_GENERATION,
-                "model", "v1", "old", now.minusSeconds(40)
+                "nvidia", "model", "v1", "old", now.minusSeconds(40)
         ));
         AiUsageLog recent = usageLogRepository.save(AiUsageLog.start(
                 UUID.randomUUID(), project, null, user, AiFeature.DRAFT_GENERATION,
-                "model", "v1", "recent", now.minusSeconds(10)
+                "nvidia", "model", "v1", "recent", now.minusSeconds(10)
         ));
 
         int recovered = orphanRecoveryService.recoverOrphans();
@@ -262,8 +263,8 @@ class AiUsageLifecycleIntegrationTest {
         );
     }
 
-    private StructuredClaudeRequest<TestOutput> structuredRequest() {
-        return new StructuredClaudeRequest<>(
+    private StructuredAiProviderRequest<TestOutput> structuredRequest() {
+        return new StructuredAiProviderRequest<>(
                 AiFeature.DRAFT_GENERATION,
                 new RenderedPrompt(new PromptTemplateId("contract-summary", 1), "system", "user"),
                 StructuredOutputDefinition.of(new OutputSchemaId("test-output", 1), TestOutput.class),
@@ -271,8 +272,8 @@ class AiUsageLifecycleIntegrationTest {
         );
     }
 
-    private ClaudeGateway successfulGateway(AiUsageMetadata usage, int attemptCount) {
-        return request -> new ClaudeResponse("generated content", usage, "end_turn", attemptCount);
+    private AiProviderGateway successfulGateway(AiUsageMetadata usage, int attemptCount) {
+        return request -> new AiProviderResponse("generated content", usage, "stop", attemptCount);
     }
 
     private record TestOutput(Long resourceId) {

@@ -9,9 +9,11 @@ import org.springframework.util.StringUtils;
 @Component
 public class AiUsageExtractor {
 
-    public AiUsageMetadata extract(ChatResponseMetadata metadata, String fallbackModelId) {
+    public AiUsageMetadata extract(ChatResponseMetadata metadata, String fallbackModelId, String providerId) {
         if (metadata == null) {
-            return new AiUsageMetadata(null, normalize(fallbackModelId, 100), null, null, null, null);
+            return new AiUsageMetadata(
+                    normalize(providerId, 30), null, normalize(fallbackModelId, 100), null, null, null, null
+            );
         }
 
         Usage usage = metadata.getUsage();
@@ -21,6 +23,7 @@ public class AiUsageExtractor {
                 : fallbackModelId;
 
         return new AiUsageMetadata(
+                normalize(providerId, 30),
                 normalize(metadata.getId(), 200),
                 normalize(modelId, 100),
                 unavailable ? null : toLong(usage.getPromptTokens()),
@@ -28,6 +31,10 @@ public class AiUsageExtractor {
                 unavailable ? null : usage.getCacheReadInputTokens(),
                 unavailable ? null : usage.getCacheWriteInputTokens()
         );
+    }
+
+    public AiUsageMetadata extract(ChatResponseMetadata metadata, String fallbackModelId) {
+        return extract(metadata, fallbackModelId, null);
     }
 
     private Long toLong(Integer value) {

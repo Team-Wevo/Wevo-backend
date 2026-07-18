@@ -57,6 +57,7 @@ public class AiUsageService {
                 command.projectSection(),
                 command.requestedBy(),
                 command.feature(),
+                aiProperties.provider(),
                 modelId,
                 command.promptVersion(),
                 command.inputSnapshotHash(),

@@ -12,8 +12,9 @@ public class AiErrorMessageSanitizer {
             "(?i)authorization\\s*[:=]\\s*bearer\\s+[^\\s,;]+"
     );
     private static final Pattern ANTHROPIC_KEY = Pattern.compile("(?i)sk-ant-[a-z0-9_-]+");
+    private static final Pattern NVIDIA_KEY = Pattern.compile("(?i)nvapi" + "-[a-z0-9_-]+");
     private static final Pattern KEY_ASSIGNMENT = Pattern.compile(
-            "(?i)anthropic_api_key\\s*[:=]\\s*[^\\s,;]+"
+            "(?i)(?:anthropic|nvidia)_api_key\\s*[:=]\\s*[^\\s,;]+"
     );
 
     public String sanitize(String message) {
@@ -22,7 +23,8 @@ public class AiErrorMessageSanitizer {
         }
         String sanitized = AUTHORIZATION.matcher(message).replaceAll("Authorization: [REDACTED]");
         sanitized = ANTHROPIC_KEY.matcher(sanitized).replaceAll("[REDACTED]");
-        sanitized = KEY_ASSIGNMENT.matcher(sanitized).replaceAll("ANTHROPIC_API_KEY=[REDACTED]");
+        sanitized = NVIDIA_KEY.matcher(sanitized).replaceAll("[REDACTED]");
+        sanitized = KEY_ASSIGNMENT.matcher(sanitized).replaceAll("AI_PROVIDER_API_KEY=[REDACTED]");
         return sanitized.length() <= MAX_LENGTH ? sanitized : sanitized.substring(0, MAX_LENGTH);
     }
 }

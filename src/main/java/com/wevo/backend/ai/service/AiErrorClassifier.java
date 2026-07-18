@@ -1,7 +1,7 @@
 package com.wevo.backend.ai.service;
 
 import com.wevo.backend.ai.domain.AiErrorType;
-import com.wevo.backend.ai.exception.ClaudeProviderException;
+import com.wevo.backend.ai.exception.AiProviderException;
 import com.wevo.backend.global.exception.ErrorCode;
 import org.springframework.stereotype.Component;
 
@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 public class AiErrorClassifier {
 
     public AiErrorType classify(Throwable throwable) {
-        if (!(throwable instanceof ClaudeProviderException exception)) {
+        if (!(throwable instanceof AiProviderException exception)) {
             return AiErrorType.INTERNAL_ERROR;
         }
 
@@ -35,7 +35,7 @@ public class AiErrorClassifier {
     }
 
     public String safeMessage(Throwable throwable) {
-        if (throwable instanceof ClaudeProviderException exception) {
+        if (throwable instanceof AiProviderException exception) {
             return exception.getErrorCode().getMessage();
         }
         return "예상하지 못한 AI 처리 오류가 발생했습니다.";

@@ -2,6 +2,20 @@ spring:
   config:
     import: optional:file:.env[.properties]
 
+  ai:
+    model:
+      chat: openai
+      embedding: none
+    openai:
+      api-key: ${NVIDIA_API_KEY}
+      base-url: ${NVIDIA_API_BASE_URL:https://integrate.api.nvidia.com}/v1
+      timeout: ${NVIDIA_API_TIMEOUT:60s}
+      max-retries: 0
+      chat:
+        model: ${NVIDIA_API_MODEL:moonshotai/kimi-k2.6}
+        max-tokens: ${NVIDIA_API_MAX_TOKENS:4096}
+        temperature: ${NVIDIA_API_TEMPERATURE:1}
+
   datasource:
     url: jdbc:postgresql://localhost:${POSTGRES_PORT}/${POSTGRES_DB}
     username: ${POSTGRES_USER}
@@ -37,3 +51,7 @@ oauth:
   kakao:
     client-id: ${KAKAO_CLIENT_ID}
     client-secret: ${KAKAO_CLIENT_SECRET:}   # 카카오는 선택
+
+wevo:
+  ai:
+    provider: ${AI_PROVIDER:nvidia}

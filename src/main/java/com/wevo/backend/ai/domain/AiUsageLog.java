@@ -45,6 +45,9 @@ public class AiUsageLog extends BaseTimeEntity {
     @Column(name = "provider_request_id", length = 200)
     private String providerRequestId;
 
+    @Column(name = "provider", nullable = false, length = 30)
+    private String provider;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ai_job_id")
     private AiJob aiJob;
@@ -137,6 +140,7 @@ public class AiUsageLog extends BaseTimeEntity {
             ProjectSection projectSection,
             User requestedBy,
             AiFeature feature,
+            String provider,
             String modelId,
             String promptVersion,
             String inputSnapshotHash,
@@ -148,6 +152,10 @@ public class AiUsageLog extends BaseTimeEntity {
         this.projectSection = projectSection;
         this.requestedBy = Objects.requireNonNull(requestedBy, "requestedBy는 필수입니다.");
         this.feature = Objects.requireNonNull(feature, "feature는 필수입니다.");
+        this.provider = requireText(provider, "provider");
+        if (this.provider.length() > 30) {
+            throw new IllegalArgumentException("provider는 30자 이하여야 합니다.");
+        }
         this.modelId = requireText(modelId, "modelId");
         this.promptVersion = requireText(promptVersion, "promptVersion");
         this.inputSnapshotHash = requireText(inputSnapshotHash, "inputSnapshotHash");
@@ -161,6 +169,7 @@ public class AiUsageLog extends BaseTimeEntity {
             ProjectSection projectSection,
             User requestedBy,
             AiFeature feature,
+            String provider,
             String modelId,
             String promptVersion,
             String inputSnapshotHash,
@@ -168,7 +177,7 @@ public class AiUsageLog extends BaseTimeEntity {
     ) {
         return start(
                 requestId, null, project, projectSection, requestedBy, feature,
-                modelId, promptVersion, inputSnapshotHash, startedAt
+                provider, modelId, promptVersion, inputSnapshotHash, startedAt
         );
     }
 
@@ -179,6 +188,7 @@ public class AiUsageLog extends BaseTimeEntity {
             ProjectSection projectSection,
             User requestedBy,
             AiFeature feature,
+            String provider,
             String modelId,
             String promptVersion,
             String inputSnapshotHash,
@@ -186,7 +196,7 @@ public class AiUsageLog extends BaseTimeEntity {
     ) {
         return new AiUsageLog(
                 requestId, aiJob, project, projectSection, requestedBy, feature,
-                modelId, promptVersion, inputSnapshotHash, startedAt
+                provider, modelId, promptVersion, inputSnapshotHash, startedAt
         );
     }
 
@@ -237,6 +247,9 @@ public class AiUsageLog extends BaseTimeEntity {
 
     private void applyUsageAndCost(AiUsageMetadata usage, AiCostSnapshot cost) {
         if (usage != null) {
+            if (usage.providerId() != null) {
+                this.provider = usage.providerId();
+            }
             this.providerRequestId = usage.providerRequestId();
             if (usage.modelId() != null) {
                 this.modelId = usage.modelId();

@@ -14,6 +14,7 @@ class AiPropertiesTest {
     @Test
     void featureOptionsOverrideOnlyConfiguredValues() {
         AiProperties properties = new AiProperties(
+                "nvidia",
                 modelOptions("default-model", Duration.ofSeconds(60), 4096),
                 Map.of("draft-generation", new AiProperties.FeatureOptions(
                         "draft-model", null, 2048, null, null, null
@@ -32,7 +33,7 @@ class AiPropertiesTest {
     void unknownFeatureUsesDefaultOptions() {
         AiProperties.ModelOptions defaultOptions =
                 modelOptions("default-model", Duration.ofSeconds(30), 1024);
-        AiProperties properties = new AiProperties(defaultOptions, Map.of(), null);
+        AiProperties properties = new AiProperties("nvidia", defaultOptions, Map.of(), null);
 
         assertThat(properties.optionsFor(AiFeature.ISSUE_DETECTION)).isSameAs(defaultOptions);
     }
@@ -40,6 +41,7 @@ class AiPropertiesTest {
     @Test
     void invalidDefaultOptionsFailFast() {
         assertThatThrownBy(() -> new AiProperties(
+                "nvidia",
                 modelOptions("", Duration.ZERO, 0),
                 Map.of(),
                 null
@@ -51,6 +53,7 @@ class AiPropertiesTest {
     @Test
     void structuredOutputRetriesDefaultToTwoAndRejectExcessiveValues() {
         AiProperties defaults = new AiProperties(
+                "nvidia",
                 modelOptions("model", Duration.ofSeconds(1), 128),
                 Map.of(),
                 null
@@ -60,6 +63,29 @@ class AiPropertiesTest {
         assertThatThrownBy(() -> new AiProperties.StructuredOutputOptions(6))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("max-correction-retries");
+    }
+
+    @Test
+    void rejectsUnsupportedProviderInsteadOfFallingBack() {
+        assertThatThrownBy(() -> new AiProperties(
+                "unknown",
+                modelOptions("model", Duration.ofSeconds(1), 128),
+                Map.of(),
+                null
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("provider");
+    }
+
+    @Test
+    void rejectsProviderMaxTokenLimitOverflow() {
+        AiProperties.ModelOptions overflow = new AiProperties.ModelOptions(
+                "model", Duration.ofSeconds(1), 65_537, 0, Duration.ZERO, Duration.ZERO
+        );
+
+        assertThatThrownBy(() -> new AiProperties("nvidia", overflow, Map.of(), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("65536");
     }
 
     private AiProperties.ModelOptions modelOptions(String model, Duration timeout, int maxOutputTokens) {
