@@ -11,17 +11,20 @@ import com.wevo.backend.section.dto.request.SectionDraftSaveRequest;
 import com.wevo.backend.section.dto.response.SectionDraftSaveResponse;
 import com.wevo.backend.section.repository.SectionDraftRepository;
 import com.wevo.backend.user.repository.UserRepository;
+import java.util.Objects;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 섹션 초안(본문) 저장 로직. (제품 정책서 §6.1 · API_SPEC §1.9)
+ * 섹션 초안(본문) 저장 로직. (제품 정책서 §6.1)
  *
  * <p>초안은 <b>버전별 이력</b>으로 관리한다 — 저장할 때마다 새 {@link SectionDraft} 행을
  * {@code version = 직전 최신 + 1} 로 append 한다. 확정 본문 버전 추적·검토 만료 판단의 근거가 된다.
  *
  * <p>본문이 바뀌면 이 섹션의 기존 검토는 더 이상 유효하지 않으므로, 저장의 <b>부수효과</b>로
  * 팀 검토와 외부 검토 링크를 모두 만료 처리한다. (§6.1 — 새 본문으로 다시 검토받아야 함)
+ * 반대로 <b>본문이 직전 버전과 같으면 저장을 무시</b>한다 — 버전도 올리지 않고 만료도 하지 않는다.
  *
  * <p>같은 섹션에 대한 동시 저장은 섹션 행 배타 잠금으로 직렬화하고, 클라이언트가 편집을 시작한
  * 기준 버전({@code baseVersion})이 최신과 다르면 409 로 거부해 덮어쓰기(lost update)를 막는다.
@@ -49,7 +52,7 @@ public class SectionDraftService {
     }
 
     /**
-     * 섹션 초안을 저장한다. (참여자 전용 — OWNER/MEMBER 공용)
+     * 섹션 초안을 저장한다. (프로젝트 참여자 전용)
      *
      * <p>섹션 행을 배타 잠금으로 잡아 "최신 버전 조회 → append" 를 직렬화한다. 같은 잠금을
      * 만료 처리(외부 링크·팀 검토)도 사용하므로, 저장과 만료가 원자적으로 커밋된다.
@@ -65,13 +68,20 @@ public class SectionDraftService {
             throw new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
         }
 
-        // 초안이 없으면 최신 버전 0 으로 본다(최초 저장 → version 1).
-        int latestVersion = sectionDraftRepository
-                .findTopByProjectSection_IdOrderByVersionDesc(sectionId)
-                .map(SectionDraft::getVersion)
-                .orElse(0);
+        Optional<SectionDraft> latest =
+                sectionDraftRepository.findTopByProjectSection_IdOrderByVersionDesc(sectionId);
+        // 초안이 없으면(최초 저장) 최신 버전 0 으로 본다(→ version 1).
+        int latestVersion = latest.map(SectionDraft::getVersion).orElse(0);
         if (!request.baseVersion().equals(latestVersion)) {
             throw new BusinessException(ErrorCode.CONFLICT);
+        }
+
+        // 본문이 그대로면 새 버전을 만들지 않고 현재 버전을 그대로 돌려준다(멱등).
+        // 정책서 §5.2.3("초안이 수정되어 저장되면")·§6.2.2("본문이 수정되면")는 모두 실제 수정이
+        // 전제다. 편집창을 열었다 그대로 저장하거나 고쳤다 되돌린 경우까지 버전을 올리면
+        // 내용 변화 없이 팀 동의와 외부 검토 링크가 전부 만료된다.
+        if (latest.isPresent() && Objects.equals(latest.get().getContent(), request.content())) {
+            return SectionDraftSaveResponse.from(latest.get(), section.getStatus());
         }
 
         SectionDraft draft = SectionDraft.builder()
@@ -83,10 +93,10 @@ public class SectionDraftService {
         // auditing(updatedAt)을 응답에 싣기 위해 저장 후 flush 한다.
         sectionDraftRepository.saveAndFlush(draft);
 
-        // 본문 수정의 부수효과 — 기존 검토·외부 링크를 만료 처리한다. (첫 실제 저장 시점 = 이 호출)
+        // 기존 검토·외부 링크를 만료 처리한다.
         reviewLinkService.markSectionLinksOutdated(sectionId);
         teamReviewService.markSectionTeamReviewsOutdated(sectionId);
 
-        return SectionDraftSaveResponse.from(sectionId, draft);
+        return SectionDraftSaveResponse.from(draft, section.getStatus());
     }
 }

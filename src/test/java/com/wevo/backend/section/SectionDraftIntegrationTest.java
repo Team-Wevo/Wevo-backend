@@ -2,7 +2,7 @@ package com.wevo.backend.section;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -71,8 +71,9 @@ class SectionDraftIntegrationTest {
 
         save(section.getId(), owner, "첫 초안 본문", 0)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value("SECTION_DRAFT_SAVED"))
-                .andExpect(jsonPath("$.data.contentVersion").value(1));
+                .andExpect(jsonPath("$.code").value("DRAFT_SAVED"))
+                .andExpect(jsonPath("$.data.contentVersion").value(1))
+                .andExpect(jsonPath("$.data.sectionStatus").value("DRAFTING"));
 
         assertThat(sectionDraftRepository.findTopByProjectSection_IdOrderByVersionDesc(section.getId())
                 .orElseThrow().getContent()).isEqualTo("첫 초안 본문");
@@ -147,6 +148,38 @@ class SectionDraftIntegrationTest {
     }
 
     @Test
+    @DisplayName("공백 본문은 400(C001) 으로 거부한다 — 초안 도메인 불변식")
+    void blankContentRejected() throws Exception {
+        User owner = persistUser("owner-d8@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project, ProjectSectionStatus.DRAFTING);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        save(section.getId(), owner, "   ", 0)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+
+        assertThat(sectionDraftRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("본문이 상한(10,000자)을 넘으면 400(C001) 으로 거부한다")
+    void tooLongContentRejected() throws Exception {
+        User owner = persistUser("owner-d9@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project, ProjectSectionStatus.DRAFTING);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        save(section.getId(), owner, "가".repeat(10_001), 0)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+
+        assertThat(sectionDraftRepository.findAll()).isEmpty();
+    }
+
+    @Test
     @DisplayName("존재하지 않는 섹션에 저장하면 404(S001)")
     void unknownSection() throws Exception {
         User owner = persistUser("owner-d6@wevo.com");
@@ -183,11 +216,41 @@ class SectionDraftIntegrationTest {
                 .isEqualTo(ReviewLinkStatus.OUTDATED);
     }
 
+    @Test
+    @DisplayName("직전과 같은 본문을 저장하면 버전이 오르지 않고 검토도 만료되지 않는다")
+    void identicalContentDoesNotBumpVersionNorOutdateReviews() throws Exception {
+        User owner = persistUser("owner-d10@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project, ProjectSectionStatus.REVIEWING);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User m1 = persistUser("m-d10@wevo.com");
+        persistMember(project, m1, ProjectMemberRole.MEMBER);
+        persistDraft(section, "그대로인 본문", 1, owner);
+
+        TeamReview review = persistTeamReview(section, m1);
+        ReviewLink link = persistActiveLink(section, owner);
+        em.flush();
+
+        // 고쳤다 되돌린 뒤 저장 → 내용은 v1 과 동일
+        save(section.getId(), owner, "그대로인 본문", 1)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contentVersion").value(1));
+
+        em.flush();
+        em.clear();
+        // 새 버전 행이 생기지 않는다
+        assertThat(sectionDraftRepository.findAll()).hasSize(1);
+        // 팀 동의와 외부 링크가 그대로 유지된다
+        assertThat(teamReviewRepository.findById(review.getId()).orElseThrow().isOutdated()).isFalse();
+        assertThat(reviewLinkRepository.findById(link.getId()).orElseThrow().getStatus())
+                .isEqualTo(ReviewLinkStatus.ACTIVE);
+    }
+
     // --- 헬퍼 ---
 
     private ResultActions save(Long sectionId, User user, String content, int baseVersion) throws Exception {
         String body = "{ \"content\": \"%s\", \"baseVersion\": %d }".formatted(content, baseVersion);
-        return mockMvc.perform(patch("/api/project-sections/{id}/draft", sectionId)
+        return mockMvc.perform(put("/api/project-sections/{id}/draft", sectionId)
                 .with(authentication(authOf(user)))
                 .contentType("application/json")
                 .content(body));
