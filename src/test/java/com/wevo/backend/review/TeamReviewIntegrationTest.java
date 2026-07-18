@@ -76,9 +76,11 @@ class TeamReviewIntegrationTest {
         mockMvc.perform(get("/api/project-sections/{id}/team-reviews", section.getId())
                         .with(authentication(authOf(owner))))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentContentVersion").value(1))
                 .andExpect(jsonPath("$.data.totalMembers").value(2))
                 .andExpect(jsonPath("$.data.approvedCount").value(1))
                 .andExpect(jsonPath("$.data.pendingCount").value(1))
+                .andExpect(jsonPath("$.data.unresolvedChangesRequestedCount").value(0))
                 .andExpect(jsonPath("$.data.items.length()").value(2));
     }
 
@@ -193,7 +195,7 @@ class TeamReviewIntegrationTest {
     }
 
     @Test
-    @DisplayName("프로젝트 멤버가 아니면 현황 조회 시 403(P002)")
+    @DisplayName("프로젝트 멤버가 아니면 현황 조회 시 404(S001) — 존재 숨김 (CLAUDE.md §5.6)")
     void nonMemberCannotView() throws Exception {
         User owner = persistUser("owner6@team.com");
         Project project = persistProject(owner);
@@ -204,8 +206,42 @@ class TeamReviewIntegrationTest {
 
         mockMvc.perform(get("/api/project-sections/{id}/team-reviews", section.getId())
                         .with(authentication(authOf(outsider))))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("P002"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("S001"));
+    }
+
+    @Test
+    @DisplayName("contentVersion 이 서버 현재 본문 버전과 다르면 409(C003) — 검토 바인딩 (§6.1)")
+    void staleContentVersionIsRejected() throws Exception {
+        User owner = persistUser("owner-cv1@team.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistReviewingSectionWithDraft(project); // 초안 버전 1
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User m1 = persistUser("mcv1@team.com");
+        persistMember(project, m1, ProjectMemberRole.MEMBER);
+        em.flush();
+
+        submit(section.getId(), m1, "APPROVED", null, 999)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("C003"));
+
+        assertThat(teamReviewRepository.findByProjectSection_Id(section.getId())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("contentVersion 이 없으면 400(C001) — 필수값")
+    void missingContentVersionIsRejected() throws Exception {
+        User owner = persistUser("owner-cv2@team.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistReviewingSectionWithDraft(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User m1 = persistUser("mcv2@team.com");
+        persistMember(project, m1, ProjectMemberRole.MEMBER);
+        em.flush();
+
+        submit(section.getId(), m1, "APPROVED", null, null)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
     }
 
     @Test
@@ -346,13 +382,24 @@ class TeamReviewIntegrationTest {
 
     private org.springframework.test.web.servlet.ResultActions submit(
             Long sectionId, User user, String status, String reason) throws Exception {
-        String body = reason == null
-                ? "{ \"status\": \"%s\" }".formatted(status)
-                : "{ \"status\": \"%s\", \"changeRequestReason\": \"%s\" }".formatted(status, reason);
+        // 픽스처의 초안 버전은 항상 1 — contentVersion 바인딩(§6.1)을 만족시킨다.
+        return submit(sectionId, user, status, reason, 1);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions submit(
+            Long sectionId, User user, String status, String reason, Integer contentVersion) throws Exception {
+        StringBuilder body = new StringBuilder("{ \"status\": \"%s\"".formatted(status));
+        if (reason != null) {
+            body.append(", \"changeRequestReason\": \"%s\"".formatted(reason));
+        }
+        if (contentVersion != null) {
+            body.append(", \"contentVersion\": %d".formatted(contentVersion));
+        }
+        body.append(" }");
         return mockMvc.perform(put("/api/project-sections/{id}/team-reviews/me", sectionId)
                 .with(authentication(authOf(user)))
                 .contentType("application/json")
-                .content(body));
+                .content(body.toString()));
     }
 
     private UsernamePasswordAuthenticationToken authOf(User user) {

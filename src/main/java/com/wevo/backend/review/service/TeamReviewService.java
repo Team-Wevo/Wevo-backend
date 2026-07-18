@@ -60,6 +60,10 @@ public class TeamReviewService {
 
     /**
      * 섹션의 팀 검토 현황을 조회한다. (역할 무관)
+     *
+     * <p>목록은 <b>조회 시점의 프로젝트 멤버 기준</b>으로 구성한다 — 검토 시작 후 합류한 팀원도
+     * {@code PENDING}으로 파생 포함된다. {@code currentContentVersion}은 검토 제출(§3.5.7)의
+     * {@code contentVersion} 값으로 그대로 사용된다.
      */
     public TeamReviewStatusResponse getStatus(Long sectionId, Long userId) {
         ProjectSection section = sectionAccessGuard.requireParticipantSection(sectionId, userId);
@@ -74,7 +78,12 @@ public class TeamReviewService {
                 .map(member -> toItem(member, reviewByReviewer.get(member.getId())))
                 .toList();
 
-        return TeamReviewStatusResponse.from(items);
+        Integer currentContentVersion = sectionDraftRepository
+                .findTopByProjectSection_IdOrderByVersionDesc(sectionId)
+                .map(SectionDraft::getVersion)
+                .orElse(null);
+
+        return TeamReviewStatusResponse.from(items, currentContentVersion);
     }
 
     /**
@@ -108,6 +117,14 @@ public class TeamReviewService {
                 .findTopByProjectSection_IdOrderByVersionDesc(sectionId)
                 .map(SectionDraft::getVersion)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONFLICT));
+
+        // contentVersion 바인딩 (§6.1 "검토 대상은 최신 본문") — 검토 화면이 읽은 버전과 서버의
+        // 현재 버전이 다르면, 읽는 사이 바뀐 본문에 대한 검토가 새 버전에 기록되는 것을 막는다.
+        if (!reviewedVersion.equals(request.contentVersion())) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    List.of(new FieldError("contentVersion",
+                            "본문이 수정되었습니다. 다시 읽고 검토해주세요.")));
+        }
 
         // 수정 요청이면 사유 필수
         String reason = request.status() == TeamReviewStatus.CHANGES_REQUESTED

@@ -56,6 +56,16 @@ class ExternalReviewIntegrationTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /**
+     * 익명 검토자 키는 UUID v4 형식이어야 한다 — 테스트 가독성을 위해 라벨("browser-A")을 쓰되,
+     * 같은 라벨은 같은 키로 매핑해 "같은 브라우저" 시나리오를 표현한다.
+     */
+    private final java.util.Map<String, String> reviewerIds = new java.util.HashMap<>();
+
+    private String reviewerId(String label) {
+        return reviewerIds.computeIfAbsent(label, key -> java.util.UUID.randomUUID().toString());
+    }
+
     @Autowired
     private MockMvc mockMvc;
     @Autowired
@@ -388,71 +398,96 @@ class ExternalReviewIntegrationTest {
         submitAsReviewer(token, "CLEAR", "browser-A").andExpect(status().isCreated());
 
         mockMvc.perform(get("/public/review-links/{token}", token)
-                        .header(REVIEWER_ID_HEADER, "browser-A"))
+                        .header(REVIEWER_ID_HEADER, reviewerId("browser-A")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.alreadySubmitted").value(true))
                 .andExpect(jsonPath("$.data.content").value(DRAFT_CONTENT));
 
         mockMvc.perform(get("/public/review-links/{token}", token)
-                        .header(REVIEWER_ID_HEADER, "browser-B"))
+                        .header(REVIEWER_ID_HEADER, reviewerId("browser-B")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.alreadySubmitted").value(false));
     }
 
     @Test
-    @DisplayName("summary 는 CLEAR·PARTIAL 이면 필수(400 C001), UNCLEAR 이면 선택(201)")
-    void summaryRequiredExceptForUnclear() throws Exception {
+    @DisplayName("summary 는 이해도와 무관하게 항상 선택이다 (정책서 §6.2 — 코멘트는 항상 선택)")
+    void summaryIsAlwaysOptional() throws Exception {
         User owner = persistUser("owner-summary@wevo.com", "팀장");
         ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
         persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
         em.flush();
         String token = issueLink(section.getId(), owner);
 
-        // summary 없이 CLEAR → 400 (교차 검증 실패)
         submitWithoutSummary(token, "CLEAR", "browser-clear")
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("C001"))
-                .andExpect(jsonPath("$.errors").isNotEmpty());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.understandingSignal").value("CLEAR"));
 
-        // 공백만 있는 summary 도 CLEAR 에서는 400
-        submitWithBlankSummary(token, "CLEAR", "browser-blank")
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("C001"));
-
-        // summary 없이 PARTIAL → 400
         submitWithoutSummary(token, "PARTIAL", "browser-partial")
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("C001"));
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.understandingSignal").value("PARTIAL"));
 
-        // summary 없이 UNCLEAR → 201 (선택)
         submitWithoutSummary(token, "UNCLEAR", "browser-unclear")
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.understandingSignal").value("UNCLEAR"));
     }
 
+    @Test
+    @DisplayName("익명 검토자 키가 UUID v4 형식이 아니면 400(C001) 을 반환한다 (API_SPEC §3.5)")
+    void invalidReviewerIdFormatIsRejected() throws Exception {
+        User owner = persistUser("owner-uuid@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+
+        mockMvc.perform(post("/public/review-links/{token}/submissions", token)
+                        .header(REVIEWER_ID_HEADER, "not-a-uuid")
+                        .contentType("application/json")
+                        .content("{ \"understandingSignal\": \"CLEAR\" }"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+
+        assertThat(reviewSubmissionRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("재발급하면 기존 ACTIVE 링크가 CLOSED 로 닫힌다 — 섹션당 ACTIVE 1개 (대체 발급)")
+    void reissueClosesPreviousActiveLink() throws Exception {
+        User owner = persistUser("owner-replace@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        String firstToken = issueLink(section.getId(), owner);
+        String secondToken = issueLink(section.getId(), owner);
+
+        // 기존 링크는 CLOSED — 제출이 거부된다 (기존 제출 결과는 보존)
+        submitAsReviewer(firstToken, "CLEAR", "browser-old")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R005"));
+
+        // 새 링크만 ACTIVE — 정상 제출된다
+        submitAsReviewer(secondToken, "CLEAR", "browser-new").andExpect(status().isCreated());
+
+        assertThat(reviewLinkRepository
+                .findByProjectSection_IdAndStatus(section.getId(), com.wevo.backend.review.domain.ReviewLinkStatus.ACTIVE))
+                .hasSize(1);
+    }
+
     // --- 시드 헬퍼 ---
 
     private org.springframework.test.web.servlet.ResultActions submitWithoutSummary(
-            String token, String signal, String reviewerId) throws Exception {
+            String token, String signal, String reviewerLabel) throws Exception {
         return mockMvc.perform(post("/public/review-links/{token}/submissions", token)
-                .header(REVIEWER_ID_HEADER, reviewerId)
+                .header(REVIEWER_ID_HEADER, reviewerId(reviewerLabel))
                 .contentType("application/json")
                 .content("{ \"understandingSignal\": \"%s\" }".formatted(signal)));
     }
 
-    private org.springframework.test.web.servlet.ResultActions submitWithBlankSummary(
-            String token, String signal, String reviewerId) throws Exception {
-        return mockMvc.perform(post("/public/review-links/{token}/submissions", token)
-                .header(REVIEWER_ID_HEADER, reviewerId)
-                .contentType("application/json")
-                .content("{ \"understandingSignal\": \"%s\", \"summary\": \"   \" }".formatted(signal)));
-    }
-
     private org.springframework.test.web.servlet.ResultActions submitAsReviewer(
-            String token, String signal, String reviewerId) throws Exception {
-        // CLEAR·PARTIAL 은 summary 가 필수이므로 항상 채워 보낸다. (UNCLEAR 에는 무해)
+            String token, String signal, String reviewerLabel) throws Exception {
         return mockMvc.perform(post("/public/review-links/{token}/submissions", token)
-                .header(REVIEWER_ID_HEADER, reviewerId)
+                .header(REVIEWER_ID_HEADER, reviewerId(reviewerLabel))
                 .contentType("application/json")
                 .content("{ \"understandingSignal\": \"%s\", \"summary\": \"핵심을 이해했어요.\" }".formatted(signal)));
     }
