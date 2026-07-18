@@ -103,7 +103,7 @@ class ProjectQueryServiceTest {
         assertThat(sections).hasSize(2);
         assertThat(sections.get(0).keyQuestion()).isEqualTo("핵심 질문 1");
         assertThat(sections.get(0).guide()).isEqualTo("작성 가이드 1");
-        assertThat(sections.get(0).status()).isEqualTo(ProjectSectionStatus.COLLECTING);
+        assertThat(sections.get(0).sectionStatus()).isEqualTo(ProjectSectionStatus.COLLECTING);
     }
 
     @Test

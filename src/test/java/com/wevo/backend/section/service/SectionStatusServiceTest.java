@@ -104,8 +104,8 @@ class SectionStatusServiceTest {
     }
 
     @Test
-    @DisplayName("프로젝트 멤버가 아니면 NOT_PROJECT_MEMBER 를 던진다")
-    void markSynthesizing_notMember_throws() {
+    @DisplayName("프로젝트 멤버가 아니면 SECTION_NOT_FOUND 로 숨긴다 (존재 숨김 — CLAUDE.md §5.6)")
+    void markSynthesizing_notMember_hiddenAsNotFound() {
         ProjectSection section = section(ProjectSectionStatus.COLLECTING);
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
         given(projectAccessGuard.requireOwner(PROJECT_ID, OWNER_ID))
@@ -114,7 +114,7 @@ class SectionStatusServiceTest {
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> sectionStatusService.markSynthesizing(SECTION_ID, OWNER_ID));
 
-        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_PROJECT_MEMBER);
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
     }
 
     @Test
