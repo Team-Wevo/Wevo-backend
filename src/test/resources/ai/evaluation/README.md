@@ -33,7 +33,8 @@ enum 값 변경은 새 schema version과 새 dataset version을 만든다. 배�
   대상 claim이 0건이면 100%가 아니라 `NOT_MEASURABLE`이다.
 - issue precision/recall은 현재 초기 dataset에서 `CONFLICT`/`GAP` 유형의 multiset을 gold와 비교한다.
   AI-06 이후 기능별 stable issue key가 생기면 schema version을 올려 더 세밀한 matching을 추가한다.
-- nullable token은 실행 하나라도 값을 제공하지 않으면 aggregate total을 `null`로 둔다. cache token이
+- nullable token은 실행 하나라도 값을 제공하지 않으면 aggregate total을 `null`로 둔다. 일부 실행만
+  값을 제공하면 `PARTIALLY_MEASURED`, 전혀 제공하지 않으면 `NOT_MEASURABLE`로 구분하며 cache token이
   없는 Provider를 0으로 간주하지 않는다.
 - 비용은 모든 실행이 pricing snapshot을 가질 때만 합산한다. 단가가 없는 NVIDIA Trial 결과는
   `estimatedCost=null`, `UNPRICED`다.
@@ -89,5 +90,7 @@ report는 `build/reports/ai-evaluation/` 아래 JSON과 Markdown으로 생성하
 JSON은 `schema/report-v1.schema.json`의 machine-readable schema version `1.0`을 갖고 Markdown은 리뷰 요약이다. report에는 fixture ID와
 정규화된 실패 유형만 포함하며 prompt, completion, 의견 전문, Provider error body, Authorization header,
 API key를 절대 포함하지 않는다. 새 Provider·model·prompt 또는 temperature/max output token 변경 PR은
-동일 dataset version의 baseline report와 현재 report를 첨부한다. NVIDIA Trial baseline은 개발·테스트
-비교용이며 운영 Provider 출시 승인으로 간주하지 않는다.
+동일 dataset version의 baseline report와 현재 report를 첨부한다. baseline delta는 report schema,
+dataset version, output schema version, fixture 수와 fixture ID 집합이 모두 같을 때만 계산한다.
+Provider·model·prompt와 실행 옵션은 비교 대상이므로 동일하지 않아도 된다. NVIDIA Trial baseline은
+개발·테스트 비교용이며 운영 Provider 출시 승인으로 간주하지 않는다.

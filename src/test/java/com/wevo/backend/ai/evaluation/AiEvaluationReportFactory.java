@@ -3,7 +3,9 @@ package com.wevo.backend.ai.evaluation;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 public final class AiEvaluationReportFactory {
 
@@ -32,6 +34,7 @@ public final class AiEvaluationReportFactory {
             int minimumSamples
     ) {
         validateDatasetVersion(run, fixtures);
+        validateBaselineCompatibility(run, fixtures, baseline);
         AiEvaluationMetrics metrics = metricsCalculator.calculate(fixtures, samples);
         List<AiEvaluationReport.Failure> failures = samples.stream()
                 .filter(sample -> sample.outcome() != AiEvaluationOutcome.SUCCESS)
@@ -90,6 +93,41 @@ public final class AiEvaluationReportFactory {
         if (mismatch) {
             throw new IllegalArgumentException("run metadata와 fixture dataset version이 일치하지 않습니다.");
         }
+    }
+
+    private void validateBaselineCompatibility(
+            AiEvaluationRunMetadata run,
+            List<AiEvaluationFixture> fixtures,
+            AiEvaluationReport baseline
+    ) {
+        if (baseline == null) {
+            return;
+        }
+        if (baseline.run() == null
+                || baseline.metrics() == null
+                || baseline.fixtureResults() == null) {
+            throw incompatibleBaseline();
+        }
+
+        Set<String> currentFixtureIds = fixtures.stream()
+                .map(fixture -> fixture.metadata().id())
+                .collect(Collectors.toUnmodifiableSet());
+        Set<String> baselineFixtureIds = baseline.fixtureResults().stream()
+                .map(AiEvaluationReport.FixtureResult::fixtureId)
+                .collect(Collectors.toUnmodifiableSet());
+        boolean compatible = REPORT_SCHEMA_VERSION.equals(baseline.reportSchemaVersion())
+                && run.datasetVersion().equals(baseline.run().datasetVersion())
+                && run.schemaVersion().equals(baseline.run().schemaVersion())
+                && fixtures.size() == baseline.metrics().fixtureCount()
+                && fixtures.size() == baseline.fixtureResults().size()
+                && currentFixtureIds.equals(baselineFixtureIds);
+        if (!compatible) {
+            throw incompatibleBaseline();
+        }
+    }
+
+    private IllegalArgumentException incompatibleBaseline() {
+        return new IllegalArgumentException("호환되지 않는 baseline report입니다.");
     }
 
     private Map<String, Double> deltas(

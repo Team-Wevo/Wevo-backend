@@ -229,13 +229,19 @@ public final class AiEvaluationMetricsCalculator {
             }
         }
         boolean complete = !samples.isEmpty() && measured == samples.size();
+        AiEvaluationMetrics.MeasurementStatus status;
+        if (complete) {
+            status = AiEvaluationMetrics.MeasurementStatus.MEASURED;
+        } else if (measured > 0) {
+            status = AiEvaluationMetrics.MeasurementStatus.PARTIALLY_MEASURED;
+        } else {
+            status = AiEvaluationMetrics.MeasurementStatus.NOT_MEASURABLE;
+        }
         return new AiEvaluationMetrics.NullableLongSummary(
                 complete ? total : null,
                 measured,
                 samples.size(),
-                complete
-                        ? AiEvaluationMetrics.MeasurementStatus.MEASURED
-                        : AiEvaluationMetrics.MeasurementStatus.NOT_MEASURABLE
+                status
         );
     }
 

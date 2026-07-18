@@ -100,6 +100,39 @@ class AiEvaluationMetricsCalculatorTest {
     }
 
     @Test
+    void preservesPartialTokenMeasurementWithoutPublishingAnIncompleteTotal() {
+        AiEvaluationFixture first = fixture("all-agreed-proposal.json");
+        AiEvaluationFixture second = fixture("direct-conflict-proposal.json");
+        List<AiEvaluationSample> samples = List.of(
+                success(
+                        first,
+                        AiEvaluationCandidate.empty(),
+                        usage(10L, 4L, null, null),
+                        AiCostSnapshot.unpriced("trial-unpriced"),
+                        7
+                ),
+                success(
+                        second,
+                        AiEvaluationCandidate.empty(),
+                        usage(null, 6L, null, null),
+                        AiCostSnapshot.unpriced("trial-unpriced"),
+                        8
+                )
+        );
+
+        AiEvaluationMetrics metrics = calculator.calculate(List.of(first, second), samples);
+
+        assertThat(metrics.inputTokens().total()).isNull();
+        assertThat(metrics.inputTokens().measuredSamples()).isEqualTo(1);
+        assertThat(metrics.inputTokens().totalSamples()).isEqualTo(2);
+        assertThat(metrics.inputTokens().status())
+                .isEqualTo(AiEvaluationMetrics.MeasurementStatus.PARTIALLY_MEASURED);
+        assertThat(metrics.outputTokens().total()).isEqualTo(10L);
+        assertThat(metrics.outputTokens().status())
+                .isEqualTo(AiEvaluationMetrics.MeasurementStatus.MEASURED);
+    }
+
+    @Test
     void countsSchemaViolationDetailsWithoutInferringCorrectionExhaustionFromAttempts() {
         AiEvaluationFixture fixture = fixture("all-agreed-proposal.json");
         AiEvaluationSample failed = new AiEvaluationSample(
