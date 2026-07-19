@@ -7,6 +7,7 @@ import com.wevo.backend.section.domain.DraftLease;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.dto.response.DraftLeaseAcquireResponse;
+import com.wevo.backend.section.dto.response.DraftLeaseRenewResponse;
 import com.wevo.backend.section.dto.response.DraftLeaseStatusResponse;
 import com.wevo.backend.section.repository.DraftLeaseRepository;
 import com.wevo.backend.section.repository.SectionDraftRepository;
@@ -74,7 +75,7 @@ public class DraftLeaseService {
         LocalDateTime now = LocalDateTime.now(KST);
         LocalDateTime leaseUntil = now.plus(LEASE_DURATION);
         Optional<DraftLease> existingLease =
-                draftLeaseRepository.findByProjectSection_Id(projectSectionId);
+                draftLeaseRepository.findByProjectSectionIdForUpdate(projectSectionId);
 
         DraftLease lease;
         if (existingLease.isEmpty()) {
@@ -94,6 +95,30 @@ public class DraftLeaseService {
 
         return DraftLeaseAcquireResponse.from(lease);
     }
+    /**
+     * 프로젝트 멤버가 현재 보유 중인 유효한 편집 잠금을 5분 연장한다.
+     *
+     * <p>섹션 접근 권한을 먼저 검사해 비멤버에게 섹션과 lease의 존재를 숨긴다. 활성 lease를
+     * 타인이 보유하면 {@code S004}, lease가 없거나 만료됐으면 {@code S005}를 반환한다.
+     */
+    @Transactional
+    public DraftLeaseRenewResponse renew(Long projectSectionId, Long userId) {
+        sectionAccessGuard.requireParticipantSectionForUpdate(projectSectionId, userId);
+        DraftLease lease = draftLeaseRepository.findByProjectSectionIdForUpdate(projectSectionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.DRAFT_LEASE_NOT_HELD));
+
+        LocalDateTime now = LocalDateTime.now(KST);
+        if (!lease.isActiveAt(now)) {
+            throw new BusinessException(ErrorCode.DRAFT_LEASE_NOT_HELD);
+        }
+        if (!lease.getHolderUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
+        }
+
+        lease.renewUntil(now.plus(LEASE_DURATION));
+        return DraftLeaseRenewResponse.from(lease);
+    }
+
     /**
      * 섹션의 현재 편집 잠금 상태를 조회한다.
      *

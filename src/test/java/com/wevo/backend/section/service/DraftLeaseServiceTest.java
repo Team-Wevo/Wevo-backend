@@ -16,6 +16,7 @@ import com.wevo.backend.section.domain.DraftLease;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.dto.response.DraftLeaseAcquireResponse;
+import com.wevo.backend.section.dto.response.DraftLeaseRenewResponse;
 import com.wevo.backend.section.dto.response.DraftLeaseStatusResponse;
 import com.wevo.backend.section.repository.DraftLeaseRepository;
 import com.wevo.backend.section.repository.SectionDraftRepository;
@@ -74,7 +75,7 @@ class DraftLeaseServiceTest {
         given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
                 .willReturn(section);
         given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
-        given(draftLeaseRepository.findByProjectSection_Id(SECTION_ID)).willReturn(Optional.empty());
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID)).willReturn(Optional.empty());
         given(draftLeaseRepository.saveAndFlush(any(DraftLease.class))).willAnswer(invocation -> {
             DraftLease lease = invocation.getArgument(0);
             ReflectionTestUtils.setField(lease, "id", 91L);
@@ -95,7 +96,8 @@ class DraftLeaseServiceTest {
         given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
                 .willReturn(section);
         given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
-        given(draftLeaseRepository.findByProjectSection_Id(SECTION_ID)).willReturn(Optional.of(lease));
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(lease));
         LocalDateTime before = LocalDateTime.now(KST);
 
         DraftLeaseAcquireResponse response = draftLeaseService.acquire(SECTION_ID, OWNER_ID);
@@ -111,7 +113,8 @@ class DraftLeaseServiceTest {
         given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
                 .willReturn(section);
         given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
-        given(draftLeaseRepository.findByProjectSection_Id(SECTION_ID)).willReturn(Optional.of(lease));
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(lease));
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> draftLeaseService.acquire(SECTION_ID, OWNER_ID));
@@ -128,7 +131,8 @@ class DraftLeaseServiceTest {
         given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
                 .willReturn(section);
         given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
-        given(draftLeaseRepository.findByProjectSection_Id(SECTION_ID)).willReturn(Optional.of(lease));
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(lease));
 
         draftLeaseService.acquire(SECTION_ID, OWNER_ID);
 
@@ -209,6 +213,81 @@ class DraftLeaseServiceTest {
         assertThat(response.editor()).isNull();
         assertThat(response.expiresAt()).isNull();
         verify(draftLeaseRepository, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("보유자가 유효한 lease를 갱신하면 만료 시각을 현재 기준 5분 연장한다")
+    void renew_byHolder_extendsLease() {
+        DraftLease lease = lease(91L, OWNER_ID, LocalDateTime.now(KST).plusSeconds(10));
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
+                .willReturn(section);
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(lease));
+        LocalDateTime before = LocalDateTime.now(KST);
+
+        DraftLeaseRenewResponse response = draftLeaseService.renew(SECTION_ID, OWNER_ID);
+
+        assertThat(response.expiresAt()).isAfterOrEqualTo(before.plusMinutes(5));
+        assertThat(lease.getLeaseUntil()).isEqualTo(response.expiresAt());
+    }
+
+    @Test
+    @DisplayName("lease가 없으면 S005를 반환한다")
+    void renew_whenMissing_throwsS005() {
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
+                .willReturn(section);
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.empty());
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> draftLeaseService.renew(SECTION_ID, OWNER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DRAFT_LEASE_NOT_HELD);
+        assertThat(exception.getErrors()).isNull();
+    }
+
+    @Test
+    @DisplayName("타인이 보유한 활성 lease를 갱신하면 S004를 반환한다")
+    void renew_byNonHolder_throwsS004() {
+        DraftLease lease = lease(91L, MEMBER_ID, LocalDateTime.now(KST).plusSeconds(30));
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
+                .willReturn(section);
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(lease));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> draftLeaseService.renew(SECTION_ID, OWNER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
+    }
+
+    @Test
+    @DisplayName("보유자의 lease가 만료됐으면 errors 없이 S005를 반환한다")
+    void renew_whenExpired_throwsS005() {
+        DraftLease lease = lease(91L, OWNER_ID, LocalDateTime.now(KST).minusSeconds(1));
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
+                .willReturn(section);
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(lease));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> draftLeaseService.renew(SECTION_ID, OWNER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DRAFT_LEASE_NOT_HELD);
+        assertThat(exception.getErrors()).isNull();
+    }
+
+    @Test
+    @DisplayName("비멤버는 섹션 존재를 숨겨 S001을 반환하고 lease를 조회하지 않는다")
+    void renew_byNonMember_throwsS001BeforeLeaseLookup() {
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
+                .willThrow(new BusinessException(ErrorCode.SECTION_NOT_FOUND));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> draftLeaseService.renew(SECTION_ID, OWNER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
+        verifyNoInteractions(draftLeaseRepository);
     }
 
     private DraftLease lease(Long id, Long holderUserId, LocalDateTime leaseUntil) {

@@ -70,4 +70,11 @@ public class DraftLease extends BaseTimeEntity {
         this.holderUserId = holderUserId;
         this.leaseUntil = leaseUntil;
     }
+
+    /**
+     * 현재 보유자의 유효한 편집 잠금 만료 시각을 연장한다.
+     */
+    public void renewUntil(LocalDateTime leaseUntil) {
+        this.leaseUntil = leaseUntil;
+    }
 }
