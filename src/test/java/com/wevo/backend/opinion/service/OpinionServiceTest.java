@@ -419,6 +419,7 @@ class OpinionServiceTest {
 
         OpinionGateCloseResponse response = opinionService.closeOpinionGate(SECTION_ID, USER_ID);
 
+        assertThat(response.sectionId()).isEqualTo(SECTION_ID);
         assertThat(response.sectionStatus()).isEqualTo(ProjectSectionStatus.SYNTHESIZING);
         assertThat(response.closedAt()).isNotNull();
         verify(sectionStatusService).markSynthesizing(SECTION_ID, USER_ID);
@@ -464,7 +465,7 @@ class OpinionServiceTest {
 
         OpinionGateReopenResponse response = opinionService.reopenOpinionGate(SECTION_ID, USER_ID);
 
-        assertThat(response.id()).isEqualTo(SECTION_ID);
+        assertThat(response.sectionId()).isEqualTo(SECTION_ID);
         assertThat(response.sectionStatus()).isEqualTo(ProjectSectionStatus.COLLECTING);
         assertThat(response.synthesisStale()).isTrue();
         assertThat(response.reopenedAt()).isNotNull();

@@ -305,12 +305,14 @@ class OpinionControllerWebMvcTest {
     @DisplayName("OWNER의 의견 수집 마감은 OPINION_GATE_CLOSED 성공 응답을 반환한다")
     void closeOpinionGate_returnsSuccess() throws Exception {
         given(opinionService.closeOpinionGate(10L, 7L)).willReturn(new OpinionGateCloseResponse(
+                10L,
                 com.wevo.backend.section.domain.ProjectSectionStatus.SYNTHESIZING,
                 LocalDateTime.of(2026, 7, 19, 12, 20)));
 
         mockMvc.perform(post(CLOSE_GATE_URL).with(authenticatedUser()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("OPINION_GATE_CLOSED"))
+                .andExpect(jsonPath("$.data.sectionId").value(10))
                 .andExpect(jsonPath("$.data.sectionStatus").value("SYNTHESIZING"))
                 .andExpect(jsonPath("$.data.closedAt").value("2026-07-19T12:20:00"));
     }
@@ -338,7 +340,8 @@ class OpinionControllerWebMvcTest {
         mockMvc.perform(post(REOPEN_GATE_URL).with(authenticatedUser()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("OPINION_GATE_REOPENED"))
-                .andExpect(jsonPath("$.data.id").value(10))
+                .andExpect(jsonPath("$.data.sectionId").value(10))
+                .andExpect(jsonPath("$.data.id").doesNotExist())
                 .andExpect(jsonPath("$.data.sectionStatus").value("COLLECTING"))
                 .andExpect(jsonPath("$.data.synthesisStale").value(true))
                 .andExpect(jsonPath("$.data.reopenedAt").value("2026-07-19T12:30:00"));

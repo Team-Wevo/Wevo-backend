@@ -6,7 +6,7 @@ import java.time.LocalDateTime;
 
 /** 의견 수집 재오픈 응답. */
 public record OpinionGateReopenResponse(
-        Long id,
+        Long sectionId,
         ProjectSectionStatus sectionStatus,
         boolean synthesisStale,
         LocalDateTime reopenedAt
