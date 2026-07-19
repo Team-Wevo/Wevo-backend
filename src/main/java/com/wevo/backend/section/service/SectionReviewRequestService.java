@@ -1,0 +1,104 @@
+package com.wevo.backend.section.service;
+
+import com.wevo.backend.global.exception.BusinessException;
+import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.project.service.SectionAccessGuard;
+import com.wevo.backend.section.domain.DraftLease;
+import com.wevo.backend.section.domain.ProjectSection;
+import com.wevo.backend.section.domain.ProjectSectionStatus;
+import com.wevo.backend.section.dto.response.SectionReviewRequestResponse;
+import com.wevo.backend.section.repository.DraftLeaseRepository;
+import com.wevo.backend.section.repository.SectionDraftRepository;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.Optional;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 검토 요청 — 초안 작성이 끝난 섹션을 검토 단계로 보낸다. (API_SPEC §3.7.7, 정책서 §3.2)
+ *
+ * <p>{@code DRAFTING → REVIEWING} 전이의 진입 조건을 검사한 뒤 전이는
+ * {@link SectionStatusService}(section 도메인 단일 진입점)에 위임한다.
+ *
+ * <ul>
+ *   <li><b>권한</b>: 프로젝트 참여자 전체 — 초안 편집이 팀장·팀원 모두 가능(§5.2)하므로
+ *       편집을 마친 사람이 바로 요청한다. (정책서 기준 팀 확정 2026-07-18)</li>
+ *   <li><b>진입 조건</b>: 섹션이 {@code DRAFTING} + 초안 존재 + 활성 편집자 없음
+ *       (검토 대상 본문을 고정하기 위해 — 검토자들이 읽는 본문이 흔들리면 안 된다)</li>
+ *   <li><b>팀 검토 PENDING 초기화</b>: 파생 모델(§3.5.6 — 조회 시점 멤버 기준)이라 레코드를
+ *       만들지 않는다. 재오픈을 거친 재요청 시 남아 있는 이전 사이클 검토는 본문 저장이 이미
+ *       {@code OUTDATED} 처리했으므로 그대로 둔다.</li>
+ * </ul>
+ */
+@Service
+@Transactional(readOnly = true)
+public class SectionReviewRequestService {
+
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+
+    private final SectionAccessGuard sectionAccessGuard;
+    private final SectionDraftRepository sectionDraftRepository;
+    private final DraftLeaseRepository draftLeaseRepository;
+    private final SectionStatusService sectionStatusService;
+
+    public SectionReviewRequestService(SectionAccessGuard sectionAccessGuard,
+                                       SectionDraftRepository sectionDraftRepository,
+                                       DraftLeaseRepository draftLeaseRepository,
+                                       SectionStatusService sectionStatusService) {
+        this.sectionAccessGuard = sectionAccessGuard;
+        this.sectionDraftRepository = sectionDraftRepository;
+        this.draftLeaseRepository = draftLeaseRepository;
+        this.sectionStatusService = sectionStatusService;
+    }
+
+    /**
+     * 검토를 요청한다. (프로젝트 참여자 전용)
+     *
+     * <p>섹션 행을 배타 잠금으로 잡아 초안 저장·lease 획득과 직렬화한다 — 조건 검사와 전이
+     * 사이에 다른 요청이 끼어들지 않는다.
+     *
+     * <p><b>호출자 본인이 보유한 lease는 요청과 함께 원자적으로 해제</b>한다(본인 행위 —
+     * 재오픈 §3.4.6의 lease 규칙과 대칭). 타인이 편집 중일 때만 거부한다.
+     *
+     * @throws BusinessException 섹션 없음/비멤버(존재 숨김 {@code S001}),
+     *                           {@code DRAFTING}이 아님({@code S002}), 초안 없음({@code S003}),
+     *                           타인이 편집 중({@code S004})
+     */
+    @Transactional
+    public SectionReviewRequestResponse request(Long sectionId, Long userId) {
+        ProjectSection section =
+                sectionAccessGuard.requireParticipantSectionForUpdate(sectionId, userId);
+
+        if (section.getStatus() != ProjectSectionStatus.DRAFTING) {
+            throw new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
+        }
+        if (!sectionDraftRepository.existsByProjectSection_Id(sectionId)) {
+            throw new BusinessException(ErrorCode.SECTION_DRAFT_NOT_FOUND);
+        }
+        releaseOrRejectActiveLease(sectionId, userId);
+
+        ProjectSection transitioned = sectionStatusService.markReviewing(sectionId, userId);
+        return SectionReviewRequestResponse.from(transitioned);
+    }
+
+    /**
+     * 활성 lease를 검사한다 — 타인 보유면 거부하고, 본인 보유면 원자적으로 해제한다.
+     *
+     * <p>lease 행을 배타 잠금으로 조회해 heartbeat(연장)와 직렬화한다.
+     */
+    private void releaseOrRejectActiveLease(Long sectionId, Long userId) {
+        Optional<DraftLease> lease = draftLeaseRepository.findByProjectSectionIdForUpdate(sectionId);
+        if (lease.isEmpty()) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now(KST);
+        if (!lease.get().isActiveAt(now)) {
+            return;
+        }
+        if (!lease.get().getHolderUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
+        }
+        lease.get().release(now);
+    }
+}

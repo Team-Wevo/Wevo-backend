@@ -70,15 +70,38 @@ public class SectionStatusService {
     }
 
     /**
+     * 검토 요청 전이. {@code DRAFTING → REVIEWING} (프로젝트 참여자 전용 — 팀장·팀원 모두)
+     *
+     * <p>다른 전이(마감·재오픈)와 달리 <b>참여자 전체</b>가 실행할 수 있다 — 정책서 §3.2 전이 표가
+     * 마감·결정 반영에는 "팀장이"를 명시하면서 검토 요청에만 주체를 비워뒀고(의도적 구분),
+     * 초안 편집이 팀장·팀원 모두 가능(§5.2)하므로 편집을 마친 사람이 바로 요청한다.
+     * (정책서 기준 팀 확정 2026-07-18 — API_SPEC §3.7.7)
+     *
+     * <p>진입 조건(초안 존재·활성 편집자 없음)은 검토 요청 API({@code SectionReviewRequestService})가
+     * 검사한다 — 이 메서드는 전이 규칙·권한·이력만 책임진다.
+     */
+    @Transactional
+    public ProjectSection markReviewing(Long sectionId, Long actorUserId) {
+        ProjectSection section = requireSection(sectionId);
+        ProjectMember actor = requireParticipant(section, actorUserId);
+        return applyTransition(section, actor, ProjectSectionStatus.REVIEWING, "REVIEW_REQUESTED");
+    }
+
+    /**
      * 공통 전이 처리: 섹션 조회 → 팀장 권한 검증 → 상태 전이(규칙 검증) → 이력 기록.
      */
     private ProjectSection transition(Long sectionId, Long actorUserId,
                                       ProjectSectionStatus target, String eventType) {
-        ProjectSection section = projectSectionRepository.findById(sectionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_NOT_FOUND));
-
+        ProjectSection section = requireSection(sectionId);
         ProjectMember actor = requireOwner(section, actorUserId);
+        return applyTransition(section, actor, target, eventType);
+    }
 
+    /**
+     * 권한 검증을 마친 실행자의 전이를 적용하고 이력을 남긴다.
+     */
+    private ProjectSection applyTransition(ProjectSection section, ProjectMember actor,
+                                           ProjectSectionStatus target, String eventType) {
         ProjectSectionStatus from = section.getStatus();
         section.changeStatus(target); // 허용되지 않은 전이면 INVALID_SECTION_STATUS_TRANSITION
 
@@ -92,6 +115,26 @@ public class SectionStatusService {
                 .toStatus(target)
                 .build());
         return section;
+    }
+
+    private ProjectSection requireSection(Long sectionId) {
+        return projectSectionRepository.findById(sectionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_NOT_FOUND));
+    }
+
+    /**
+     * 요청자가 해당 섹션 프로젝트의 참여자(OWNER 또는 MEMBER)인지 검증한다.
+     * 비멤버는 존재 숨김 규칙에 따라 {@link ErrorCode#SECTION_NOT_FOUND}(404)로 숨긴다.
+     */
+    private ProjectMember requireParticipant(ProjectSection section, Long actorUserId) {
+        try {
+            return projectAccessGuard.requireParticipant(section.getProject().getId(), actorUserId);
+        } catch (BusinessException e) {
+            if (e.getErrorCode() == ErrorCode.NOT_PROJECT_MEMBER) {
+                throw new BusinessException(ErrorCode.SECTION_NOT_FOUND);
+            }
+            throw e;
+        }
     }
 
     /**
