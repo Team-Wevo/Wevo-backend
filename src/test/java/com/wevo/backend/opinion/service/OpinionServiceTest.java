@@ -7,6 +7,8 @@ import com.wevo.backend.opinion.domain.OpinionStatus;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
+import com.wevo.backend.opinion.dto.response.OpinionGateCloseResponse;
+import com.wevo.backend.opinion.dto.response.OpinionGateReopenResponse;
 import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
 import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
 import com.wevo.backend.opinion.repository.OpinionRepository;
@@ -15,6 +17,7 @@ import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
+import com.wevo.backend.section.service.SectionStatusService;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
 import com.wevo.backend.user.repository.UserRepository;
@@ -35,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -51,6 +55,8 @@ class OpinionServiceTest {
     private SectionAccessGuard sectionAccessGuard;
     @Mock
     private OpinionRepository opinionRepository;
+    @Mock
+    private SectionStatusService sectionStatusService;
     @Mock
     private UserRepository userRepository;
 
@@ -397,6 +403,88 @@ class OpinionServiceTest {
                 () -> opinionService.getSubmittedOpinions(SECTION_ID, USER_ID));
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("OWNER가 제출 의견이 있는 COLLECTING 섹션을 마감하면 SYNTHESIZING 으로 전이한다")
+    void closeOpinionGate_closesCollectingSection_whenSubmittedOpinionExists() {
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        given(sectionAccessGuard.requireOwnedSectionForUpdate(SECTION_ID, USER_ID)).willReturn(section);
+        given(opinionRepository.existsByProjectSection_IdAndStatus(SECTION_ID, OpinionStatus.SUBMITTED))
+                .willReturn(true);
+        willAnswer(invocation -> {
+            section.changeStatus(ProjectSectionStatus.SYNTHESIZING);
+            return null;
+        }).given(sectionStatusService).markSynthesizing(SECTION_ID, USER_ID);
+
+        OpinionGateCloseResponse response = opinionService.closeOpinionGate(SECTION_ID, USER_ID);
+
+        assertThat(response.sectionId()).isEqualTo(SECTION_ID);
+        assertThat(response.sectionStatus()).isEqualTo(ProjectSectionStatus.SYNTHESIZING);
+        assertThat(response.closedAt()).isNotNull();
+        verify(sectionStatusService).markSynthesizing(SECTION_ID, USER_ID);
+    }
+
+    @Test
+    @DisplayName("제출 의견이 없으면 수집 마감은 NO_SUBMITTED_OPINION 예외를 던진다")
+    void closeOpinionGate_withoutSubmittedOpinion_throws() {
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        given(sectionAccessGuard.requireOwnedSectionForUpdate(SECTION_ID, USER_ID)).willReturn(section);
+        given(opinionRepository.existsByProjectSection_IdAndStatus(SECTION_ID, OpinionStatus.SUBMITTED))
+                .willReturn(false);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> opinionService.closeOpinionGate(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NO_SUBMITTED_OPINION);
+        verify(sectionStatusService, never()).markSynthesizing(SECTION_ID, USER_ID);
+    }
+
+    @Test
+    @DisplayName("COLLECTING 이 아닌 섹션의 수집 마감은 INVALID_SECTION_STATUS_TRANSITION 예외를 던진다")
+    void closeOpinionGate_invalidStatus_throws() {
+        ProjectSection section = section(ProjectSectionStatus.SYNTHESIZING);
+        given(sectionAccessGuard.requireOwnedSectionForUpdate(SECTION_ID, USER_ID)).willReturn(section);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> opinionService.closeOpinionGate(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
+    }
+
+    @Test
+    @DisplayName("OWNER가 미확정 섹션을 재오픈하면 COLLECTING 상태와 stale 정보를 반환한다")
+    void reopenOpinionGate_reopensUnconfirmedSection() {
+        ProjectSection section = section(ProjectSectionStatus.DRAFTING);
+        given(sectionAccessGuard.requireOwnedSectionForUpdate(SECTION_ID, USER_ID)).willReturn(section);
+        given(sectionStatusService.markCollecting(SECTION_ID, USER_ID)).willAnswer(invocation -> {
+            section.changeStatus(ProjectSectionStatus.COLLECTING);
+            section.markSynthesisStale();
+            return section;
+        });
+
+        OpinionGateReopenResponse response = opinionService.reopenOpinionGate(SECTION_ID, USER_ID);
+
+        assertThat(response.sectionId()).isEqualTo(SECTION_ID);
+        assertThat(response.sectionStatus()).isEqualTo(ProjectSectionStatus.COLLECTING);
+        assertThat(response.synthesisStale()).isTrue();
+        assertThat(response.reopenedAt()).isNotNull();
+        verify(sectionStatusService).markCollecting(SECTION_ID, USER_ID);
+    }
+
+    @Test
+    @DisplayName("이미 열린 섹션의 재오픈은 INVALID_SECTION_STATUS_TRANSITION 예외를 던진다")
+    void reopenOpinionGate_alreadyOpenOrConfirmed_throws() {
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        given(sectionAccessGuard.requireOwnedSectionForUpdate(SECTION_ID, USER_ID)).willReturn(section);
+        given(sectionStatusService.markCollecting(SECTION_ID, USER_ID))
+                .willThrow(new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> opinionService.reopenOpinionGate(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
+        verify(sectionStatusService).markCollecting(SECTION_ID, USER_ID);
     }
 
     /**

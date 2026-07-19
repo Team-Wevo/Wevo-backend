@@ -8,6 +8,7 @@ import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionStatusHistory;
 import com.wevo.backend.section.repository.ProjectSectionRepository;
+import com.wevo.backend.section.repository.SectionDraftRepository;
 import com.wevo.backend.section.repository.SectionStatusHistoryRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,13 +30,16 @@ public class SectionStatusService {
 
     private final ProjectSectionRepository projectSectionRepository;
     private final ProjectAccessGuard projectAccessGuard;
+    private final SectionDraftRepository sectionDraftRepository;
     private final SectionStatusHistoryRepository sectionStatusHistoryRepository;
 
     public SectionStatusService(ProjectSectionRepository projectSectionRepository,
                                 ProjectAccessGuard projectAccessGuard,
+                                SectionDraftRepository sectionDraftRepository,
                                 SectionStatusHistoryRepository sectionStatusHistoryRepository) {
         this.projectSectionRepository = projectSectionRepository;
         this.projectAccessGuard = projectAccessGuard;
+        this.sectionDraftRepository = sectionDraftRepository;
         this.sectionStatusHistoryRepository = sectionStatusHistoryRepository;
     }
 
@@ -50,10 +54,26 @@ public class SectionStatusService {
     }
 
     /**
+     * 의견 수집 재오픈 전이. 미확정 섹션을 {@code COLLECTING} 으로 되돌린다. (팀장 전용)
+     *
+     * <p>기존 초안이 있으면 의견 변경으로 해당 산출물이 낡을 수 있으므로 재정리 필요 플래그를 남긴다.
+     * 아직 초안이 없는 정리 단계에서 재오픈할 때는 stale 대상이 없어 기존 값을 유지한다.
+     */
+    @Transactional
+    public ProjectSection markCollecting(Long sectionId, Long actorUserId) {
+        ProjectSection section = transition(sectionId, actorUserId,
+                ProjectSectionStatus.COLLECTING, "COLLECT_REOPENED");
+        if (sectionDraftRepository.existsByProjectSection_Id(sectionId)) {
+            section.markSynthesisStale();
+        }
+        return section;
+    }
+
+    /**
      * 공통 전이 처리: 섹션 조회 → 팀장 권한 검증 → 상태 전이(규칙 검증) → 이력 기록.
      */
-    private void transition(Long sectionId, Long actorUserId,
-                            ProjectSectionStatus target, String eventType) {
+    private ProjectSection transition(Long sectionId, Long actorUserId,
+                                      ProjectSectionStatus target, String eventType) {
         ProjectSection section = projectSectionRepository.findById(sectionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_NOT_FOUND));
 
@@ -71,6 +91,7 @@ public class SectionStatusService {
                 .fromStatus(from)
                 .toStatus(target)
                 .build());
+        return section;
     }
 
     /**

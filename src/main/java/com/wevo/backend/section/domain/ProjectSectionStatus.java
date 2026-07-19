@@ -22,7 +22,7 @@ public enum ProjectSectionStatus {
     CONFIRMED;      // 확정
 
     /**
-     * 허용된 정방향 전이. (역방향 재오픈 §4.5 / 드리프트 §6.4 는 해당 기능 구현 시 추가)
+     * 허용된 상태 전이. 수집 재오픈은 미확정 단계에서 {@code COLLECTING} 으로 되돌릴 수 있다.
      *
      * <ul>
      *   <li>COLLECTING → SYNTHESIZING : 수집 마감</li>
@@ -36,9 +36,9 @@ public enum ProjectSectionStatus {
 
     static {
         ALLOWED_TRANSITIONS.put(COLLECTING, EnumSet.of(SYNTHESIZING));
-        ALLOWED_TRANSITIONS.put(SYNTHESIZING, EnumSet.of(DRAFTING));
-        ALLOWED_TRANSITIONS.put(DRAFTING, EnumSet.of(REVIEWING));
-        ALLOWED_TRANSITIONS.put(REVIEWING, EnumSet.of(CONFIRMED));
+        ALLOWED_TRANSITIONS.put(SYNTHESIZING, EnumSet.of(COLLECTING, DRAFTING));
+        ALLOWED_TRANSITIONS.put(DRAFTING, EnumSet.of(COLLECTING, REVIEWING));
+        ALLOWED_TRANSITIONS.put(REVIEWING, EnumSet.of(COLLECTING, CONFIRMED));
         ALLOWED_TRANSITIONS.put(CONFIRMED, EnumSet.noneOf(ProjectSectionStatus.class));
     }
 
