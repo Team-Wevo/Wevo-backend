@@ -71,7 +71,7 @@ class DraftLeaseIntegrationTest {
                 .andExpect(jsonPath("$.data.holder").doesNotExist());
 
         DraftLease lease = draftLeaseRepository.findByProjectSection_Id(section.getId()).orElseThrow();
-        assertThat(lease.getHolder().getId()).isEqualTo(owner.getId());
+        assertThat(lease.getHolderUserId()).isEqualTo(owner.getId());
         assertThat(lease.getLeaseUntil()).isAfterOrEqualTo(before.plusMinutes(5));
     }
 
@@ -110,7 +110,7 @@ class DraftLeaseIntegrationTest {
         persistDraft(section, owner);
         em.persist(DraftLease.builder()
                 .projectSection(section)
-                .holder(member)
+                .holderUserId(member.getId())
                 .leaseUntil(LocalDateTime.now(KST).minusSeconds(1))
                 .build());
         em.flush();
@@ -121,7 +121,7 @@ class DraftLeaseIntegrationTest {
                 .andExpect(jsonPath("$.data.expiresAt").exists());
 
         DraftLease lease = draftLeaseRepository.findByProjectSection_Id(section.getId()).orElseThrow();
-        assertThat(lease.getHolder().getId()).isEqualTo(owner.getId());
+        assertThat(lease.getHolderUserId()).isEqualTo(owner.getId());
     }
 
     @Test
@@ -170,7 +170,7 @@ class DraftLeaseIntegrationTest {
         persistMember(project, member, ProjectMemberRole.MEMBER);
         em.persist(DraftLease.builder()
                 .projectSection(section)
-                .holder(member)
+                .holderUserId(member.getId())
                 .leaseUntil(LocalDateTime.now(KST).plusSeconds(30))
                 .build());
         em.flush();
@@ -212,7 +212,7 @@ class DraftLeaseIntegrationTest {
         persistMember(project, owner, ProjectMemberRole.OWNER);
         DraftLease expired = DraftLease.builder()
                 .projectSection(section)
-                .holder(owner)
+                .holderUserId(owner.getId())
                 .leaseUntil(LocalDateTime.now(KST).minusSeconds(1))
                 .build();
         em.persist(expired);

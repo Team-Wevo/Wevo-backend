@@ -50,6 +50,13 @@ public class UserService {
         return userRepository.getReferenceById(userId);
     }
 
+    /**
+     * 다른 도메인이 사용자 엔티티를 직접 참조하지 않고 표시 이름을 조회하는 공개 진입점이다.
+     */
+    public String getUserName(Long userId) {
+        return findUser(userId).getName();
+    }
+
     private User findUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));

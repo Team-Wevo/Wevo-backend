@@ -80,16 +80,16 @@ public class DraftLeaseService {
         if (existingLease.isEmpty()) {
             lease = DraftLease.builder()
                     .projectSection(section)
-                    .holder(userService.getUserReference(userId))
+                    .holderUserId(userId)
                     .leaseUntil(leaseUntil)
                     .build();
             lease = draftLeaseRepository.saveAndFlush(lease);
         } else {
             lease = existingLease.get();
-            if (lease.isActiveAt(now) && !lease.getHolder().getId().equals(userId)) {
+            if (lease.isActiveAt(now) && !lease.getHolderUserId().equals(userId)) {
                 throw new BusinessException(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
             }
-            lease.grantTo(userService.getUserReference(userId), leaseUntil);
+            lease.grantTo(userId, leaseUntil);
         }
 
         return DraftLeaseAcquireResponse.from(lease);
@@ -108,8 +108,8 @@ public class DraftLeaseService {
         return draftLeaseRepository.findByProjectSection_Id(projectSectionId)
                 .filter(lease -> lease.isActiveAt(now))
                 .map(lease -> DraftLeaseStatusResponse.locked(
-                        lease.getHolder().getId(),
-                        lease.getHolder().getName(),
+                        lease.getHolderUserId(),
+                        userService.getUserName(lease.getHolderUserId()),
                         lease.getLeaseUntil()
                 ))
                 .orElseGet(DraftLeaseStatusResponse::unlocked);
