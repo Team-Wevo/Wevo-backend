@@ -1,0 +1,219 @@
+package com.wevo.backend.section;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.wevo.backend.global.security.AuthPrincipal;
+import com.wevo.backend.project.domain.OutputType;
+import com.wevo.backend.project.domain.Project;
+import com.wevo.backend.project.domain.ProjectMember;
+import com.wevo.backend.project.domain.ProjectMemberRole;
+import com.wevo.backend.project.domain.ProjectStatus;
+import com.wevo.backend.section.domain.DraftLease;
+import com.wevo.backend.section.domain.ProjectSection;
+import com.wevo.backend.section.domain.ProjectSectionStatus;
+import com.wevo.backend.section.domain.SectionDraft;
+import com.wevo.backend.section.repository.DraftLeaseRepository;
+import com.wevo.backend.user.domain.User;
+import com.wevo.backend.user.domain.UserStatus;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 실제 JPA 매핑과 섹션 행 잠금 경로를 포함한 편집 잠금 API 통합 테스트.
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+@Transactional
+class DraftLeaseIntegrationTest {
+
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+
+    @Autowired
+    private MockMvc mockMvc;
+    @Autowired
+    private DraftLeaseRepository draftLeaseRepository;
+
+    @PersistenceContext
+    private EntityManager em;
+
+    @Test
+    @DisplayName("프로젝트 참여자는 편집 가능한 초안에 대해 5분 편집 잠금을 획득한다")
+    void participantAcquiresSingleLease() throws Exception {
+        User owner = persistUser("owner-lease-1@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistDraft(section, owner);
+        em.flush();
+        LocalDateTime before = LocalDateTime.now(KST);
+
+        mockMvc.perform(post("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("DRAFT_LEASE_ACQUIRED"))
+                .andExpect(jsonPath("$.data.expiresAt").exists())
+                .andExpect(jsonPath("$.data.holder").doesNotExist());
+
+        DraftLease lease = draftLeaseRepository.findByProjectSection_Id(section.getId()).orElseThrow();
+        assertThat(lease.getHolder().getId()).isEqualTo(owner.getId());
+        assertThat(lease.getLeaseUntil()).isAfterOrEqualTo(before.plusMinutes(5));
+    }
+
+    @Test
+    @DisplayName("다른 사용자의 활성 편집 잠금이 있으면 errors 없이 S004로 거부한다")
+    void activeLeaseHeldByOtherIsRejected() throws Exception {
+        User owner = persistUser("owner-lease-2@wevo.com");
+        User member = persistUser("member-lease-2@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistMember(project, member, ProjectMemberRole.MEMBER);
+        persistDraft(section, owner);
+        em.flush();
+
+        mockMvc.perform(post("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(member))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S004"))
+                .andExpect(jsonPath("$.errors").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("만료된 편집 잠금은 다른 프로젝트 참여자가 재획득한다")
+    void expiredLeaseCanBeReacquired() throws Exception {
+        User owner = persistUser("owner-lease-3@wevo.com");
+        User member = persistUser("member-lease-3@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistMember(project, member, ProjectMemberRole.MEMBER);
+        persistDraft(section, owner);
+        em.persist(DraftLease.builder()
+                .projectSection(section)
+                .holder(member)
+                .leaseUntil(LocalDateTime.now(KST).minusSeconds(1))
+                .build());
+        em.flush();
+
+        mockMvc.perform(post("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.expiresAt").exists());
+
+        DraftLease lease = draftLeaseRepository.findByProjectSection_Id(section.getId()).orElseThrow();
+        assertThat(lease.getHolder().getId()).isEqualTo(owner.getId());
+    }
+
+    @Test
+    @DisplayName("초안이 없으면 편집 잠금 획득을 S003으로 거부한다")
+    void draftMissingIsRejected() throws Exception {
+        User owner = persistUser("owner-lease-4@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        mockMvc.perform(post("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("S003"));
+
+        assertThat(draftLeaseRepository.findByProjectSection_Id(section.getId())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("COLLECTING 섹션은 초안이 있어도 편집 잠금 획득을 S002로 거부한다")
+    void collectingSectionIsRejected() throws Exception {
+        User owner = persistUser("owner-lease-5@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project, ProjectSectionStatus.COLLECTING);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistDraft(section, owner);
+        em.flush();
+
+        mockMvc.perform(post("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S002"));
+
+        assertThat(draftLeaseRepository.findByProjectSection_Id(section.getId())).isEmpty();
+    }
+
+    private UsernamePasswordAuthenticationToken authOf(User user) {
+        return new UsernamePasswordAuthenticationToken(
+                new AuthPrincipal(user.getId()), null, AuthorityUtils.NO_AUTHORITIES);
+    }
+
+    private User persistUser(String email) {
+        User user = User.builder()
+                .name(email.substring(0, email.indexOf('@')))
+                .email(email)
+                .status(UserStatus.ACTIVE)
+                .build();
+        em.persist(user);
+        return user;
+    }
+
+    private Project persistProject(User owner) {
+        Project project = Project.builder()
+                .owner(owner)
+                .title("위보 기획")
+                .resultType(OutputType.PRESENTATION)
+                .status(ProjectStatus.ACTIVE)
+                .build();
+        em.persist(project);
+        return project;
+    }
+
+    private ProjectSection persistSection(Project project) {
+        return persistSection(project, ProjectSectionStatus.DRAFTING);
+    }
+
+    private ProjectSection persistSection(Project project, ProjectSectionStatus status) {
+        ProjectSection section = ProjectSection.builder()
+                .project(project)
+                .title("문제 정의")
+                .sectionOrder(1)
+                .status(status)
+                .build();
+        em.persist(section);
+        return section;
+    }
+
+    private void persistDraft(ProjectSection section, User editor) {
+        em.persist(SectionDraft.builder()
+                .projectSection(section)
+                .content("초안 내용")
+                .version(1)
+                .lastEditor(editor)
+                .build());
+    }
+
+    private void persistMember(Project project, User user, ProjectMemberRole role) {
+        em.persist(ProjectMember.builder()
+                .project(project)
+                .user(user)
+                .role(role)
+                .joinedAt(LocalDateTime.now(KST))
+                .build());
+    }
+}
