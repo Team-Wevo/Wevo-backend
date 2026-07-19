@@ -77,4 +77,12 @@ public class DraftLease extends BaseTimeEntity {
     public void renewUntil(LocalDateTime leaseUntil) {
         this.leaseUntil = leaseUntil;
     }
+
+    /**
+     * 편집 잠금을 즉시 해제한다 — 만료 시각을 현재로 당겨 비활성으로 만든다.
+     * (행은 삭제하지 않는다 — 다음 획득 요청이 재사용하는 기존 모델 유지)
+     */
+    public void release(LocalDateTime now) {
+        this.leaseUntil = now;
+    }
 }
