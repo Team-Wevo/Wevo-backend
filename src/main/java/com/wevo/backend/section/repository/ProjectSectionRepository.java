@@ -1,6 +1,7 @@
 package com.wevo.backend.section.repository;
 
 import com.wevo.backend.section.domain.ProjectSection;
+import com.wevo.backend.section.domain.ProjectSectionStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -23,6 +24,10 @@ public interface ProjectSectionRepository extends JpaRepository<ProjectSection, 
     Optional<ProjectSection> findByIdForUpdate(@Param("id") Long id);
 
     List<ProjectSection> findByProjectIdOrderBySectionOrder(Long projectId);
+
+    long countByProjectId(Long projectId);
+
+    long countByProjectIdAndStatus(Long projectId, ProjectSectionStatus status);
 
     /**
      * 프로젝트의 섹션을 순서대로 조회하되, 템플릿을 함께 로딩한다.
