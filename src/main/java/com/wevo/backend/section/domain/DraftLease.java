@@ -1,7 +1,6 @@
 package com.wevo.backend.section.domain;
 
 import com.wevo.backend.global.common.BaseTimeEntity;
-import com.wevo.backend.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -44,17 +43,16 @@ public class DraftLease extends BaseTimeEntity {
     @JoinColumn(name = "project_section_id", nullable = false)
     private ProjectSection projectSection;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "holder_user_id", nullable = false)
-    private User holder;
+    @Column(name = "holder_user_id", nullable = false)
+    private Long holderUserId;
 
     @Column(name = "lease_until", nullable = false)
     private LocalDateTime leaseUntil;
 
     @Builder
-    private DraftLease(ProjectSection projectSection, User holder, LocalDateTime leaseUntil) {
+    private DraftLease(ProjectSection projectSection, Long holderUserId, LocalDateTime leaseUntil) {
         this.projectSection = projectSection;
-        this.holder = holder;
+        this.holderUserId = holderUserId;
         this.leaseUntil = leaseUntil;
     }
 
@@ -68,8 +66,8 @@ public class DraftLease extends BaseTimeEntity {
     /**
      * 기존 보유자의 재획득 또는 만료 후 새 보유자의 획득을 반영한다.
      */
-    public void grantTo(User holder, LocalDateTime leaseUntil) {
-        this.holder = holder;
+    public void grantTo(Long holderUserId, LocalDateTime leaseUntil) {
+        this.holderUserId = holderUserId;
         this.leaseUntil = leaseUntil;
     }
 }

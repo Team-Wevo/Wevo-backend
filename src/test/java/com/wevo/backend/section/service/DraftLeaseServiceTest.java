@@ -16,9 +16,9 @@ import com.wevo.backend.section.domain.DraftLease;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.dto.response.DraftLeaseAcquireResponse;
+import com.wevo.backend.section.dto.response.DraftLeaseStatusResponse;
 import com.wevo.backend.section.repository.DraftLeaseRepository;
 import com.wevo.backend.section.repository.SectionDraftRepository;
-import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.service.UserService;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -55,9 +55,6 @@ class DraftLeaseServiceTest {
     private DraftLeaseService draftLeaseService;
 
     private ProjectSection section;
-    private User owner;
-    private User member;
-
     @BeforeEach
     void setUp() {
         Project project = Project.builder().title("위보 프로젝트").build();
@@ -67,9 +64,6 @@ class DraftLeaseServiceTest {
                 .status(ProjectSectionStatus.DRAFTING)
                 .build();
         ReflectionTestUtils.setField(section, "id", SECTION_ID);
-
-        owner = user(OWNER_ID, "김민준");
-        member = user(MEMBER_ID, "이서연");
     }
 
     @ParameterizedTest
@@ -81,7 +75,6 @@ class DraftLeaseServiceTest {
                 .willReturn(section);
         given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
         given(draftLeaseRepository.findByProjectSection_Id(SECTION_ID)).willReturn(Optional.empty());
-        given(userService.getUserReference(OWNER_ID)).willReturn(owner);
         given(draftLeaseRepository.saveAndFlush(any(DraftLease.class))).willAnswer(invocation -> {
             DraftLease lease = invocation.getArgument(0);
             ReflectionTestUtils.setField(lease, "id", 91L);
@@ -98,12 +91,11 @@ class DraftLeaseServiceTest {
     @Test
     @DisplayName("본인이 보유한 활성 lease를 다시 획득하면 같은 lease의 만료 시각을 연장한다")
     void acquire_byCurrentHolder_renewsExistingLease() {
-        DraftLease lease = lease(91L, owner, LocalDateTime.now(KST).plusSeconds(10));
+        DraftLease lease = lease(91L, OWNER_ID, LocalDateTime.now(KST).plusSeconds(10));
         given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
                 .willReturn(section);
         given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
         given(draftLeaseRepository.findByProjectSection_Id(SECTION_ID)).willReturn(Optional.of(lease));
-        given(userService.getUserReference(OWNER_ID)).willReturn(owner);
         LocalDateTime before = LocalDateTime.now(KST);
 
         DraftLeaseAcquireResponse response = draftLeaseService.acquire(SECTION_ID, OWNER_ID);
@@ -115,7 +107,7 @@ class DraftLeaseServiceTest {
     @Test
     @DisplayName("다른 사용자의 활성 lease가 있으면 errors 없이 S004 충돌을 반환한다")
     void acquire_whenHeldByOther_throwsS004() {
-        DraftLease lease = lease(91L, member, LocalDateTime.now(KST).plusSeconds(30));
+        DraftLease lease = lease(91L, MEMBER_ID, LocalDateTime.now(KST).plusSeconds(30));
         given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
                 .willReturn(section);
         given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
@@ -126,22 +118,21 @@ class DraftLeaseServiceTest {
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
         assertThat(exception.getErrors()).isNull();
-        verify(userService, never()).getUserReference(any());
+        verifyNoInteractions(userService);
     }
 
     @Test
     @DisplayName("만료된 lease는 새 요청자가 같은 섹션의 편집권으로 재획득할 수 있다")
     void acquire_whenExpired_grantsLeaseToRequester() {
-        DraftLease lease = lease(91L, member, LocalDateTime.now(KST).minusSeconds(1));
+        DraftLease lease = lease(91L, MEMBER_ID, LocalDateTime.now(KST).minusSeconds(1));
         given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
                 .willReturn(section);
         given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
         given(draftLeaseRepository.findByProjectSection_Id(SECTION_ID)).willReturn(Optional.of(lease));
-        given(userService.getUserReference(OWNER_ID)).willReturn(owner);
 
         draftLeaseService.acquire(SECTION_ID, OWNER_ID);
 
-        assertThat(lease.getHolder()).isSameAs(owner);
+        assertThat(lease.getHolderUserId()).isEqualTo(OWNER_ID);
     }
 
     @Test
@@ -174,16 +165,56 @@ class DraftLeaseServiceTest {
         verifyNoInteractions(draftLeaseRepository, userService);
     }
 
-    private User user(Long id, String name) {
-        User user = User.builder().name(name).email(name + "@wevo.com").build();
-        ReflectionTestUtils.setField(user, "id", id);
-        return user;
+    @Test
+    @DisplayName("유효한 lease가 있으면 편집자 정보와 만료 시각을 포함한 locked=true를 반환한다")
+    void getStatus_whenActive_returnsLockedLease() {
+        DraftLease lease = lease(91L, MEMBER_ID, LocalDateTime.now(KST).plusSeconds(30));
+        given(sectionAccessGuard.requireParticipantSection(SECTION_ID, OWNER_ID)).willReturn(section);
+        given(draftLeaseRepository.findByProjectSection_Id(SECTION_ID)).willReturn(Optional.of(lease));
+        given(userService.getUserName(MEMBER_ID)).willReturn("이서연");
+
+        DraftLeaseStatusResponse response = draftLeaseService.getStatus(SECTION_ID, OWNER_ID);
+
+        assertThat(response.locked()).isTrue();
+        assertThat(response.editor().userId()).isEqualTo(MEMBER_ID);
+        assertThat(response.editor().name()).isEqualTo("이서연");
+        assertThat(response.expiresAt()).isEqualTo(lease.getLeaseUntil());
+        verify(sectionAccessGuard).requireParticipantSection(SECTION_ID, OWNER_ID);
+        verify(sectionAccessGuard, never()).requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID);
     }
 
-    private DraftLease lease(Long id, User holder, LocalDateTime leaseUntil) {
+    @Test
+    @DisplayName("lease가 없으면 locked=false이고 편집자·만료 시각은 없다")
+    void getStatus_whenAbsent_returnsUnlocked() {
+        given(sectionAccessGuard.requireParticipantSection(SECTION_ID, OWNER_ID)).willReturn(section);
+        given(draftLeaseRepository.findByProjectSection_Id(SECTION_ID)).willReturn(Optional.empty());
+
+        DraftLeaseStatusResponse response = draftLeaseService.getStatus(SECTION_ID, OWNER_ID);
+
+        assertThat(response.locked()).isFalse();
+        assertThat(response.editor()).isNull();
+        assertThat(response.expiresAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("만료된 lease는 삭제하지 않고 잠금 없음으로 반환한다")
+    void getStatus_whenExpired_returnsUnlocked() {
+        DraftLease lease = lease(91L, MEMBER_ID, LocalDateTime.now(KST).minusSeconds(1));
+        given(sectionAccessGuard.requireParticipantSection(SECTION_ID, OWNER_ID)).willReturn(section);
+        given(draftLeaseRepository.findByProjectSection_Id(SECTION_ID)).willReturn(Optional.of(lease));
+
+        DraftLeaseStatusResponse response = draftLeaseService.getStatus(SECTION_ID, OWNER_ID);
+
+        assertThat(response.locked()).isFalse();
+        assertThat(response.editor()).isNull();
+        assertThat(response.expiresAt()).isNull();
+        verify(draftLeaseRepository, never()).delete(any());
+    }
+
+    private DraftLease lease(Long id, Long holderUserId, LocalDateTime leaseUntil) {
         DraftLease lease = DraftLease.builder()
                 .projectSection(section)
-                .holder(holder)
+                .holderUserId(holderUserId)
                 .leaseUntil(leaseUntil)
                 .build();
         ReflectionTestUtils.setField(lease, "id", id);

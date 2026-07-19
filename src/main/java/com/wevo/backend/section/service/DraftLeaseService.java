@@ -7,6 +7,7 @@ import com.wevo.backend.section.domain.DraftLease;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.dto.response.DraftLeaseAcquireResponse;
+import com.wevo.backend.section.dto.response.DraftLeaseStatusResponse;
 import com.wevo.backend.section.repository.DraftLeaseRepository;
 import com.wevo.backend.section.repository.SectionDraftRepository;
 import com.wevo.backend.user.service.UserService;
@@ -79,18 +80,38 @@ public class DraftLeaseService {
         if (existingLease.isEmpty()) {
             lease = DraftLease.builder()
                     .projectSection(section)
-                    .holder(userService.getUserReference(userId))
+                    .holderUserId(userId)
                     .leaseUntil(leaseUntil)
                     .build();
             lease = draftLeaseRepository.saveAndFlush(lease);
         } else {
             lease = existingLease.get();
-            if (lease.isActiveAt(now) && !lease.getHolder().getId().equals(userId)) {
+            if (lease.isActiveAt(now) && !lease.getHolderUserId().equals(userId)) {
                 throw new BusinessException(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
             }
-            lease.grantTo(userService.getUserReference(userId), leaseUntil);
+            lease.grantTo(userId, leaseUntil);
         }
 
         return DraftLeaseAcquireResponse.from(lease);
+    }
+    /**
+     * 섹션의 현재 편집 잠금 상태를 조회한다.
+     *
+     * <p>유효한 lease가 있을 때만 {@code locked=true}다. lease가 없거나 만료됐으면
+     * 404가 아니라 {@code locked=false}를 반환한다. 조회 과정에서 만료 행을
+     * 삭제하지 않으며, 다음 획득 요청이 해당 행을 재사용한다.
+     */
+    public DraftLeaseStatusResponse getStatus(Long projectSectionId, Long userId) {
+        sectionAccessGuard.requireParticipantSection(projectSectionId, userId);
+        LocalDateTime now = LocalDateTime.now(KST);
+
+        return draftLeaseRepository.findByProjectSection_Id(projectSectionId)
+                .filter(lease -> lease.isActiveAt(now))
+                .map(lease -> DraftLeaseStatusResponse.locked(
+                        lease.getHolderUserId(),
+                        userService.getUserName(lease.getHolderUserId()),
+                        lease.getLeaseUntil()
+                ))
+                .orElseGet(DraftLeaseStatusResponse::unlocked);
     }
 }
