@@ -174,7 +174,7 @@ public class OpinionService {
     public OpinionGateCloseResponse closeOpinionGate(Long projectSectionId, Long userId) {
         ProjectSection section = sectionAccessGuard.requireOwnedSectionForUpdate(projectSectionId, userId);
         if (section.getStatus() != ProjectSectionStatus.COLLECTING) {
-            throw new BusinessException(ErrorCode.INVALID_OPINION_GATE_STATUS);
+            throw new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
         }
         if (!opinionRepository.existsByProjectSection_IdAndStatus(projectSectionId, OpinionStatus.SUBMITTED)) {
             throw new BusinessException(ErrorCode.NO_SUBMITTED_OPINION);
@@ -190,11 +190,7 @@ public class OpinionService {
      */
     @Transactional
     public OpinionGateReopenResponse reopenOpinionGate(Long projectSectionId, Long userId) {
-        ProjectSection section = sectionAccessGuard.requireOwnedSectionForUpdate(projectSectionId, userId);
-        if (section.getStatus() == ProjectSectionStatus.COLLECTING
-                || section.getStatus() == ProjectSectionStatus.CONFIRMED) {
-            throw new BusinessException(ErrorCode.INVALID_OPINION_GATE_STATUS);
-        }
+        sectionAccessGuard.requireOwnedSectionForUpdate(projectSectionId, userId);
 
         ProjectSection reopened = sectionStatusService.markCollecting(projectSectionId, userId);
         return OpinionGateReopenResponse.from(reopened, LocalDateTime.now(KST));

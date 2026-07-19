@@ -316,13 +316,13 @@ class OpinionControllerWebMvcTest {
     }
 
     @Test
-    @DisplayName("제출 의견 없이 마감하면 O004와 422 응답을 반환한다")
+    @DisplayName("제출 의견 없이 마감하면 O004와 409 응답을 반환한다")
     void closeOpinionGate_withoutSubmittedOpinion_returnsO004() throws Exception {
         given(opinionService.closeOpinionGate(10L, 7L))
                 .willThrow(new BusinessException(ErrorCode.NO_SUBMITTED_OPINION));
 
         mockMvc.perform(post(CLOSE_GATE_URL).with(authenticatedUser()))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("O004"));
     }
 
@@ -345,14 +345,14 @@ class OpinionControllerWebMvcTest {
     }
 
     @Test
-    @DisplayName("재오픈할 수 없는 섹션 상태면 S008과 409 응답을 반환한다")
-    void reopenOpinionGate_invalidStatus_returnsS008() throws Exception {
+    @DisplayName("재오픈할 수 없는 섹션 상태면 S002와 409 응답을 반환한다")
+    void reopenOpinionGate_invalidStatus_returnsS002() throws Exception {
         given(opinionService.reopenOpinionGate(10L, 7L))
-                .willThrow(new BusinessException(ErrorCode.INVALID_OPINION_GATE_STATUS));
+                .willThrow(new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION));
 
         mockMvc.perform(post(REOPEN_GATE_URL).with(authenticatedUser()))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("S008"));
+                .andExpect(jsonPath("$.code").value("S002"));
     }
 
     private RequestPostProcessor authenticatedUser() {

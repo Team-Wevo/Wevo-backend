@@ -440,7 +440,7 @@ class OpinionServiceTest {
     }
 
     @Test
-    @DisplayName("COLLECTING 이 아닌 섹션의 수집 마감은 INVALID_OPINION_GATE_STATUS 예외를 던진다")
+    @DisplayName("COLLECTING 이 아닌 섹션의 수집 마감은 INVALID_SECTION_STATUS_TRANSITION 예외를 던진다")
     void closeOpinionGate_invalidStatus_throws() {
         ProjectSection section = section(ProjectSectionStatus.SYNTHESIZING);
         given(sectionAccessGuard.requireOwnedSectionForUpdate(SECTION_ID, USER_ID)).willReturn(section);
@@ -448,7 +448,7 @@ class OpinionServiceTest {
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> opinionService.closeOpinionGate(SECTION_ID, USER_ID));
 
-        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_OPINION_GATE_STATUS);
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
     }
 
     @Test
@@ -472,16 +472,18 @@ class OpinionServiceTest {
     }
 
     @Test
-    @DisplayName("이미 열렸거나 확정된 섹션의 재오픈은 INVALID_OPINION_GATE_STATUS 예외를 던진다")
+    @DisplayName("이미 열린 섹션의 재오픈은 INVALID_SECTION_STATUS_TRANSITION 예외를 던진다")
     void reopenOpinionGate_alreadyOpenOrConfirmed_throws() {
         ProjectSection section = section(ProjectSectionStatus.COLLECTING);
         given(sectionAccessGuard.requireOwnedSectionForUpdate(SECTION_ID, USER_ID)).willReturn(section);
+        given(sectionStatusService.markCollecting(SECTION_ID, USER_ID))
+                .willThrow(new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION));
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> opinionService.reopenOpinionGate(SECTION_ID, USER_ID));
 
-        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_OPINION_GATE_STATUS);
-        verify(sectionStatusService, never()).markCollecting(SECTION_ID, USER_ID);
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
+        verify(sectionStatusService).markCollecting(SECTION_ID, USER_ID);
     }
 
     /**

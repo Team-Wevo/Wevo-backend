@@ -152,6 +152,23 @@ class SectionStatusServiceTest {
         assertThat(captor.getValue().getToStatus()).isEqualTo(ProjectSectionStatus.COLLECTING);
     }
 
+    @Test
+    @DisplayName("CONFIRMED 섹션을 재오픈하면 INVALID_SECTION_STATUS_TRANSITION 을 던진다")
+    void markCollecting_fromConfirmed_throws() {
+        User owner = user(OWNER_ID);
+        ProjectSection section = section(ProjectSectionStatus.CONFIRMED);
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectAccessGuard.requireOwner(PROJECT_ID, OWNER_ID))
+                .willReturn(member(owner, ProjectMemberRole.OWNER, section.getProject()));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> sectionStatusService.markCollecting(SECTION_ID, OWNER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
+        assertThat(section.getStatus()).isEqualTo(ProjectSectionStatus.CONFIRMED);
+        verify(sectionStatusHistoryRepository, never()).save(any());
+    }
+
     // ── 픽스처 ──
 
     private User user(Long id) {
