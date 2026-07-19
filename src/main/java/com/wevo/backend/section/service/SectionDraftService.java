@@ -8,6 +8,8 @@ import com.wevo.backend.review.service.TeamReviewService;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.SectionDraft;
 import com.wevo.backend.section.dto.request.SectionDraftSaveRequest;
+import com.wevo.backend.section.dto.response.SectionDraftReadResponse;
+import com.wevo.backend.section.dto.response.SectionDraftReadResponse.ActiveEditor;
 import com.wevo.backend.section.dto.response.SectionDraftSaveResponse;
 import com.wevo.backend.section.repository.SectionDraftRepository;
 import com.wevo.backend.user.service.UserService;
@@ -39,17 +41,55 @@ public class SectionDraftService {
     private final UserService userService;
     private final ReviewLinkService reviewLinkService;
     private final TeamReviewService teamReviewService;
+    private final DraftLeaseService draftLeaseService;
 
     public SectionDraftService(SectionAccessGuard sectionAccessGuard,
                                SectionDraftRepository sectionDraftRepository,
                                UserService userService,
                                ReviewLinkService reviewLinkService,
-                               TeamReviewService teamReviewService) {
+                               TeamReviewService teamReviewService,
+                               DraftLeaseService draftLeaseService) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.sectionDraftRepository = sectionDraftRepository;
         this.userService = userService;
         this.reviewLinkService = reviewLinkService;
         this.teamReviewService = teamReviewService;
+        this.draftLeaseService = draftLeaseService;
+    }
+
+    /**
+     * 섹션의 최신 초안을 조회한다. (프로젝트 참여자 전용 )
+     *
+     * <p>편집 화면의 진입점이다. 응답의 {@code contentVersion} 은 이어지는 저장의
+     * {@code baseVersion} 으로 쓰인다.
+     *
+     * <p>현재 편집권을 보유한 사용자가 있으면 {@code activeEditor} 로 함께 내려 "OO님 편집 중"을
+     * 표시할 수 있게 한다. 만료된 편집권은 보유자로 보지 않는다({@link DraftLeaseService} 가 판정).
+     *
+     * @throws BusinessException 섹션 없음/미참여(존재 숨김, {@code S001}), 초안 미존재({@code S003})
+     */
+    public SectionDraftReadResponse getLatestDraft(Long sectionId, Long userId) {
+        sectionAccessGuard.requireParticipantSection(sectionId, userId);
+
+        SectionDraft draft = sectionDraftRepository
+                .findTopByProjectSection_IdOrderByVersionDesc(sectionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_DRAFT_NOT_FOUND));
+
+        return SectionDraftReadResponse.of(draft, findActiveEditor(sectionId));
+    }
+
+    /**
+     * 현재 편집권 보유자를 찾는다. 아무도 없거나 만료됐으면 {@code null}.
+     *
+     * <p>참여자 검증은 호출측에서 이미 마쳤으므로, 권한을 다시 확인하는 {@code getStatus} 대신
+     * 조회만 하는 {@link DraftLeaseService#findActiveLease} 를 쓴다.
+     */
+    private ActiveEditor findActiveEditor(Long sectionId) {
+        return draftLeaseService.findActiveLease(sectionId)
+                .map(lease -> new ActiveEditor(
+                        lease.getHolderUserId(),
+                        userService.getUserName(lease.getHolderUserId())))
+                .orElse(null);
     }
 
     /**

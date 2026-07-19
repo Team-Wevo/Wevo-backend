@@ -128,15 +128,27 @@ public class DraftLeaseService {
      */
     public DraftLeaseStatusResponse getStatus(Long projectSectionId, Long userId) {
         sectionAccessGuard.requireParticipantSection(projectSectionId, userId);
-        LocalDateTime now = LocalDateTime.now(KST);
 
-        return draftLeaseRepository.findByProjectSection_Id(projectSectionId)
-                .filter(lease -> lease.isActiveAt(now))
+        return findActiveLease(projectSectionId)
                 .map(lease -> DraftLeaseStatusResponse.locked(
                         lease.getHolderUserId(),
                         userService.getUserName(lease.getHolderUserId()),
                         lease.getLeaseUntil()
                 ))
                 .orElseGet(DraftLeaseStatusResponse::unlocked);
+    }
+
+    /**
+     * 섹션의 유효한 편집 잠금을 반환한다. 없거나 만료됐으면 {@link Optional#empty()}.
+     *
+     * <p><b>권한 검사를 하지 않는다</b> — 접근 권한을 이미 확인한 같은 도메인의 호출자가
+     * "누가 편집 중인가"만 필요할 때 쓴다(초안 조회의 {@code activeEditor}). 권한 검사가 필요한
+     * 외부 진입점은 {@link #getStatus} 를 사용한다.
+     */
+    public Optional<DraftLease> findActiveLease(Long projectSectionId) {
+        LocalDateTime now = LocalDateTime.now(KST);
+
+        return draftLeaseRepository.findByProjectSection_Id(projectSectionId)
+                .filter(lease -> lease.isActiveAt(now));
     }
 }
