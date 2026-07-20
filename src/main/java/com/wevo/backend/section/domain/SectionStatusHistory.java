@@ -32,14 +32,14 @@ public class SectionStatusHistory extends BaseTimeEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "project_section_id")
+    @JoinColumn(name = "project_section_id", nullable = false)
     private ProjectSection projectSection;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "actor_user_id")
     private User actor;
 
-    @Column(name = "event_type", length = 30)
+    @Column(name = "event_type", length = 30, nullable = false)
     private String eventType;
 
     @Enumerated(EnumType.STRING)
@@ -47,7 +47,7 @@ public class SectionStatusHistory extends BaseTimeEntity {
     private ProjectSectionStatus fromStatus;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "to_status", length = 30)
+    @Column(name = "to_status", length = 30, nullable = false)
     private ProjectSectionStatus toStatus;
 
     @Column

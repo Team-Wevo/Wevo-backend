@@ -24,7 +24,7 @@ public class User extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(length = 100)
+    @Column(length = 100, nullable = false)
     private String name;
 
     @Column(length = 255, unique = true)
@@ -34,7 +34,7 @@ public class User extends BaseTimeEntity {
     private String profileImageUrl;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 30)
+    @Column(length = 30, nullable = false)
     private UserStatus status;
 
     @Builder

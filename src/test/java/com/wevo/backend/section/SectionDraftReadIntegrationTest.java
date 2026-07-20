@@ -197,6 +197,7 @@ class SectionDraftReadIntegrationTest {
                 .owner(owner)
                 .title("위보 기획")
                 .resultType(OutputType.PRESENTATION)
+                .audience("프로젝트 팀원")
                 .status(ProjectStatus.ACTIVE)
                 .build();
         em.persist(project);

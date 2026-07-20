@@ -74,6 +74,7 @@ class AiUsageLifecycleIntegrationTest {
                 .owner(user)
                 .title("AI project")
                 .resultType(OutputType.PROPOSAL)
+                .audience("AI test audience")
                 .status(ProjectStatus.ACTIVE)
                 .build());
     }

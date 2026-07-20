@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -21,7 +22,13 @@ import lombok.NoArgsConstructor;
  * 템플릿 간 의존 관계 (예: A 섹션이 확정되어야 B 섹션을 작성 가능 등).
  */
 @Entity
-@Table(name = "template_dependencies")
+@Table(
+        name = "template_dependencies",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_template_dependencies_pair_type",
+                columnNames = {"from_template_id", "to_template_id", "dependency_type"}
+        )
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class TemplateDependency extends BaseTimeEntity {
@@ -31,15 +38,15 @@ public class TemplateDependency extends BaseTimeEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "from_template_id")
+    @JoinColumn(name = "from_template_id", nullable = false)
     private SectionTemplate fromTemplate;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "to_template_id")
+    @JoinColumn(name = "to_template_id", nullable = false)
     private SectionTemplate toTemplate;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "dependency_type", length = 30)
+    @Column(name = "dependency_type", length = 30, nullable = false)
     private TemplateDependencyType dependencyType;
 
     @Builder

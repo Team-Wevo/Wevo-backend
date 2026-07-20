@@ -33,7 +33,8 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      # Flyway V1이 스키마를 생성하고 Hibernate는 엔티티 매핑 일치 여부만 검사한다.
+      ddl-auto: validate
     properties:
       hibernate:
         format_sql: true
