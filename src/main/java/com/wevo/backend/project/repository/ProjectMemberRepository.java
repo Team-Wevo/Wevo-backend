@@ -28,6 +28,18 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Lo
                                                           @Param("role") ProjectMemberRole role);
 
     /**
+     * 프로젝트 멤버십을 프로젝트와 함께 조회한다.
+     *
+     * <p>{@code JOIN FETCH} 로 프로젝트를 함께 로딩해, 멤버십 검증 직후 프로젝트 정보를 쓰는
+     * 경로(최종 결과물 조회 등)에서 {@code getProject()} 지연 로딩 쿼리가 추가로 나가지 않게 한다.
+     * 프로젝트가 필요 없는 경로는 {@link #findByProjectIdAndUserId} 를 그대로 쓴다.
+     */
+    @Query("SELECT pm FROM ProjectMember pm JOIN FETCH pm.project "
+            + "WHERE pm.project.id = :projectId AND pm.user.id = :userId")
+    Optional<ProjectMember> findWithProjectByProjectIdAndUserId(@Param("projectId") Long projectId,
+                                                                @Param("userId") Long userId);
+
+    /**
      * 내가 멤버로 속한 프로젝트 목록을 최신순으로 조회한다.
      *
      * <p>{@code JOIN FETCH} 로 프로젝트를 함께 로딩해 N+1 을 방지한다.

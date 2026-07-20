@@ -146,15 +146,11 @@ public class SectionAccessGuard {
      * 역할 검사를 수행하되, 비멤버({@link ErrorCode#NOT_PROJECT_MEMBER})는
      * {@link ErrorCode#SECTION_NOT_FOUND}로 바꿔 던진다(존재 숨김 — CLAUDE.md §5.6).
      * 역할 부족({@link ErrorCode#FORBIDDEN})은 그대로 전파한다.
+     *
+     * <p>숨김 규칙 자체는 {@link ProjectAccessGuard#hidingNonMember}가 소유하고,
+     * 여기서는 섹션 기반 API가 쓸 숨김 코드만 고정한다.
      */
     private void hideNonMember(Supplier<?> roleCheck) {
-        try {
-            roleCheck.get();
-        } catch (BusinessException e) {
-            if (e.getErrorCode() == ErrorCode.NOT_PROJECT_MEMBER) {
-                throw new BusinessException(ErrorCode.SECTION_NOT_FOUND);
-            }
-            throw e;
-        }
+        ProjectAccessGuard.hidingNonMember(ErrorCode.SECTION_NOT_FOUND, roleCheck);
     }
 }

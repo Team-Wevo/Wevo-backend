@@ -169,6 +169,57 @@ class SectionStatusServiceTest {
         verify(sectionStatusHistoryRepository, never()).save(any());
     }
 
+    @Test
+    @DisplayName("검토 요청 전이는 팀원(MEMBER)도 실행할 수 있다 — DRAFTING → REVIEWING + 이력 기록")
+    void markReviewing_memberCanRequest_transitionsAndRecordsHistory() {
+        User member = user(2L);
+        ProjectSection section = section(ProjectSectionStatus.DRAFTING);
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectAccessGuard.requireParticipant(PROJECT_ID, 2L))
+                .willReturn(member(member, ProjectMemberRole.MEMBER, section.getProject()));
+
+        ProjectSection transitioned = sectionStatusService.markReviewing(SECTION_ID, 2L);
+
+        assertThat(transitioned.getStatus()).isEqualTo(ProjectSectionStatus.REVIEWING);
+        ArgumentCaptor<SectionStatusHistory> captor = ArgumentCaptor.forClass(SectionStatusHistory.class);
+        verify(sectionStatusHistoryRepository).save(captor.capture());
+        assertThat(captor.getValue().getEventType()).isEqualTo("REVIEW_REQUESTED");
+        assertThat(captor.getValue().getFromStatus()).isEqualTo(ProjectSectionStatus.DRAFTING);
+        assertThat(captor.getValue().getToStatus()).isEqualTo(ProjectSectionStatus.REVIEWING);
+        assertThat(captor.getValue().getActor()).isEqualTo(member);
+    }
+
+    @Test
+    @DisplayName("검토 요청 전이 시 비멤버는 SECTION_NOT_FOUND 로 숨긴다 (존재 숨김)")
+    void markReviewing_nonMember_hiddenAsNotFound() {
+        ProjectSection section = section(ProjectSectionStatus.DRAFTING);
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectAccessGuard.requireParticipant(PROJECT_ID, 9L))
+                .willThrow(new BusinessException(ErrorCode.NOT_PROJECT_MEMBER));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> sectionStatusService.markReviewing(SECTION_ID, 9L));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
+        verify(sectionStatusHistoryRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("DRAFTING 이 아닌 섹션의 검토 요청 전이는 S002 로 거부된다")
+    void markReviewing_notDrafting_throws() {
+        User owner = user(OWNER_ID);
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectAccessGuard.requireParticipant(PROJECT_ID, OWNER_ID))
+                .willReturn(member(owner, ProjectMemberRole.OWNER, section.getProject()));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> sectionStatusService.markReviewing(SECTION_ID, OWNER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
+        assertThat(section.getStatus()).isEqualTo(ProjectSectionStatus.COLLECTING);
+    }
+
     // ── 픽스처 ──
 
     private User user(Long id) {
