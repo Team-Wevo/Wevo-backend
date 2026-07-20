@@ -46,7 +46,7 @@ also match the entity relationships. Actor IDs that remain scalar in Java, such 
 | AI provider | `AiUsageLog.provider` is required in code but absent from the ERD | Include `ai_usage_logs.provider VARCHAR(30) NOT NULL` |
 | Lease holder | ERD/code use `holder_user_id`; issue checklist abbreviates it as `holder_id` | Keep `holder_user_id`, require it, and reference `users(id)` |
 | Lease cardinality | One reusable row per section | Unique `draft_leases.project_section_id` |
-| Opinion resubmission | Submitted opinions require an immutable submitted copy | Add `submitted_content` and its status-dependent check |
+| Opinion resubmission | Submitted opinions require an immutable submitted copy and first-submission time | Add `submitted_content` and require both `submitted_content` and `submitted_at` when status is `SUBMITTED` |
 | Overlay columns | ERD and current entity contain all three overlays | Persist `drift_status`, nullable `ai_check_status`, and `synthesis_stale` independently |
 | Status-history version | ERD marks it required, but current status transitions explicitly have no draft version before drafting | Keep `section_status_histories.version` nullable |
 

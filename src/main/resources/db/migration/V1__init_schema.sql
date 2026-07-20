@@ -241,7 +241,9 @@ CREATE TABLE opinions (
     CONSTRAINT uk_opinions_section_author UNIQUE (project_section_id, author_user_id),
     CONSTRAINT chk_opinions_status CHECK (status IN ('DRAFT', 'SUBMITTED')),
     CONSTRAINT chk_opinions_submitted_content
-        CHECK (status <> 'SUBMITTED' OR submitted_content IS NOT NULL)
+        CHECK (status <> 'SUBMITTED' OR submitted_content IS NOT NULL),
+    CONSTRAINT chk_opinions_submitted_at
+        CHECK (status <> 'SUBMITTED' OR submitted_at IS NOT NULL)
 );
 
 CREATE INDEX idx_opinions_section_status ON opinions (project_section_id, status);

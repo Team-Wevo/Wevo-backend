@@ -56,7 +56,7 @@ follow-up task; this test does not silently reuse or clean a developer database.
 
 ## Opinion resubmission model
 
-The baseline creates `opinions.submitted_content` and
-`chk_opinions_submitted_content` directly. Because V1 targets an empty database, no data
-backfill statement belongs in this migration. Any future production data transition must
-be implemented in a new versioned migration rather than by editing V1.
+The baseline creates `opinions.submitted_content` and status-dependent checks for both
+`submitted_content` and `submitted_at` directly. Because V1 targets an empty database, no
+data backfill statement belongs in this migration. Any future production data transition
+must be implemented in a new versioned migration rather than by editing V1.
