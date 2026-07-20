@@ -3,11 +3,13 @@ package com.wevo.backend.section.controller;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.section.dto.request.SectionDraftSaveRequest;
+import com.wevo.backend.section.dto.response.SectionDraftReadResponse;
 import com.wevo.backend.section.dto.response.SectionDraftSaveResponse;
 import com.wevo.backend.section.service.SectionDraftService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -25,6 +27,20 @@ public class SectionDraftController {
 
     public SectionDraftController(SectionDraftService sectionDraftService) {
         this.sectionDraftService = sectionDraftService;
+    }
+
+    /**
+     * 섹션의 최신 초안을 조회한다.
+     * 초안이 없으면 404(SECTION_DRAFT_NOT_FOUND), 멤버가 아니면 404(SECTION_NOT_FOUND/존재 숨김).
+     */
+    @GetMapping("/{sectionId}/draft")
+    public ResponseEntity<ApiResponse<SectionDraftReadResponse>> getLatestDraft(
+            @PathVariable Long sectionId,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        SectionDraftReadResponse response =
+                sectionDraftService.getLatestDraft(sectionId, principal.userId());
+        return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", response));
     }
 
     /**
