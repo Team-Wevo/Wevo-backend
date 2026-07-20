@@ -1,5 +1,6 @@
 package com.wevo.backend.export;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -11,9 +12,13 @@ import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.domain.ProjectStatus;
+import com.wevo.backend.project.service.ProjectAccessGuard;
+import com.wevo.backend.project.service.VerifiedProjectAccess;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionDraft;
+import com.wevo.backend.section.service.ConfirmedSectionContent;
+import com.wevo.backend.section.service.SectionConfirmationQueryService;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
 import jakarta.persistence.EntityManager;
@@ -45,6 +50,12 @@ class FinalOutputIntegrationTest {
 
     @PersistenceContext
     private EntityManager em;
+
+    @Autowired
+    private ProjectAccessGuard projectAccessGuard;
+
+    @Autowired
+    private SectionConfirmationQueryService sectionConfirmationQueryService;
 
     @Test
     @DisplayName("전 섹션이 확정되면 확정본을 섹션 순서대로 조립해 반환한다")
@@ -152,6 +163,48 @@ class FinalOutputIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.ready").value(true))
                 .andExpect(jsonPath("$.data.sections[0].content").value("문제 정의 확정본"));
+    }
+
+    @Test
+    @DisplayName("확정 섹션 수와 확정본 수가 어긋나면 부분 완성본 대신 500(E001) 로 실패한다")
+    void integrityMismatchFailsAsServerError() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        // 확정 버전은 2 인데 이력에는 1 밖에 없는 정합성 붕괴 상태 — 확정 처리와 초안 이력이 어긋났다.
+        ProjectSection section = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 2);
+        persistDraft(section, "1차 초안", 1, owner);
+        flushAndClear();
+
+        // 클라이언트가 요청을 바꿔 해결할 수 있는 상태 충돌(409)이 아니라 서버 측 데이터 오류다.
+        getFinalOutput(project.getId(), owner)
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("E001"))
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("확정 해제된 섹션은 confirmedVersion 이 남아 있어도 확정본 조회에서 제외된다")
+    void reopenedSectionIsExcludedFromConfirmedContents() {
+        User owner = persistUser("owner@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        ProjectSection confirmed = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 1);
+        // 확정 후 다시 열린 섹션 — 상태만 되돌아가고 confirmedVersion 은 남아 있다.
+        ProjectSection reopened = persistSection(project, "해결 방안", 2, ProjectSectionStatus.DRAFTING, 1);
+        persistDraft(confirmed, "문제 정의 확정본", 1, owner);
+        persistDraft(reopened, "확정 해제된 지난 본문", 1, owner);
+        flushAndClear();
+
+        VerifiedProjectAccess access =
+                projectAccessGuard.requireParticipantAccess(project.getId(), owner.getId());
+
+        assertThat(sectionConfirmationQueryService.findConfirmedContents(access))
+                .extracting(ConfirmedSectionContent::content)
+                .containsExactly("문제 정의 확정본");
     }
 
     @Test

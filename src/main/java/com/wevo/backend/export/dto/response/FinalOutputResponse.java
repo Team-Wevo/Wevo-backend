@@ -3,6 +3,7 @@ package com.wevo.backend.export.dto.response;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
+import com.wevo.backend.section.service.SectionConfirmationSummary;
 import java.util.List;
 
 /**
@@ -26,11 +27,14 @@ public record FinalOutputResponse(
 
     /**
      * 아직 모든 섹션이 확정되지 않은 상태 — 진행도만 반환한다. (ready = false)
+     *
+     * <p>진행도는 {@link SectionConfirmationSummary}(개념의 단일 정의)를 그대로 받는다 —
+     * {@code int} 두 개를 넘기면 확정 수와 전체 수가 뒤바뀌어도 컴파일되기 때문이다.
      */
-    public static FinalOutputResponse notReady(Project project, int confirmedCount, int totalCount) {
+    public static FinalOutputResponse notReady(Project project, SectionConfirmationSummary summary) {
         return new FinalOutputResponse(
                 project.getId(), project.getTitle(), project.getResultType(),
-                false, confirmedCount, totalCount, null);
+                false, summary.confirmedCount(), summary.totalCount(), null);
     }
 
     /**
