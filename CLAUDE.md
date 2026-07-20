@@ -73,6 +73,7 @@ com.wevo.backend
 │  ├─ common        # 공통 엔티티 (BaseTimeEntity 등)
 │  ├─ config        # 스프링 설정, Bean 등록
 │  ├─ security      # 인증/인가, 시큐리티 설정
+│  ├─ realtime      # WebSocket/STOMP 공통 설정, 인증·구독 인가, 이벤트 envelope
 │  ├─ exception     # 공통 예외, 전역 예외 핸들러, ErrorCode
 │  └─ response      # 공통 응답 포맷(ApiResponse 등)
 ├─ auth
@@ -102,7 +103,8 @@ user
 - 두 개 이상 도메인이 공유하는 인프라성 코드만 `global`로 올립니다.
 - 도메인별 Enum은 해당 도메인의 `domain` 패키지에 둡니다. (공통 Enum 규칙은 §5.7 참고)
 - 실시간 협업 중 **초안 편집 잠금(lease)** 은 섹션 초안의 접근 제어를 담당하므로 `section` 도메인에 둡니다.
-  변경 반영 등 다른 실시간 협업 기능의 패키지 위치는 구현 착수 전에 팀 합의로 정하고 이 구조도를 함께 갱신합니다.
+  WebSocket/STOMP 공통 통신 기반은 여러 도메인이 공유하는 인프라이므로 `global.realtime`에 둡니다.
+  기능별 이벤트 payload와 발행 로직은 해당 소유 도메인에 두며, 공통 계층에 비즈니스 로직을 중복하지 않습니다.
 
 ---
 
@@ -175,9 +177,10 @@ Authorization: Bearer {accessToken}
   - `/public/**` — 공개 리뷰 API
   - `/api/auth/login`, `/api/auth/reissue` — 로그인 · 토큰 재발급
   - `/api/auth/dev-login` — local 프로파일 전용
+  - `/ws` — WebSocket HTTP upgrade 경로 (최초 STOMP `CONNECT`에서 Access JWT 인증 필수)
   - `/swagger-ui/**`, `/v3/api-docs/**` — API 문서
 - 비인증으로 사용할 수 있는 **제품 기능**은 외부 검토(`/public`)뿐입니다.
-  (로그인·토큰 재발급·Swagger는 제품 기능이 아니라 인증 절차·개발 문서 경로입니다.)
+  (로그인·토큰 재발급·WebSocket upgrade·Swagger는 제품 기능이 아니라 인증 절차·통신 기반·개발 문서 경로입니다.)
   초대 링크로 프로젝트에 참여하려면 로그인이 필요하며(정책서 §2.1), 비로그인 게스트 입장은 MVP에 없습니다.
 
 ### 5.3 Content-Type
@@ -521,3 +524,40 @@ git switch -c feat/12-notice-card   # 타입/이슈번호-기능명
 | `style` | 포맷/스타일(코드 동작 영향 없음) |
 | `chore` | 설정/빌드/기타 잡무 |
 | `docs` | 문서 |
+
+---
+
+## 10. WebSocket/STOMP 공통 계약
+
+### 10.1 범위와 인증
+
+- STOMP endpoint는 `/ws`를 사용합니다.
+- 브라우저 WebSocket 제약으로 HTTP upgrade 경로는 `permitAll`이지만,
+  최초 STOMP `CONNECT` native header의 `Authorization: Bearer {accessToken}`으로 인증합니다.
+- Access Token만 허용합니다. 토큰 누락·형식 오류·만료·위조·Refresh Token 사용은 연결을 거부합니다.
+- HTTP API와 동일한 `app.cors.allowed-origins` 설정으로 handshake Origin을 제한합니다.
+- 토큰·Authorization 값, 내부 예외 메시지와 stack trace를 로그나 오류에 노출하지 않습니다.
+
+### 10.2 Destination과 구독 인가
+
+| 용도 | Destination | 인가 |
+| --- | --- | --- |
+| 클라이언트 명령 | `/app/**` | 인증 사용자 |
+| 프로젝트 알림 | `/topic/projects/{projectId}` | 해당 프로젝트 멤버 |
+| 섹션 알림 | `/topic/projects/{projectId}/sections/{sectionId}` | 해당 섹션의 프로젝트 멤버 |
+| 개인 오류 | `/user/queue/errors` | 현재 인증 사용자 |
+
+- 클라이언트의 직접 `/queue/**` 구독과 허용 패턴 밖의 `/topic/**` 구독은 거부합니다.
+- 프로젝트·섹션 구독은 기존 `ProjectAccessGuard`·`SectionAccessGuard`를 재사용하며 §5.6의 존재 숨김 규칙을 따릅니다.
+
+### 10.3 이벤트 Envelope와 발행
+
+- 공통 envelope 필드는 `eventId`, `eventType`, `payloadVersion`, `projectId`, `sectionId`,
+  `occurredAt`, `payload`입니다.
+- `eventType`은 `UPPER_SNAKE_CASE`, `payloadVersion`은 이벤트 타입별로 1부터 시작합니다.
+  호환 필드 추가는 같은 버전을 유지할 수 있고, 필드 삭제·의미 변경은 버전을 증가시킵니다.
+- `eventId`는 클라이언트 중복 제거용이며, `occurredAt`은 §5.4의 KST 시간 계약을 따릅니다.
+- 기능별 payload와 발행 로직은 소유 도메인에 두고 DB 트랜잭션 커밋 이후에만 이벤트를 발행합니다.
+- 화면 최초 상태와 편집 잠금 획득·조회·갱신은 기존 REST API를 사용합니다.
+  WebSocket은 성공한 잠금 상태 변경을 다른 팀원에게 알리는 용도이며,
+  잠금 조회는 이벤트를 발행하지 않습니다. 잠금 해제 API는 별도 기능 계약으로 다룹니다.

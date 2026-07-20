@@ -20,6 +20,7 @@ import java.util.List;
  * <ul>
  *   <li>세션을 사용하지 않고(STATELESS) 모든 요청을 {@link JwtAuthenticationFilter} 로 인증한다.</li>
  *   <li>로그인/토큰 재발급/공개 리뷰/Swagger 경로만 인증 없이 허용한다.</li>
+ *   <li>WebSocket HTTP upgrade는 허용하고 실제 사용자는 STOMP CONNECT 프레임에서 인증한다.</li>
  *   <li>인증/인가 실패는 공통 응답 포맷(401/403)으로 반환한다.</li>
  * </ul>
  */
@@ -30,6 +31,7 @@ public class SecurityConfig {
             "/api/auth/login",
             "/api/auth/reissue",
             "/api/auth/dev-login", // 개발 편의용 임시 로그인 (local 프로파일에서만 컨트롤러가 등록됨)
+            "/ws", // HTTP upgrade 전용 공개 경로. STOMP CONNECT의 Access JWT는 별도 검증한다.
             "/public/**",
             "/swagger-ui/**",
             "/v3/api-docs/**",
