@@ -19,6 +19,7 @@ import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionTemplate;
 import com.wevo.backend.section.repository.ProjectSectionRepository;
 import com.wevo.backend.section.repository.SectionTemplateRepository;
+import com.wevo.backend.section.service.SectionConfirmationSummary;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
@@ -99,6 +100,9 @@ public class ProjectService {
 
     /**
      * 프로젝트 상세를 조회한다. (멤버만 조회 가능)
+     *
+     * <p>섹션은 <b>진행도 집계에만</b> 쓰므로 템플릿을 조인하지 않는다 — 핵심 질문·가이드는
+     * 이 응답에 담기지 않는다. 템플릿이 필요한 곳은 섹션 목록 조회({@link #getSections})뿐이다.
      */
     @Transactional(readOnly = true)
     public ProjectDetailResponse getProject(Long userId, Long projectId) {
@@ -106,9 +110,10 @@ public class ProjectService {
         Project project = membership.getProject();
 
         long memberCount = projectMemberRepository.countByProjectId(projectId);
-        List<ProjectSection> sections = projectSectionRepository.findAllWithTemplateByProjectId(projectId);
+        List<ProjectSection> sections = projectSectionRepository.findByProjectIdOrderBySectionOrder(projectId);
 
-        return ProjectDetailResponse.of(project, membership.getRole(), memberCount, sections);
+        return ProjectDetailResponse.of(project, membership.getRole(), memberCount,
+                SectionConfirmationSummary.from(sections));
     }
 
     /**

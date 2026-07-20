@@ -146,13 +146,7 @@ public class SectionStatusService {
      * @return 상태 전이 이력의 실행자 정보로 사용할 프로젝트 멤버십
      */
     private ProjectMember requireOwner(ProjectSection section, Long actorUserId) {
-        try {
-            return projectAccessGuard.requireOwner(section.getProject().getId(), actorUserId);
-        } catch (BusinessException e) {
-            if (e.getErrorCode() == ErrorCode.NOT_PROJECT_MEMBER) {
-                throw new BusinessException(ErrorCode.SECTION_NOT_FOUND);
-            }
-            throw e;
-        }
+        return ProjectAccessGuard.hidingNonMember(ErrorCode.SECTION_NOT_FOUND,
+                () -> projectAccessGuard.requireOwner(section.getProject().getId(), actorUserId));
     }
 }

@@ -5,6 +5,7 @@ import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.repository.ProjectMemberRepository;
+import java.util.function.Supplier;
 import org.springframework.stereotype.Component;
 
 /**
@@ -61,6 +62,48 @@ public class ProjectAccessGuard {
      */
     public ProjectMember requireMember(Long projectId, Long userId) {
         return requireRole(projectId, userId, ProjectMemberRole.MEMBER);
+    }
+
+    /**
+     * 요청자가 프로젝트 참여자인지 검증하고, 검증을 통과했다는 <b>증거</b>를 반환한다.
+     *
+     * <p>{@link VerifiedProjectAccess}는 이 컴포넌트만 만들 수 있으므로, 이를 인자로 받는
+     * 타 도메인의 조회 서비스는 인가를 건너뛴 호출을 컴파일 단계에서 차단할 수 있다.
+     * 프로젝트를 {@code JOIN FETCH} 로 함께 로딩하므로 후속 {@code project()} 접근에
+     * 추가 쿼리가 나가지 않는다.
+     *
+     * @throws BusinessException 프로젝트 멤버십이 없으면 {@link ErrorCode#NOT_PROJECT_MEMBER}
+     */
+    public VerifiedProjectAccess requireParticipantAccess(Long projectId, Long userId) {
+        ProjectMember membership = projectMemberRepository
+                .findWithProjectByProjectIdAndUserId(projectId, userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_PROJECT_MEMBER));
+        return VerifiedProjectAccess.of(membership);
+    }
+
+    /**
+     * 인가 검사를 수행하되, 비멤버({@link ErrorCode#NOT_PROJECT_MEMBER})만 지정한 코드로 바꿔 던진다.
+     *
+     * <p>존재 숨김(CLAUDE.md §5.6)의 공통 구현이다 — 리소스마다 숨길 코드가 다르므로
+     * ({@code PROJECT_NOT_FOUND} / {@code SECTION_NOT_FOUND}) 코드를 인자로 받는다.
+     * 역할 부족({@link ErrorCode#FORBIDDEN})과 그 밖의 예외는 그대로 전파한다 — 멤버에게는
+     * 리소스 존재를 숨길 이유가 없기 때문이다.
+     *
+     * <p>상태를 갖지 않는 순수 정책 함수라 {@code static} 으로 둔다 — 협력 객체와의 상호작용이
+     * 아니라 규칙 그 자체이므로, 이 가드를 모킹한 단위 테스트에서도 숨김 규칙은 그대로 적용된다.
+     *
+     * @param hiddenAs    비멤버에게 대신 노출할 "찾을 수 없음" 코드
+     * @param accessCheck 수행할 인가 검사
+     */
+    public static <T> T hidingNonMember(ErrorCode hiddenAs, Supplier<T> accessCheck) {
+        try {
+            return accessCheck.get();
+        } catch (BusinessException e) {
+            if (e.getErrorCode() == ErrorCode.NOT_PROJECT_MEMBER) {
+                throw new BusinessException(hiddenAs);
+            }
+            throw e;
+        }
     }
 
     /**
