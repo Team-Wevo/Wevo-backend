@@ -9,6 +9,8 @@ import com.wevo.backend.global.persistence.PostgresTestContainerConfig;
 import com.wevo.backend.section.repository.DraftLeaseRepository;
 import com.wevo.backend.section.service.DraftLeaseService;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -36,6 +38,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Import(PostgresTestContainerConfig.class)
 class DraftLeaseConcurrencyIntegrationTest {
 
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final Duration LOCK_ASSERTION_WINDOW = Duration.ofMillis(300);
 
     @Autowired
@@ -199,15 +202,17 @@ class DraftLeaseConcurrencyIntegrationTest {
                     sectionId
             );
             if (leaseState != LeaseState.NONE) {
-                String interval = leaseState == LeaseState.ACTIVE ? "5 minutes" : "-1 minute";
+                LocalDateTime leaseUntil = leaseState == LeaseState.ACTIVE
+                        ? LocalDateTime.now(KST).plusMinutes(5)
+                        : LocalDateTime.now(KST).minusMinutes(1);
                 jdbcTemplate.update(
                         """
                         INSERT INTO draft_leases (project_section_id, holder_user_id, lease_until)
-                        VALUES (?, ?, CURRENT_TIMESTAMP + CAST(? AS INTERVAL))
+                        VALUES (?, ?, ?)
                         """,
                         sectionId,
                         ownerId,
-                        interval
+                        leaseUntil
                 );
             }
             return new LeaseFixture(sectionId, ownerId, memberId);
