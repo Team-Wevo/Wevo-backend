@@ -43,7 +43,7 @@ public class ReviewSubmission extends BaseTimeEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "review_link_id")
+    @JoinColumn(name = "review_link_id", nullable = false)
     private ReviewLink reviewLink;
 
     /** 브라우저·기기별 익명 검토자 키. 링크 내에서 중복 제출을 막는 식별자다. */
@@ -51,7 +51,7 @@ public class ReviewSubmission extends BaseTimeEntity {
     private String anonymousReviewerId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "understanding_signal", length = 20)
+    @Column(name = "understanding_signal", length = 20, nullable = false)
     private UnderstandingSignal understandingSignal;
 
     @Column(columnDefinition = "TEXT")

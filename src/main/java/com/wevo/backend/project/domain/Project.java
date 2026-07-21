@@ -32,10 +32,10 @@ public class Project extends BaseTimeEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "owner_user_id")
+    @JoinColumn(name = "owner_user_id", nullable = false)
     private User owner;
 
-    @Column(length = 200)
+    @Column(length = 200, nullable = false)
     private String title;
 
     @Column(columnDefinition = "TEXT")
@@ -45,14 +45,14 @@ public class Project extends BaseTimeEntity {
     private String ideaText;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "result_type", length = 30)
+    @Column(name = "result_type", length = 30, nullable = false)
     private OutputType resultType;
 
-    @Column(length = 200)
+    @Column(length = 200, nullable = false)
     private String audience;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 30)
+    @Column(length = 30, nullable = false)
     private ProjectStatus status;
 
     @Builder

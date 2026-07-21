@@ -3,6 +3,7 @@ package com.wevo.backend.opinion.repository;
 import com.wevo.backend.global.config.JpaAuditingConfig;
 import com.wevo.backend.opinion.domain.Opinion;
 import com.wevo.backend.opinion.domain.OpinionStatus;
+import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.repository.ProjectRepository;
@@ -58,6 +59,8 @@ class OpinionRepositoryTest {
         Project project = projectRepository.save(Project.builder()
                 .owner(author)
                 .title("발표 프로젝트")
+                .resultType(OutputType.PRESENTATION)
+                .audience("발표 심사위원")
                 .status(ProjectStatus.ACTIVE)
                 .build());
         section = projectSectionRepository.save(ProjectSection.builder()

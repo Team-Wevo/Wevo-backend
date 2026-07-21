@@ -74,6 +74,20 @@ com.wevo.backend
 └── export
 ```
 
+## 로컬 실행
+
+로컬 데이터베이스 스키마는 Flyway가 생성하고 Hibernate는 엔티티 매핑 일치 여부만 검증합니다.
+최초 실행은 `.env.example`을 `.env`로 복사해 값을 채운 뒤 진행합니다.
+
+```powershell
+docker compose up -d
+.\gradlew.bat bootRun --args='--spring.profiles.active=local'
+```
+
+Flyway V1 도입 전에 `ddl-auto=update`로 만든 기존 로컬 DB가 있다면 필요한 데이터를 백업한 뒤
+볼륨을 한 번 재생성해야 합니다. 자세한 절차와 이유는
+`src/main/resources/db/migration/README.md`를 참고합니다.
+
 ## API 공통 규칙
 
 - Base URL: `/api`

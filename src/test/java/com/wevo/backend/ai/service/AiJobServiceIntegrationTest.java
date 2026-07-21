@@ -97,6 +97,7 @@ class AiJobServiceIntegrationTest {
                 .owner(user)
                 .title("AI project")
                 .resultType(OutputType.PROPOSAL)
+                .audience("AI test audience")
                 .status(ProjectStatus.ACTIVE)
                 .build());
         section = sectionRepository.save(ProjectSection.builder()
@@ -343,6 +344,7 @@ class AiJobServiceIntegrationTest {
                 .owner(user)
                 .title("Other")
                 .resultType(OutputType.PROPOSAL)
+                .audience("AI test audience")
                 .status(ProjectStatus.ACTIVE)
                 .build());
 

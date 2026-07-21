@@ -28,20 +28,21 @@ public class InviteLink extends BaseTimeEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "project_id")
+    @JoinColumn(name = "project_id", nullable = false)
     private Project project;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_user_id")
     private User createdBy;
 
-    @Column(length = 255)
+    /** 공개 조회 키이므로 DB에서도 중복을 허용하지 않는다. */
+    @Column(length = 255, nullable = false, unique = true)
     private String token;
 
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
 
-    @Column(name = "is_active")
+    @Column(name = "is_active", nullable = false)
     private Boolean isActive;
 
     @Builder

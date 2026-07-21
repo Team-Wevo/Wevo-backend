@@ -50,7 +50,7 @@ public class ReviewLink extends BaseTimeEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "project_section_id")
+    @JoinColumn(name = "project_section_id", nullable = false)
     private ProjectSection projectSection;
 
     @ManyToOne(fetch = FetchType.LAZY)

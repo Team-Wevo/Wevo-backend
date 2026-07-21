@@ -15,6 +15,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -34,7 +35,19 @@ import lombok.NoArgsConstructor;
  * 화면 표시 단계({@code displayStatus})는 저장하지 않는다 — FE가 status+overlay에서 파생한다.
  */
 @Entity
-@Table(name = "project_sections")
+@Table(
+        name = "project_sections",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_project_sections_project_order",
+                        columnNames = {"project_id", "section_order"}
+                ),
+                @UniqueConstraint(
+                        name = "uk_project_sections_project_template",
+                        columnNames = {"project_id", "template_id"}
+                )
+        }
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ProjectSection extends BaseTimeEntity {
@@ -44,28 +57,28 @@ public class ProjectSection extends BaseTimeEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "project_id")
+    @JoinColumn(name = "project_id", nullable = false)
     private Project project;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "template_id")
     private SectionTemplate template;
 
-    @Column(length = 200)
+    @Column(length = 200, nullable = false)
     private String title;
 
-    @Column(name = "section_order")
+    @Column(name = "section_order", nullable = false)
     private Integer sectionOrder;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 30)
+    @Column(length = 30, nullable = false)
     private ProjectSectionStatus status;
 
-    @Column(name = "confirmed_version")
+    @Column(name = "confirmed_version", nullable = false)
     private Integer confirmedVersion;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "drift_status", length = 30)
+    @Column(name = "drift_status", length = 30, nullable = false)
     private DriftStatus driftStatus;
 
     @Enumerated(EnumType.STRING)
@@ -75,7 +88,7 @@ public class ProjectSection extends BaseTimeEntity {
     // 클래스 @Getter가 nullable Boolean을 그대로 노출하지 않도록 막는다 — 조회는 null→false
     // 보정이 있는 isSynthesisStale()로만 한다.
     @Getter(AccessLevel.NONE)
-    @Column(name = "synthesis_stale")
+    @Column(name = "synthesis_stale", nullable = false)
     private Boolean synthesisStale;
 
     @Builder

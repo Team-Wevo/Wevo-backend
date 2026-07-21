@@ -263,6 +263,7 @@ class FinalOutputIntegrationTest {
                 .owner(owner)
                 .title("위보 기획")
                 .resultType(OutputType.PRESENTATION)
+                .audience("팀 검토자")
                 .status(ProjectStatus.ACTIVE)
                 .build();
         em.persist(project);
