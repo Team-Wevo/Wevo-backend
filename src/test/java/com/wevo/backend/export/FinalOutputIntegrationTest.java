@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.wevo.backend.global.persistence.PostgresTestContainerConfig;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -36,11 +38,15 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 최종 결과물 조회 전 경로를 실제 컨텍스트(H2)로 검증한다. (API_SPEC §3.6.1)
+ * 최종 결과물 조회 전 경로를 실제 PostgreSQL 컨텍스트로 검증한다. (API_SPEC §3.6.1)
  *
  * <p>확정(confirm) API가 아직 없어 확정 상태·{@code confirmedVersion} 을 EntityManager 로 직접 시드한다.
  */
-@SpringBootTest
+@SpringBootTest(properties = {
+        "spring.flyway.enabled=true",
+        "spring.jpa.hibernate.ddl-auto=validate"
+})
+@Import(PostgresTestContainerConfig.class)
 @AutoConfigureMockMvc
 @Transactional
 class FinalOutputIntegrationTest {

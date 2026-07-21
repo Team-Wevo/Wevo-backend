@@ -16,6 +16,28 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: wevo_ci
+          POSTGRES_USER: wevo_ci
+          POSTGRES_PASSWORD: wevo_ci_password
+          TZ: Asia/Seoul
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wevo_ci -d wevo_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      WEVO_POSTGRES_SCHEMA_TEST: "true"
+      WEVO_POSTGRES_JDBC_URL: jdbc:postgresql://localhost:5432/wevo_ci
+      WEVO_POSTGRES_USERNAME: wevo_ci
+      WEVO_POSTGRES_PASSWORD: wevo_ci_password
+
     # PR의 코드를 Github Actions 가상 머신으로 내려 받음
     steps:
       - name: Check out repository
@@ -33,6 +55,9 @@ jobs:
       - name: Grant execute permission for Gradle wrapper
         run: chmod +x gradlew
 
-        # 빌드 및 테스트 - 실제 검증 단계
+      - name: Verify Flyway and Hibernate against CI PostgreSQL
+        run: ./gradlew postgresSchemaTest
+
+      # 빌드 및 테스트 - Testcontainers PostgreSQL 통합 테스트를 포함한 전체 검증 단계
       - name: Build and test
         run: ./gradlew build

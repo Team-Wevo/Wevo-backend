@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.wevo.backend.global.persistence.PostgresTestContainerConfig;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
@@ -30,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -38,7 +40,11 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 실제 JPA 매핑과 섹션 행 잠금 경로를 포함한 편집 잠금 API 통합 테스트.
  */
-@SpringBootTest
+@SpringBootTest(properties = {
+        "spring.flyway.enabled=true",
+        "spring.jpa.hibernate.ddl-auto=validate"
+})
+@Import(PostgresTestContainerConfig.class)
 @AutoConfigureMockMvc
 @Transactional
 class DraftLeaseIntegrationTest {

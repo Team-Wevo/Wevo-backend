@@ -10,6 +10,7 @@ import com.wevo.backend.ai.repository.AiJobRepository;
 import com.wevo.backend.ai.repository.AiUsageLogRepository;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.global.persistence.PostgresTestContainerConfig;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectStatus;
@@ -36,11 +37,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+        "spring.flyway.enabled=true",
+        "spring.jpa.hibernate.ddl-auto=validate"
+})
+@Import(PostgresTestContainerConfig.class)
 class AiJobServiceIntegrationTest {
 
     private static final String SNAPSHOT = "a".repeat(64);
