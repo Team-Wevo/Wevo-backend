@@ -196,7 +196,8 @@ CREATE TABLE section_drafts (
     id BIGSERIAL PRIMARY KEY,
     project_section_id BIGINT NOT NULL,
     content TEXT,
-    version INTEGER NOT NULL,
+    -- The application starts persisted draft history at 1; 0 is the approved ERD/DB default.
+    version INTEGER NOT NULL DEFAULT 0,
     last_editor_user_id BIGINT,
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -205,7 +206,7 @@ CREATE TABLE section_drafts (
     CONSTRAINT fk_section_drafts_last_editor
         FOREIGN KEY (last_editor_user_id) REFERENCES users (id),
     CONSTRAINT uk_section_drafts_section_version UNIQUE (project_section_id, version),
-    CONSTRAINT chk_section_drafts_version CHECK (version > 0)
+    CONSTRAINT chk_section_drafts_version CHECK (version >= 0)
 );
 
 CREATE TABLE draft_leases (

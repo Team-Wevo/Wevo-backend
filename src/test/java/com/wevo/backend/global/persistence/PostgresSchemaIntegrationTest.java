@@ -94,6 +94,98 @@ class PostgresSchemaIntegrationTest {
         )).isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    /**
+     * 도메인 담당자가 확정한 Review/Draft 필수값과 기본값이 실제 PostgreSQL에서도 적용되는지 검증한다.
+     */
+    @Test
+    @Transactional
+    void reviewAndDraftDefaultsMatchApprovedSchema() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        Long ownerId = jdbcTemplate.queryForObject(
+                "INSERT INTO users (name, status) VALUES ('owner', 'ACTIVE') RETURNING id",
+                Long.class
+        );
+        Long reviewerId = jdbcTemplate.queryForObject(
+                "INSERT INTO users (name, status) VALUES ('reviewer', 'ACTIVE') RETURNING id",
+                Long.class
+        );
+        Long projectId = jdbcTemplate.queryForObject(
+                """
+                INSERT INTO projects (owner_user_id, title, result_type, audience, status)
+                VALUES (?, 'review-schema-test', 'PROPOSAL', 'test-audience', 'ACTIVE')
+                RETURNING id
+                """,
+                Long.class,
+                ownerId
+        );
+        Long sectionId = jdbcTemplate.queryForObject(
+                """
+                INSERT INTO project_sections (project_id, title, section_order, status)
+                VALUES (?, 'review-schema-test-section', 1, 'DRAFTING')
+                RETURNING id
+                """,
+                Long.class,
+                projectId
+        );
+
+        Integer draftVersion = jdbcTemplate.queryForObject(
+                """
+                INSERT INTO section_drafts (project_section_id, content)
+                VALUES (?, 'draft')
+                RETURNING version
+                """,
+                Integer.class,
+                sectionId
+        );
+        assertThat(draftVersion).isZero();
+
+        Long teamReviewId = jdbcTemplate.queryForObject(
+                """
+                INSERT INTO team_reviews (
+                    project_section_id, reviewer_user_id, status, reviewed_content_version
+                ) VALUES (?, ?, 'APPROVED', 1)
+                RETURNING id
+                """,
+                Long.class,
+                sectionId,
+                reviewerId
+        );
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT resolved FROM team_reviews WHERE id = ?",
+                Boolean.class,
+                teamReviewId
+        )).isFalse();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT outdated FROM team_reviews WHERE id = ?",
+                Boolean.class,
+                teamReviewId
+        )).isFalse();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT version FROM team_reviews WHERE id = ?",
+                Long.class,
+                teamReviewId
+        )).isZero();
+
+        Long reviewLinkId = jdbcTemplate.queryForObject(
+                """
+                INSERT INTO review_links (
+                    project_section_id, token_hash, content_snapshot, content_version, status
+                ) VALUES (?, 'required-signal-token', 'draft', 1, 'ACTIVE')
+                RETURNING id
+                """,
+                Long.class,
+                sectionId
+        );
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                """
+                INSERT INTO review_submissions (
+                    review_link_id, anonymous_reviewer_id, understanding_signal
+                ) VALUES (?, 'anonymous-reviewer', NULL)
+                """,
+                reviewLinkId
+        )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
     private static String requiredEnvironment(String name) {
         String value = System.getenv(name);
         if (value == null || value.isBlank()) {

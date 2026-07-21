@@ -49,6 +49,7 @@ also match the entity relationships. Actor IDs that remain scalar in Java, such 
 | Opinion resubmission | Submitted opinions require an immutable submitted copy and first-submission time | Add `submitted_content` and require both `submitted_content` and `submitted_at` when status is `SUBMITTED` |
 | Overlay columns | ERD and current entity contain all three overlays | Persist `drift_status`, nullable `ai_check_status`, and `synthesis_stale` independently |
 | Status-history version | ERD marks it required, but current status transitions explicitly have no draft version before drafting | Keep `section_status_histories.version` nullable |
+| Review defaults | Review owner added ERD defaults after comparing the implemented review flow | Require `review_submissions.understanding_signal`; default `section_drafts.version` to `0`; default `team_reviews.resolved`, `outdated`, and `version` to `false`, `false`, and `0` |
 
 ## Unique constraints and indexes
 
@@ -70,11 +71,11 @@ recovery and audit queries.
 
 ## Domain-owner review gate
 
-- [ ] Auth/Project owner: `users`, `auth_accounts`, `projects`, `project_members`, `invite_links`
-- [ ] Section owner: templates, dependencies, sections, labels, histories, drafts
-- [ ] Opinion/Realtime owner: `opinions`, `draft_leases`
-- [ ] Review/Export owner: review link, submission, and team review tables
-- [ ] AI owner: `ai_jobs`, `ai_usage_logs`, persisted enum values and recovery indexes
+- [x] Auth/Project owner: `users`, `auth_accounts`, `projects`, `project_members`, `invite_links`
+- [x] Section owner: templates, dependencies, sections, labels, histories, drafts
+- [x] Opinion/Realtime owner: `opinions`, `draft_leases`
+- [x] Review/Export owner: review link, submission, and team review tables
+- [x] AI owner: `ai_jobs`, `ai_usage_logs`, persisted enum values and recovery indexes
 
 Reviewers should verify column meaning, nullability, defaults, unique constraints, and
 foreign-key ownership. Approval of the #88 PR records the schema freeze decision.
