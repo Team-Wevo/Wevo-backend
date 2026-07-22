@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 /**
@@ -41,6 +42,9 @@ public class ProjectService {
      * (API_SPEC §3.2.1 — §2.2 생성 흐름에 이름 입력 단계가 없어 title은 선택이다)
      */
     static final String DEFAULT_TITLE = "제목 없는 프로젝트";
+
+    /** 시간 값은 배포 서버 시간대와 무관하게 KST로 고정한다. (CLAUDE.md §5.4) */
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
@@ -82,7 +86,7 @@ public class ProjectService {
                 .project(project)
                 .user(owner)
                 .role(ProjectMemberRole.OWNER)
-                .joinedAt(LocalDateTime.now())
+                .joinedAt(LocalDateTime.now(KST))
                 .build());
 
         List<ProjectSection> sections = createFixedSections(project, request.resultType());

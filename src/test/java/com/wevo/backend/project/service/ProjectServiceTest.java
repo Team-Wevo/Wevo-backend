@@ -28,12 +28,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.assertj.core.api.Assertions.within;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -128,6 +131,30 @@ class ProjectServiceTest {
                 99L, new ProjectCreateRequest(null, "아이디어 텍스트", OutputType.PROPOSAL, null)));
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.USER_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("참여 시각은 서버 시간대와 무관하게 KST 로 기록된다")
+    void create_recordsJoinedAtInKst() {
+        Long userId = 1L;
+        User owner = User.builder().name("Wevo").status(UserStatus.ACTIVE).build();
+        ReflectionTestUtils.setField(owner, "id", userId);
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(owner));
+        given(projectRepository.save(any(Project.class))).willAnswer(invocation -> invocation.getArgument(0));
+        given(sectionTemplateRepository.findByResultTypeOrderByOrderNo(OutputType.PRESENTATION))
+                .willReturn(sixTemplates());
+        given(projectSectionRepository.saveAll(anyList())).willAnswer(invocation -> invocation.getArgument(0));
+
+        projectService.create(userId, new ProjectCreateRequest(
+                "발표 프로젝트", "아이디어", OutputType.PRESENTATION, "심사위원"));
+
+        ArgumentCaptor<ProjectMember> memberCaptor = ArgumentCaptor.forClass(ProjectMember.class);
+        verify(projectMemberRepository).save(memberCaptor.capture());
+        // JVM 기본 시간대(UTC 배포 환경)를 따랐다면 9시간 어긋나 이 검증에서 걸린다
+        assertThat(memberCaptor.getValue().getJoinedAt())
+                .isCloseTo(LocalDateTime.now(ZoneId.of("Asia/Seoul")),
+                        within(1, ChronoUnit.MINUTES));
     }
 
     @Test
