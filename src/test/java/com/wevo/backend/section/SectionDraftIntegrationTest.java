@@ -19,9 +19,12 @@ import com.wevo.backend.review.domain.TeamReview;
 import com.wevo.backend.review.domain.TeamReviewStatus;
 import com.wevo.backend.review.repository.ReviewLinkRepository;
 import com.wevo.backend.review.repository.TeamReviewRepository;
+import com.wevo.backend.section.domain.AiCheckStatus;
+import com.wevo.backend.section.domain.DraftLease;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionDraft;
+import com.wevo.backend.section.repository.DraftLeaseRepository;
 import com.wevo.backend.section.repository.SectionDraftRepository;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
@@ -62,6 +65,8 @@ class SectionDraftIntegrationTest {
     private TeamReviewRepository teamReviewRepository;
     @Autowired
     private ReviewLinkRepository reviewLinkRepository;
+    @Autowired
+    private DraftLeaseRepository draftLeaseRepository;
 
     @PersistenceContext
     private EntityManager em;
@@ -75,6 +80,7 @@ class SectionDraftIntegrationTest {
         persistMember(project, owner, ProjectMemberRole.OWNER);
         em.flush();
 
+        // 최초 저장(초안 없음)은 편집권 없이도 가능하다 — 보호할 기존 본문이 없다 (§5.2.1 예외)
         save(section.getId(), owner, "첫 초안 본문", 0)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("DRAFT_SAVED"))
@@ -93,6 +99,7 @@ class SectionDraftIntegrationTest {
         ProjectSection section = persistSection(project, ProjectSectionStatus.DRAFTING);
         persistMember(project, member, ProjectMemberRole.MEMBER);
         persistDraft(section, "v1 본문", 1, member);
+        persistActiveLease(section, member);
         em.flush();
 
         save(section.getId(), member, "v2 본문", 1)
@@ -111,6 +118,7 @@ class SectionDraftIntegrationTest {
         ProjectSection section = persistSection(project, ProjectSectionStatus.DRAFTING);
         persistMember(project, owner, ProjectMemberRole.OWNER);
         persistDraft(section, "v1 본문", 1, owner);
+        persistActiveLease(section, owner); // 편집권 검사를 통과시켜 baseVersion 충돌을 격리 검증
         em.flush();
 
         // 최신은 1인데 0을 기준으로 보냄 → 충돌
@@ -209,6 +217,7 @@ class SectionDraftIntegrationTest {
 
         TeamReview review = persistTeamReview(section, m1);
         ReviewLink link = persistActiveLink(section, owner);
+        persistActiveLease(section, owner);
         em.flush();
 
         save(section.getId(), owner, "수정한 v2", 1)
@@ -235,6 +244,7 @@ class SectionDraftIntegrationTest {
 
         TeamReview review = persistTeamReview(section, m1);
         ReviewLink link = persistActiveLink(section, owner);
+        persistActiveLease(section, owner);
         em.flush();
 
         // 고쳤다 되돌린 뒤 저장 → 내용은 v1 과 동일
@@ -250,6 +260,171 @@ class SectionDraftIntegrationTest {
         assertThat(teamReviewRepository.findById(review.getId()).orElseThrow().isOutdated()).isFalse();
         assertThat(reviewLinkRepository.findById(link.getId()).orElseThrow().getStatus())
                 .isEqualTo(ReviewLinkStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("본문 저장의 부수효과로 CURRENT 이던 AI 사전 검토가 OUTDATED 로 낡음 처리된다")
+    void saveOutdatesCurrentAiCheck() throws Exception {
+        User owner = persistUser("owner-d11@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project, ProjectSectionStatus.REVIEWING);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistDraft(section, "검토 대상 v1", 1, owner);
+        section.bindCurrentAiCheck(); // aiCheckStatus = CURRENT
+        persistActiveLease(section, owner);
+        em.flush();
+
+        save(section.getId(), owner, "수정한 v2", 1)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contentVersion").value(2));
+
+        em.flush();
+        em.clear();
+        assertThat(em.find(ProjectSection.class, section.getId()).getAiCheckStatus())
+                .isEqualTo(AiCheckStatus.OUTDATED);
+    }
+
+    @Test
+    @DisplayName("성공한 AI 사전 검토가 없으면(null) 저장해도 낡음 상태를 만들지 않는다")
+    void saveDoesNotCreateAiCheckWhenNeverChecked() throws Exception {
+        User owner = persistUser("owner-d12@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project, ProjectSectionStatus.DRAFTING);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistDraft(section, "v1 본문", 1, owner);
+        persistActiveLease(section, owner);
+        em.flush();
+
+        save(section.getId(), owner, "v2 본문", 1)
+                .andExpect(status().isOk());
+
+        em.flush();
+        em.clear();
+        // 검토 이력이 없는 섹션은 "검토 없는데 낡음" 상태가 되지 않는다
+        assertThat(em.find(ProjectSection.class, section.getId()).getAiCheckStatus()).isNull();
+    }
+
+    @Test
+    @DisplayName("직전과 같은 본문을 저장하면 CURRENT 이던 AI 사전 검토가 유지된다")
+    void identicalContentKeepsAiCheckCurrent() throws Exception {
+        User owner = persistUser("owner-d13@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project, ProjectSectionStatus.REVIEWING);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistDraft(section, "그대로인 본문", 1, owner);
+        section.bindCurrentAiCheck(); // aiCheckStatus = CURRENT
+        persistActiveLease(section, owner);
+        em.flush();
+
+        save(section.getId(), owner, "그대로인 본문", 1)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contentVersion").value(1));
+
+        em.flush();
+        em.clear();
+        assertThat(em.find(ProjectSection.class, section.getId()).getAiCheckStatus())
+                .isEqualTo(AiCheckStatus.CURRENT);
+    }
+
+    @Test
+    @DisplayName("편집권 없이 기존 초안을 저장하면 409(S005) — 미보유")
+    void saveExistingDraftWithoutLeaseRejected() throws Exception {
+        User owner = persistUser("owner-d14@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project, ProjectSectionStatus.DRAFTING);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistDraft(section, "v1 본문", 1, owner);
+        em.flush(); // 편집권 시드 없음
+
+        save(section.getId(), owner, "v2 본문", 1)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S005"));
+
+        // 저장이 막혀 새 버전이 생기지 않는다
+        assertThat(sectionDraftRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("타인이 편집권을 보유 중이면 저장 시 409(S004)")
+    void saveWhileOtherHoldsLeaseRejected() throws Exception {
+        User owner = persistUser("owner-d15@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project, ProjectSectionStatus.DRAFTING);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User other = persistUser("other-d15@wevo.com");
+        persistMember(project, other, ProjectMemberRole.MEMBER);
+        persistDraft(section, "v1 본문", 1, owner);
+        persistActiveLease(section, other); // 타인이 편집 중
+        em.flush();
+
+        save(section.getId(), owner, "v2 본문", 1)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S004"));
+
+        assertThat(sectionDraftRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("만료된 편집권으로 저장하면 409(S005) — 미보유로 본다")
+    void saveWithExpiredLeaseRejected() throws Exception {
+        User owner = persistUser("owner-d16@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project, ProjectSectionStatus.DRAFTING);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistDraft(section, "v1 본문", 1, owner);
+        persistLease(section, owner, LocalDateTime.now().minusMinutes(1)); // 만료됨
+        em.flush();
+
+        save(section.getId(), owner, "v2 본문", 1)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S005"));
+
+        assertThat(sectionDraftRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("새 버전 저장에 성공하면 보유하던 편집권이 해제된다 (§5.2.1)")
+    void saveReleasesHolderLease() throws Exception {
+        User owner = persistUser("owner-d17@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project, ProjectSectionStatus.DRAFTING);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistDraft(section, "v1 본문", 1, owner);
+        DraftLease lease = persistActiveLease(section, owner);
+        LocalDateTime originalUntil = lease.getLeaseUntil();
+        em.flush();
+
+        save(section.getId(), owner, "v2 수정", 1)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contentVersion").value(2));
+
+        em.flush();
+        em.clear();
+        // 해제 시 만료 시각을 현재로 당겨 비활성화한다(행은 남김) — 원래 만료(현재+1시간)보다 앞선다
+        assertThat(draftLeaseRepository.findById(lease.getId()).orElseThrow().getLeaseUntil())
+                .isBefore(originalUntil);
+    }
+
+    @Test
+    @DisplayName("멱등(본문 동일) 저장은 저장을 건너뛰므로 편집권을 해제하지 않는다")
+    void identicalContentSaveKeepsLease() throws Exception {
+        User owner = persistUser("owner-d18@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project, ProjectSectionStatus.DRAFTING);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistDraft(section, "그대로인 본문", 1, owner);
+        persistActiveLease(section, owner);
+        em.flush();
+
+        save(section.getId(), owner, "그대로인 본문", 1)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contentVersion").value(1));
+
+        em.flush();
+        em.clear();
+        // 편집권이 그대로 활성(미래 만료)으로 유지된다
+        assertThat(draftLeaseRepository.findByProjectSection_Id(section.getId()).orElseThrow().getLeaseUntil())
+                .isAfter(LocalDateTime.now());
     }
 
     // --- 헬퍼 ---
@@ -312,6 +487,21 @@ class SectionDraftIntegrationTest {
                 .lastEditor(editor)
                 .build();
         em.persist(draft);
+    }
+
+    /** 활성(유효) 편집권을 시드한다 — 저장 시 편집권 검사(§5.2.1)를 통과시키기 위함. */
+    private DraftLease persistActiveLease(ProjectSection section, User holder) {
+        return persistLease(section, holder, LocalDateTime.now().plusHours(1));
+    }
+
+    private DraftLease persistLease(ProjectSection section, User holder, LocalDateTime leaseUntil) {
+        DraftLease lease = DraftLease.builder()
+                .projectSection(section)
+                .holderUserId(holder.getId())
+                .leaseUntil(leaseUntil)
+                .build();
+        em.persist(lease);
+        return lease;
     }
 
     private TeamReview persistTeamReview(ProjectSection section, User reviewer) {

@@ -151,4 +151,41 @@ public class DraftLeaseService {
         return draftLeaseRepository.findByProjectSection_Id(projectSectionId)
                 .filter(lease -> lease.isActiveAt(now));
     }
+
+    /**
+     * 호출자가 섹션의 유효한 편집권 보유자인지 검증한다 — 초안 저장 등 편집 행위의 사전 조건. (§5.2.1)
+     *
+     * <p>lease 행을 배타 잠금으로 조회해 acquire·renew·해제와 직렬화한다. 활성 lease가 없거나
+     * 만료됐으면 {@code S005}(미보유), 타인이 보유하면 {@code S004}(충돌)로 거부한다. 상태를
+     * 바꾸지 않는 검증 전용이라, 잠금을 저장과 같은 트랜잭션에서 유지하려면 쓰기 트랜잭션 안에서
+     * 호출한다(호출자의 트랜잭션에 참여한다).
+     *
+     * @throws BusinessException 편집권 미보유·만료({@code S005}), 타인이 편집 중({@code S004})
+     */
+    public void requireActiveHolder(Long projectSectionId, Long userId) {
+        LocalDateTime now = LocalDateTime.now(KST);
+        DraftLease lease = draftLeaseRepository.findByProjectSectionIdForUpdate(projectSectionId)
+                .filter(existing -> existing.isActiveAt(now))
+                .orElseThrow(() -> new BusinessException(ErrorCode.DRAFT_LEASE_NOT_HELD));
+        if (!lease.getHolderUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
+        }
+    }
+
+    /**
+     * 저장·편집 종료로 호출자가 보유한 편집권을 해제한다. (§5.2.1 "저장하거나 편집을 종료하면 해제")
+     *
+     * <p>lease 행을 배타 잠금으로 조회해 acquire·renew·검사와 직렬화한다. 만료 행은 삭제하지 않고
+     * 만료 시각을 현재로 당겨 비활성으로 만들어, 다음 획득 요청이 재사용한다. 호출자가 보유한
+     * 활성 lease가 없으면(이미 만료·해제·타인 보유) 아무 것도 하지 않는다 — 멱등하다.
+     *
+     * <p>검증은 하지 않는다 — 호출측이 {@link #requireActiveHolder}로 보유를 확인한 뒤,
+     * 같은 트랜잭션에서 저장이 성공했을 때만 호출하는 것을 전제로 한다.
+     */
+    public void releaseHeldBy(Long projectSectionId, Long userId) {
+        LocalDateTime now = LocalDateTime.now(KST);
+        draftLeaseRepository.findByProjectSectionIdForUpdate(projectSectionId)
+                .filter(lease -> lease.isActiveAt(now) && lease.getHolderUserId().equals(userId))
+                .ifPresent(lease -> lease.release(now));
+    }
 }
