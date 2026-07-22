@@ -40,6 +40,21 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Lo
                                                                 @Param("userId") Long userId);
 
     /**
+     * 프로젝트의 모든 멤버를 사용자와 함께 조회한다. (멤버 목록 — API_SPEC §3.2.8)
+     *
+     * <p>정렬은 <b>OWNER 우선 → 같은 역할이면 참여 시각 오름차순</b>이다. 팀장이 항상 맨 앞에 오므로
+     * 클라이언트가 별도 정렬 없이 그대로 표시할 수 있다. 역할은 문자열로 저장돼(`MEMBER` &lt; `OWNER`)
+     * 이름순 정렬이 의도와 반대이므로 {@code CASE} 로 우선순위를 명시한다.
+     *
+     * <p>{@code JOIN FETCH} 로 사용자를 함께 로딩해 이름·프로필 조회에서 N+1 이 나지 않게 한다.
+     */
+    @Query("SELECT pm FROM ProjectMember pm JOIN FETCH pm.user "
+            + "WHERE pm.project.id = :projectId "
+            + "ORDER BY CASE WHEN pm.role = com.wevo.backend.project.domain.ProjectMemberRole.OWNER "
+            + "THEN 0 ELSE 1 END, pm.joinedAt ASC")
+    List<ProjectMember> findAllWithUserByProjectId(@Param("projectId") Long projectId);
+
+    /**
      * 내가 멤버로 속한 프로젝트 목록을 최신순으로 조회한다.
      *
      * <p>{@code JOIN FETCH} 로 프로젝트를 함께 로딩해 N+1 을 방지한다.

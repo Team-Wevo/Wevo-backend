@@ -8,6 +8,7 @@ import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.dto.request.ProjectCreateRequest;
 import com.wevo.backend.project.dto.response.ProjectCreateResponse;
 import com.wevo.backend.project.dto.response.ProjectDetailResponse;
+import com.wevo.backend.project.dto.response.ProjectMemberListResponse;
 import com.wevo.backend.project.dto.response.ProjectSummaryResponse;
 import com.wevo.backend.project.dto.response.SectionSummaryResponse;
 import com.wevo.backend.project.repository.ProjectMemberRepository;
@@ -126,6 +127,20 @@ public class ProjectService {
         return projectSectionRepository.findAllWithTemplateByProjectId(projectId).stream()
                 .map(SectionSummaryResponse::from)
                 .toList();
+    }
+
+    /**
+     * 프로젝트 멤버 목록을 조회한다. (멤버만 조회 가능 — API_SPEC §3.2.8)
+     *
+     * <p>정원이 최대 4명({@link Project#MAX_MEMBERS} — 정책서 §2.1)이라 페이지네이션 없이 전원을
+     * 반환한다. MVP 에 회원 탈퇴 기능이 없으므로 사용자 상태로 거르지 않는다.
+     */
+    @Transactional(readOnly = true)
+    public ProjectMemberListResponse getMembers(Long userId, Long projectId) {
+        getMembershipOrThrow(projectId, userId);
+
+        return ProjectMemberListResponse.from(
+                projectMemberRepository.findAllWithUserByProjectId(projectId));
     }
 
     /**
