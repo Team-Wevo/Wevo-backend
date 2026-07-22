@@ -2,6 +2,7 @@ package com.wevo.backend.section.service;
 
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.issue.service.SynthesisSetQueryService;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectMember;
@@ -12,7 +13,6 @@ import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionStatusHistory;
 import com.wevo.backend.section.repository.ProjectSectionRepository;
-import com.wevo.backend.section.repository.SectionDraftRepository;
 import com.wevo.backend.section.repository.SectionStatusHistoryRepository;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
@@ -46,7 +46,7 @@ class SectionStatusServiceTest {
     @Mock
     private ProjectAccessGuard projectAccessGuard;
     @Mock
-    private SectionDraftRepository sectionDraftRepository;
+    private SynthesisSetQueryService synthesisSetQueryService;
     @Mock
     private SectionStatusHistoryRepository sectionStatusHistoryRepository;
 
@@ -132,24 +132,41 @@ class SectionStatusServiceTest {
     }
 
     @Test
-    @DisplayName("팀장이 미확정 섹션을 재오픈하면 COLLECTING 전이 이력과 stale 표시를 남긴다")
-    void markCollecting_fromDrafting_marksStaleWhenDraftExists() {
+    @DisplayName("기존 정리가 있는 미확정 섹션을 재오픈하면 세대 증가와 stale 표시를 남긴다")
+    void markCollecting_fromDrafting_advancesGenerationAndMarksStale() {
         User owner = user(OWNER_ID);
         ProjectSection section = section(ProjectSectionStatus.DRAFTING);
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
         given(projectAccessGuard.requireOwner(PROJECT_ID, OWNER_ID))
                 .willReturn(member(owner, ProjectMemberRole.OWNER, section.getProject()));
-        given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
+        given(synthesisSetQueryService.existsForSection(SECTION_ID)).willReturn(true);
 
         ProjectSection reopened = sectionStatusService.markCollecting(SECTION_ID, OWNER_ID);
 
         assertThat(reopened.getStatus()).isEqualTo(ProjectSectionStatus.COLLECTING);
         assertThat(reopened.isSynthesisStale()).isTrue();
+        assertThat(reopened.getOpinionGateGeneration()).isEqualTo(1);
         ArgumentCaptor<SectionStatusHistory> captor = ArgumentCaptor.forClass(SectionStatusHistory.class);
         verify(sectionStatusHistoryRepository).save(captor.capture());
         assertThat(captor.getValue().getEventType()).isEqualTo("COLLECT_REOPENED");
         assertThat(captor.getValue().getFromStatus()).isEqualTo(ProjectSectionStatus.DRAFTING);
         assertThat(captor.getValue().getToStatus()).isEqualTo(ProjectSectionStatus.COLLECTING);
+    }
+
+    @Test
+    @DisplayName("정리 이력이 없어도 재오픈 세대는 증가하지만 synthesisStale은 false를 유지한다")
+    void markCollecting_withoutSynthesis_advancesGenerationOnly() {
+        User owner = user(OWNER_ID);
+        ProjectSection section = section(ProjectSectionStatus.SYNTHESIZING);
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectAccessGuard.requireOwner(PROJECT_ID, OWNER_ID))
+                .willReturn(member(owner, ProjectMemberRole.OWNER, section.getProject()));
+        given(synthesisSetQueryService.existsForSection(SECTION_ID)).willReturn(false);
+
+        ProjectSection reopened = sectionStatusService.markCollecting(SECTION_ID, OWNER_ID);
+
+        assertThat(reopened.getOpinionGateGeneration()).isEqualTo(1);
+        assertThat(reopened.isSynthesisStale()).isFalse();
     }
 
     @Test

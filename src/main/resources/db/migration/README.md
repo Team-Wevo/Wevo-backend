@@ -22,6 +22,10 @@ Do not edit an already-applied migration. Add a new versioned migration instead.
 mappings still match it. See `SCHEMA_FREEZE.md` for the ERD/entity comparison and review
 status.
 
+`V2__add_synthesis_issue_foundation.sql` adds immutable synthesis result sets, issue follow-up
+storage, inherited GAP answer references, and the opinion-gate generation used by synthesis
+snapshot binding. It intentionally leaves V1 unchanged.
+
 ## Existing local databases
 
 V1 is an initial migration for an **empty PostgreSQL database**. A database previously

@@ -91,6 +91,13 @@ public class ProjectSection extends BaseTimeEntity {
     @Column(name = "synthesis_stale", nullable = false)
     private Boolean synthesisStale;
 
+    /**
+     * 의견 수집 재오픈 세대. 재오픈 성공마다 증가하며 synthesis 입력 스냅샷에 포함한다.
+     * 제출 의견과 GAP 답변이 같아도 이전 마감의 성공 작업을 잘못 재사용하지 않게 하는 경계값이다.
+     */
+    @Column(name = "opinion_gate_generation", nullable = false)
+    private long opinionGateGeneration;
+
     @Builder
     private ProjectSection(Project project, SectionTemplate template, String title, Integer sectionOrder,
                            ProjectSectionStatus status, Integer confirmedVersion) {
@@ -102,6 +109,7 @@ public class ProjectSection extends BaseTimeEntity {
         this.confirmedVersion = confirmedVersion == null ? 0 : confirmedVersion;
         this.driftStatus = DriftStatus.NONE;
         this.synthesisStale = Boolean.FALSE;
+        this.opinionGateGeneration = 0;
     }
 
     /**
@@ -187,6 +195,11 @@ public class ProjectSection extends BaseTimeEntity {
      */
     public void clearSynthesisStale() {
         this.synthesisStale = Boolean.FALSE;
+    }
+
+    /** 의견 수집 재오픈을 새 세대로 기록한다. */
+    public void advanceOpinionGateGeneration() {
+        this.opinionGateGeneration = Math.addExact(this.opinionGateGeneration, 1L);
     }
 
     /**

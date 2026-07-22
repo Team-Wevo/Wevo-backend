@@ -24,7 +24,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 빈 PostgreSQL에 Flyway V1을 적용한 뒤 Hibernate 엔티티 매핑 검증까지 통과하는지 확인한다.
+ * 빈 PostgreSQL에 전체 Flyway 마이그레이션을 적용한 뒤 Hibernate 엔티티 매핑 검증까지 통과하는지 확인한다.
  * GitHub Actions의 PostgreSQL service container처럼 호출자가 제공한 빈 DB에서만 명시적으로 실행한다.
  * 일반 통합 테스트의 격리된 PostgreSQL 검증은 {@link PostgresTestContainerConfig}를 사용한다.
  */
@@ -53,7 +53,7 @@ class PostgresSchemaIntegrationTest {
     private EntityManager entityManager;
 
     @Test
-    void v1CreatesAllEntityTablesAndHibernateValidates() {
+    void migrationsCreateAllEntityTablesAndHibernateValidates() {
         Integer entityTableCount = new JdbcTemplate(dataSource).queryForObject(
                 """
                 SELECT COUNT(*)
@@ -64,7 +64,7 @@ class PostgresSchemaIntegrationTest {
                 Integer.class
         );
 
-        assertThat(entityTableCount).isEqualTo(18);
+        assertThat(entityTableCount).isEqualTo(26);
     }
 
     @Test

@@ -17,6 +17,7 @@ class ProjectSectionTest {
         assertThat(section.getDriftStatus()).isEqualTo(DriftStatus.NONE);
         assertThat(section.getAiCheckStatus()).isNull();
         assertThat(section.isSynthesisStale()).isFalse();
+        assertThat(section.getOpinionGateGeneration()).isZero();
         assertThat(section.getConfirmedVersion()).isZero();
     }
 
@@ -92,6 +93,17 @@ class ProjectSectionTest {
 
         section.clearSynthesisStale();
         assertThat(section.isSynthesisStale()).isFalse();
+    }
+
+    @Test
+    @DisplayName("의견 수집 재오픈마다 마감 세대가 1씩 증가한다")
+    void opinionGateGeneration_advancesOnEveryReopen() {
+        ProjectSection section = section();
+
+        section.advanceOpinionGateGeneration();
+        section.advanceOpinionGateGeneration();
+
+        assertThat(section.getOpinionGateGeneration()).isEqualTo(2);
     }
 
     @Test
