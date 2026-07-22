@@ -75,7 +75,40 @@ public class Issue extends BaseTimeEntity {
         this.sortOrder = sortOrder;
     }
 
-    public void resolve() {
+    /** CONFLICT 결정을 근거로 쟁점을 해소한다. */
+    public void resolve(IssueDecision decision) {
+        requireResolutionEvidence(IssueType.CONFLICT,
+                Objects.requireNonNull(decision, "decision은 필수입니다.").getIssue());
+        markResolved();
+    }
+
+    /** GAP 보충 답변을 근거로 쟁점을 해소한다. */
+    public void resolve(IssueAnswer answer) {
+        requireResolutionEvidence(IssueType.GAP,
+                Objects.requireNonNull(answer, "answer는 필수입니다.").getIssue());
+        markResolved();
+    }
+
+    private void requireResolutionEvidence(IssueType expectedType, Issue evidenceIssue) {
+        if (type != expectedType) {
+            throw new IllegalStateException(expectedType + " 근거로 " + type + " 쟁점을 해소할 수 없습니다.");
+        }
+        if (!isSameIssue(evidenceIssue)) {
+            throw new IllegalArgumentException("해소 근거는 대상 쟁점에 속해야 합니다.");
+        }
+        if (status != IssueStatus.PENDING) {
+            throw new IllegalStateException("이미 해소된 쟁점입니다.");
+        }
+    }
+
+    private boolean isSameIssue(Issue other) {
+        if (other == this) {
+            return true;
+        }
+        return other != null && id != null && other.id != null && id.equals(other.id);
+    }
+
+    private void markResolved() {
         this.status = IssueStatus.RESOLVED;
     }
 }

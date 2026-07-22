@@ -57,7 +57,8 @@ public class SectionStatusService {
      * 의견 수집 재오픈 전이. 미확정 섹션을 {@code COLLECTING} 으로 되돌린다. (팀장 전용)
      *
      * <p>재오픈마다 마감 세대를 증가시켜 동일한 의견 집합이어도 이전 AI 작업을 재사용하지 않는다.
-     * 기존 정리 세트가 있으면 그 결과가 낡았으므로 재정리 필요 플래그를 남긴다.
+     * 기존 정리 세트가 있으면 그 결과가 낡았으므로 재정리 필요 플래그를 남기고,
+     * 정리 이력이 없으면 과거 임시 판정으로 남은 stale 값을 해제한다.
      */
     @Transactional
     public ProjectSection markCollecting(Long sectionId, Long actorUserId) {
@@ -66,6 +67,8 @@ public class SectionStatusService {
         section.advanceOpinionGateGeneration();
         if (synthesisSetQueryService.existsForSection(sectionId)) {
             section.markSynthesisStale();
+        } else {
+            section.clearSynthesisStale();
         }
         return section;
     }

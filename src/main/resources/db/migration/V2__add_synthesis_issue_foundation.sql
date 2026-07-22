@@ -1,13 +1,6 @@
 -- Opinion synthesis result history and issue follow-up foundation.
 -- V1 is frozen; every schema change for the synthesis/issue milestone lives here.
 
-ALTER TABLE project_sections
-    ADD COLUMN opinion_gate_generation BIGINT NOT NULL DEFAULT 0;
-
-ALTER TABLE project_sections
-    ADD CONSTRAINT chk_project_sections_opinion_gate_generation
-        CHECK (opinion_gate_generation >= 0);
-
 CREATE TABLE synthesis_sets (
     id BIGSERIAL PRIMARY KEY,
     request_id UUID NOT NULL,
@@ -173,3 +166,14 @@ CREATE TABLE synthesis_inherited_gap_answers (
 
 CREATE INDEX idx_synthesis_inherited_answers_source_issue
     ON synthesis_inherited_gap_answers (source_issue_id);
+
+-- A constant default is metadata-only on supported PostgreSQL versions. Keep this ALTER last so
+-- its short ACCESS EXCLUSIVE phase is released as soon as V2 commits. Existing rows receive 0.
+ALTER TABLE project_sections
+    ADD COLUMN opinion_gate_generation BIGINT NOT NULL DEFAULT 0;
+
+-- NOT VALID avoids scanning existing project_sections while holding V2's ACCESS EXCLUSIVE lock.
+-- New and updated rows are still checked. V3 validates existing rows in a separate transaction.
+ALTER TABLE project_sections
+    ADD CONSTRAINT chk_project_sections_opinion_gate_generation
+        CHECK (opinion_gate_generation >= 0) NOT VALID;

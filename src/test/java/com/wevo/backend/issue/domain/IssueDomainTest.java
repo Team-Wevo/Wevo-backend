@@ -2,6 +2,7 @@ package com.wevo.backend.issue.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -51,6 +52,44 @@ class IssueDomainTest {
         assertThat(custom.getCustomInput()).isEqualTo("두 안을 절충");
         assertThatIllegalArgumentException().isThrownBy(() ->
                 IssueDecision.custom(conflict, 1L, "가".repeat(201), now));
+    }
+
+    @Test
+    @DisplayName("CONFLICT는 자기 쟁점의 결정이 있어야 한 번만 해소할 수 있다")
+    void conflict_resolvesWithOwnDecisionOnly() {
+        Issue conflict = conflict();
+        IssueDecision decision = IssueDecision.custom(
+                conflict, 1L, "공모전 참가 팀으로 결정", LocalDateTime.of(2026, 7, 22, 12, 0));
+
+        conflict.resolve(decision);
+
+        assertThat(conflict.getStatus()).isEqualTo(IssueStatus.RESOLVED);
+        assertThatIllegalStateException().isThrownBy(() -> conflict.resolve(decision));
+
+        Issue another = conflict();
+        IssueDecision anotherDecision = IssueDecision.custom(
+                another, 1L, "다른 쟁점 결정", LocalDateTime.of(2026, 7, 22, 12, 1));
+        Issue target = conflict();
+        assertThatIllegalArgumentException().isThrownBy(() -> target.resolve(anotherDecision));
+    }
+
+    @Test
+    @DisplayName("GAP은 자기 쟁점의 보충 답변이 있어야 해소할 수 있다")
+    void gap_resolvesWithOwnAnswer() {
+        Issue gap = Issue.builder()
+                .synthesisSet(synthesisSet()).type(IssueType.GAP)
+                .description("시장 규모 근거 부족").sortOrder(1).build();
+        EvidenceRequest request = EvidenceRequest.builder()
+                .issue(gap).requestedByUserId(1L).targetUserId(2L)
+                .requestedAt(LocalDateTime.of(2026, 7, 22, 12, 0)).build();
+        IssueAnswer answer = IssueAnswer.builder()
+                .evidenceRequest(request).authorUserId(2L).authorNameSnapshot("팀원")
+                .content("관련 대회 참가 팀은 연간 약 2만 팀입니다.")
+                .answeredAt(LocalDateTime.of(2026, 7, 22, 12, 5)).build();
+
+        gap.resolve(answer);
+
+        assertThat(gap.getStatus()).isEqualTo(IssueStatus.RESOLVED);
     }
 
     @Test

@@ -130,8 +130,9 @@ class SynthesisFoundationIntegrationTest {
                 .issue(gap).opinionId(submittedOpinion.getId()).authorUserId(member.getId())
                 .authorNameSnapshot(member.getName()).excerpt(submittedOpinion.getSubmittedContentOrLegacy())
                 .sortOrder(1).build());
-        decisionRepository.save(IssueDecision.select(conflict, owner.getId(), option, NOW));
-        conflict.resolve();
+        IssueDecision decision = decisionRepository.save(
+                IssueDecision.select(conflict, owner.getId(), option, NOW));
+        conflict.resolve(decision);
         EvidenceRequest request = evidenceRequestRepository.save(EvidenceRequest.builder()
                 .issue(gap).requestedByUserId(owner.getId()).targetUserId(member.getId())
                 .requestedAt(NOW.plusMinutes(1)).build());
@@ -139,7 +140,7 @@ class SynthesisFoundationIntegrationTest {
                 .evidenceRequest(request).authorUserId(member.getId()).authorNameSnapshot(member.getName())
                 .content("관련 대회 참가 팀은 연간 약 2만 팀입니다.")
                 .answeredAt(NOW.plusMinutes(2)).build());
-        gap.resolve();
+        gap.resolve(answer);
         entityManager.flush();
 
         SynthesisSet secondSet = saveSet(1, "보충 근거를 반영해 시장 범위를 구체화했습니다.");
@@ -157,6 +158,21 @@ class SynthesisFoundationIntegrationTest {
                     assertThat(reference.getSourceIssueId()).isEqualTo(gap.getId());
                     assertThat(reference.getSourceAnswerId()).isEqualTo(answer.getId());
                 });
+    }
+
+    @Test
+    @DisplayName("V3가 의견 마감 세대 CHECK 제약의 기존 행 검증을 완료한다")
+    void migration_validatesOpinionGateGenerationConstraint() {
+        Boolean validated = jdbcTemplate.queryForObject(
+                """
+                SELECT convalidated
+                FROM pg_constraint
+                WHERE conname = 'chk_project_sections_opinion_gate_generation'
+                """,
+                Boolean.class
+        );
+
+        assertThat(validated).isTrue();
     }
 
     @Test

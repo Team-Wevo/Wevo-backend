@@ -154,10 +154,11 @@ class SectionStatusServiceTest {
     }
 
     @Test
-    @DisplayName("정리 이력이 없어도 재오픈 세대는 증가하지만 synthesisStale은 false를 유지한다")
-    void markCollecting_withoutSynthesis_advancesGenerationOnly() {
+    @DisplayName("정리 이력이 없으면 재오픈 세대는 증가하고 기존 synthesisStale은 false로 정정한다")
+    void markCollecting_withoutSynthesis_advancesGenerationAndClearsLegacyStale() {
         User owner = user(OWNER_ID);
         ProjectSection section = section(ProjectSectionStatus.SYNTHESIZING);
+        section.markSynthesisStale();
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
         given(projectAccessGuard.requireOwner(PROJECT_ID, OWNER_ID))
                 .willReturn(member(owner, ProjectMemberRole.OWNER, section.getProject()));

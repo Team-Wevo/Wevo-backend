@@ -191,7 +191,7 @@ public class ProjectSection extends BaseTimeEntity {
     }
 
     /**
-     * AI 재정리 완료 — 재정리 필요 해제. (API_SPEC §3.8.1)
+     * AI 재정리 완료 또는 정리 이력 없음 확인 — 재정리 필요 해제. (API_SPEC §3.8.1)
      */
     public void clearSynthesisStale() {
         this.synthesisStale = Boolean.FALSE;
