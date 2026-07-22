@@ -8,6 +8,7 @@ import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.dto.request.ProjectCreateRequest;
 import com.wevo.backend.project.dto.response.ProjectCreateResponse;
+import com.wevo.backend.project.dto.response.ProjectMemberListResponse;
 import com.wevo.backend.project.repository.ProjectMemberRepository;
 import com.wevo.backend.project.repository.ProjectRepository;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
@@ -26,15 +27,21 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.assertj.core.api.Assertions.within;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -124,6 +131,87 @@ class ProjectServiceTest {
                 99L, new ProjectCreateRequest(null, "아이디어 텍스트", OutputType.PROPOSAL, null)));
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.USER_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("참여 시각은 서버 시간대와 무관하게 KST 로 기록된다")
+    void create_recordsJoinedAtInKst() {
+        Long userId = 1L;
+        User owner = User.builder().name("Wevo").status(UserStatus.ACTIVE).build();
+        ReflectionTestUtils.setField(owner, "id", userId);
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(owner));
+        given(projectRepository.save(any(Project.class))).willAnswer(invocation -> invocation.getArgument(0));
+        given(sectionTemplateRepository.findByResultTypeOrderByOrderNo(OutputType.PRESENTATION))
+                .willReturn(sixTemplates());
+        given(projectSectionRepository.saveAll(anyList())).willAnswer(invocation -> invocation.getArgument(0));
+
+        projectService.create(userId, new ProjectCreateRequest(
+                "발표 프로젝트", "아이디어", OutputType.PRESENTATION, "심사위원"));
+
+        ArgumentCaptor<ProjectMember> memberCaptor = ArgumentCaptor.forClass(ProjectMember.class);
+        verify(projectMemberRepository).save(memberCaptor.capture());
+        // JVM 기본 시간대(UTC 배포 환경)를 따랐다면 9시간 어긋나 이 검증에서 걸린다
+        assertThat(memberCaptor.getValue().getJoinedAt())
+                .isCloseTo(LocalDateTime.now(ZoneId.of("Asia/Seoul")),
+                        within(1, ChronoUnit.MINUTES));
+    }
+
+    @Test
+    @DisplayName("멤버 목록은 참여자 정보와 정원(4)을 함께 반환한다")
+    void getMembers_returnsMembersWithCapacity() {
+        User owner = user(1L, "김위보", "https://cdn.example/a.png");
+        User member = user(2L, "이팀원", null);
+        given(projectMemberRepository.findByProjectIdAndUserId(100L, 1L))
+                .willReturn(Optional.of(membership(owner, ProjectMemberRole.OWNER)));
+        given(projectMemberRepository.findAllWithUserByProjectId(100L)).willReturn(List.of(
+                membership(owner, ProjectMemberRole.OWNER),
+                membership(member, ProjectMemberRole.MEMBER)));
+
+        ProjectMemberListResponse response = projectService.getMembers(1L, 100L);
+
+        assertThat(response.memberCount()).isEqualTo(2);
+        assertThat(response.maxMembers()).isEqualTo(Project.MAX_MEMBERS);
+        assertThat(response.members()).extracting(
+                        ProjectMemberListResponse.MemberSummary::userId,
+                        ProjectMemberListResponse.MemberSummary::name,
+                        ProjectMemberListResponse.MemberSummary::profileImageUrl,
+                        ProjectMemberListResponse.MemberSummary::role)
+                .containsExactly(
+                        tuple(1L, "김위보", "https://cdn.example/a.png", ProjectMemberRole.OWNER),
+                        tuple(2L, "이팀원", null, ProjectMemberRole.MEMBER));
+    }
+
+    @Test
+    @DisplayName("비멤버가 멤버 목록을 조회하면 PROJECT_NOT_FOUND 로 존재를 숨긴다")
+    void getMembers_nonMember_hidesProject() {
+        given(projectMemberRepository.findByProjectIdAndUserId(100L, 99L)).willReturn(Optional.empty());
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> projectService.getMembers(99L, 100L));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PROJECT_NOT_FOUND);
+        verify(projectMemberRepository, never()).findAllWithUserByProjectId(any());
+    }
+
+    private User user(Long id, String name, String profileImageUrl) {
+        User user = User.builder()
+                .name(name)
+                .email("user" + id + "@wevo.com")
+                .profileImageUrl(profileImageUrl)
+                .status(UserStatus.ACTIVE)
+                .build();
+        ReflectionTestUtils.setField(user, "id", id);
+        return user;
+    }
+
+    private ProjectMember membership(User user, ProjectMemberRole role) {
+        return ProjectMember.builder()
+                .project(Project.builder().title("위보 발표 준비").build())
+                .user(user)
+                .role(role)
+                .joinedAt(LocalDateTime.now())
+                .build();
     }
 
     private List<SectionTemplate> sixTemplates() {

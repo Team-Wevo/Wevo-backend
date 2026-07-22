@@ -5,6 +5,7 @@ import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.project.dto.request.ProjectCreateRequest;
 import com.wevo.backend.project.dto.response.ProjectCreateResponse;
 import com.wevo.backend.project.dto.response.ProjectDetailResponse;
+import com.wevo.backend.project.dto.response.ProjectMemberListResponse;
 import com.wevo.backend.project.dto.response.ProjectSummaryResponse;
 import com.wevo.backend.project.dto.response.SectionSummaryResponse;
 import com.wevo.backend.project.service.ProjectService;
@@ -66,6 +67,18 @@ public class ProjectController {
     ) {
         ProjectDetailResponse project = projectService.getProject(principal.userId(), projectId);
         return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", project));
+    }
+
+    /**
+     * 프로젝트 멤버 목록 조회 — 멤버가 아니면 404(PROJECT_NOT_FOUND).
+     */
+    @GetMapping("/{projectId}/members")
+    public ResponseEntity<ApiResponse<ProjectMemberListResponse>> getMembers(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @PathVariable Long projectId
+    ) {
+        ProjectMemberListResponse members = projectService.getMembers(principal.userId(), projectId);
+        return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", members));
     }
 
     /**

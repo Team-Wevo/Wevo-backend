@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.UUID;
 
 /**
@@ -30,6 +31,9 @@ import java.util.UUID;
 @Service
 @Transactional(readOnly = true)
 public class InviteService {
+
+    /** 시간 값은 배포 서버 시간대와 무관하게 KST로 고정한다. (CLAUDE.md §5.4) */
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
@@ -117,7 +121,7 @@ public class InviteService {
                 .project(project)
                 .user(user)
                 .role(ProjectMemberRole.MEMBER)
-                .joinedAt(LocalDateTime.now())
+                .joinedAt(LocalDateTime.now(KST))
                 .build());
 
         return ProjectJoinResponse.from(saved);
