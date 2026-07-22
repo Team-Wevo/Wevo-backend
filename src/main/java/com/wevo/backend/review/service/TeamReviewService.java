@@ -179,6 +179,37 @@ public class TeamReviewService {
     }
 
     /**
+     * 섹션 확정(§6.3)의 <b>팀 검토 관련 두 조건</b>을 한 번의 목록 조회로 함께 판정한다.
+     * (확정 가능 여부 조회 §3.7.5, 확정 재검증 §3.7.6)
+     *
+     * <p>두 조건 모두 같은 팀 검토 목록에서 파생되므로 {@code findByProjectSection_Id}를 한 번만
+     * 호출한다. 두 판정 모두 <b>현재 본문 기준</b> 검토만 센다 — 본문 수정으로 만료(outdated)된
+     * 동의·수정요청은 이전 본문 대상이라 제외한다(§6.1).
+     *
+     * <ul>
+     *   <li><b>팀원 동의</b> — 멤버가 팀장 1명뿐인 1인 프로젝트는 조건에서 제외되어 항상 충족
+     *       (§6.3.1). 그 외에는 만료되지 않은 {@code APPROVED} 팀원이 1명 이상이어야 한다.</li>
+     *   <li><b>미해결 수정요청</b> — {@code CHANGES_REQUESTED} 이면서 해소되지 않았고(§6.1.1)
+     *       만료되지도 않은 검토가 하나도 없어야 한다.</li>
+     * </ul>
+     */
+    public ConfirmReviewGate evaluateConfirmReviewGate(Long projectId, Long sectionId) {
+        List<TeamReview> reviews = teamReviewRepository.findByProjectSection_Id(sectionId);
+
+        // 팀장 1명 = 전체 멤버 1명 (프로젝트에는 OWNER가 정확히 1명) → 1인 프로젝트 예외
+        boolean memberApprovalSatisfied = projectMemberRepository.countByProjectId(projectId) == 1
+                || reviews.stream()
+                        .anyMatch(review -> review.getStatus() == TeamReviewStatus.APPROVED
+                                && !review.isOutdated());
+
+        boolean noUnresolvedChangeRequest = reviews.stream()
+                .noneMatch(review -> review.getStatus() == TeamReviewStatus.CHANGES_REQUESTED
+                        && !review.isResolved() && !review.isOutdated());
+
+        return new ConfirmReviewGate(memberApprovalSatisfied, noUnresolvedChangeRequest);
+    }
+
+    /**
      * 섹션 본문이 수정될 때, 해당 섹션의 팀 검토를 모두 <b>만료(OUTDATED)</b> 시킨다. (§6.1)
      *
      * <p>본문 저장(초안 수정) 플로우가 <b>첫 실제 저장 시점</b>에 호출해야 한다.
