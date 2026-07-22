@@ -18,6 +18,7 @@ import com.wevo.backend.ai.repository.AiUsageLogRepository;
 import com.wevo.backend.ai.prompt.PromptTemplateId;
 import com.wevo.backend.ai.prompt.RenderedPrompt;
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.global.persistence.PostgresTestContainerConfig;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectStatus;
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 
 import java.time.LocalDateTime;
 import java.util.Set;
@@ -38,7 +40,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+        "spring.flyway.enabled=true",
+        "spring.jpa.hibernate.ddl-auto=validate"
+})
+@Import(PostgresTestContainerConfig.class)
 class AiUsageLifecycleIntegrationTest {
 
     @Autowired

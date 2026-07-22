@@ -1,6 +1,7 @@
 package com.wevo.backend.opinion.repository;
 
 import com.wevo.backend.global.config.JpaAuditingConfig;
+import com.wevo.backend.global.persistence.PostgresTestContainerConfig;
 import com.wevo.backend.opinion.domain.Opinion;
 import com.wevo.backend.opinion.domain.OpinionStatus;
 import com.wevo.backend.project.domain.OutputType;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 
@@ -29,9 +31,13 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@DataJpaTest
-@Import(JpaAuditingConfig.class)
-class OpinionRepositoryTest {
+@DataJpaTest(properties = {
+        "spring.flyway.enabled=true",
+        "spring.jpa.hibernate.ddl-auto=validate"
+})
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import({JpaAuditingConfig.class, PostgresTestContainerConfig.class})
+class OpinionRepositoryIntegrationTest {
 
     private static final String CONTENT = "타겟을 공모전 참가 대학생 팀으로 좁히는 게 좋겠습니다.";
 
@@ -157,16 +163,18 @@ class OpinionRepositoryTest {
                 .content(CONTENT).status(OpinionStatus.DRAFT)
                 .build());
         // 늦게 제출한 의견을 먼저 저장해 정렬이 저장 순서가 아님을 보장한다
-        Opinion lateOpinion = opinionRepository.save(Opinion.builder()
+        Opinion lateOpinion = Opinion.builder()
                 .projectSection(section).author(late)
-                .content(CONTENT).status(OpinionStatus.SUBMITTED)
-                .submittedAt(LocalDateTime.of(2026, 7, 14, 11, 0))
-                .build());
-        Opinion earlyOpinion = opinionRepository.save(Opinion.builder()
+                .content(CONTENT).status(OpinionStatus.DRAFT)
+                .build();
+        lateOpinion.submit(LocalDateTime.of(2026, 7, 14, 11, 0));
+        opinionRepository.save(lateOpinion);
+        Opinion earlyOpinion = Opinion.builder()
                 .projectSection(section).author(early)
-                .content(CONTENT).status(OpinionStatus.SUBMITTED)
-                .submittedAt(LocalDateTime.of(2026, 7, 14, 10, 20))
-                .build());
+                .content(CONTENT).status(OpinionStatus.DRAFT)
+                .build();
+        earlyOpinion.submit(LocalDateTime.of(2026, 7, 14, 10, 20));
+        opinionRepository.save(earlyOpinion);
         opinionRepository.flush();
         entityManager.clear();
 

@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wevo.backend.global.persistence.PostgresTestContainerConfig;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
@@ -35,6 +36,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -42,11 +44,15 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 외부 검토 링크 전 경로(발급 → 열람 → 제출)를 실제 컨텍스트(H2)로 실행 검증한다.
+ * 외부 검토 링크 전 경로(발급 → 열람 → 제출)를 실제 PostgreSQL 컨텍스트로 실행 검증한다.
  *
  * <p>프로젝트/섹션/멤버 생성 API가 아직 없어 EntityManager 로 직접 시드한다.
  */
-@SpringBootTest
+@SpringBootTest(properties = {
+        "spring.flyway.enabled=true",
+        "spring.jpa.hibernate.ddl-auto=validate"
+})
+@Import(PostgresTestContainerConfig.class)
 @AutoConfigureMockMvc
 @Transactional
 class ExternalReviewIntegrationTest {

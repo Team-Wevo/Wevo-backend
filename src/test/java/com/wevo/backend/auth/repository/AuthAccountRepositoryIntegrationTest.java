@@ -2,6 +2,7 @@ package com.wevo.backend.auth.repository;
 
 import com.wevo.backend.auth.domain.AuthAccount;
 import com.wevo.backend.auth.domain.AuthProvider;
+import com.wevo.backend.global.persistence.PostgresTestContainerConfig;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
 import com.wevo.backend.user.repository.UserRepository;
@@ -9,12 +10,19 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@DataJpaTest
-class AuthAccountRepositoryTest {
+@DataJpaTest(properties = {
+        "spring.flyway.enabled=true",
+        "spring.jpa.hibernate.ddl-auto=validate"
+})
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import(PostgresTestContainerConfig.class)
+class AuthAccountRepositoryIntegrationTest {
 
     @Autowired
     private AuthAccountRepository authAccountRepository;

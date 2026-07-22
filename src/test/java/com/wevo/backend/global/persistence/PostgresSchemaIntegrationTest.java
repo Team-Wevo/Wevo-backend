@@ -3,6 +3,14 @@ package com.wevo.backend.global.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.wevo.backend.project.domain.OutputType;
+import com.wevo.backend.project.domain.Project;
+import com.wevo.backend.project.domain.ProjectStatus;
+import com.wevo.backend.project.repository.ProjectRepository;
+import com.wevo.backend.user.domain.User;
+import com.wevo.backend.user.domain.UserStatus;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -17,7 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 빈 PostgreSQL에 Flyway V1을 적용한 뒤 Hibernate 엔티티 매핑 검증까지 통과하는지 확인한다.
- * CI의 PostgreSQL/Testcontainers 구성은 별도 이슈 범위이므로 현재는 명시적으로 제공된 DB에서만 실행한다.
+ * GitHub Actions의 PostgreSQL service container처럼 호출자가 제공한 빈 DB에서만 명시적으로 실행한다.
+ * 일반 통합 테스트의 격리된 PostgreSQL 검증은 {@link PostgresTestContainerConfig}를 사용한다.
  */
 @Tag("postgres-schema")
 @EnabledIfEnvironmentVariable(named = "WEVO_POSTGRES_SCHEMA_TEST", matches = "(?i)true")
@@ -36,6 +45,12 @@ class PostgresSchemaIntegrationTest {
 
     @Autowired
     private DataSource dataSource;
+
+    @Autowired
+    private ProjectRepository projectRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Test
     void v1CreatesAllEntityTablesAndHibernateValidates() {
@@ -184,6 +199,140 @@ class PostgresSchemaIntegrationTest {
                 """,
                 reviewLinkId
         )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @Transactional
+    void projectOwnerForeignKeyRejectsMissingUser() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                """
+                INSERT INTO projects (owner_user_id, title, result_type, audience, status)
+                VALUES (?, 'invalid-owner', 'PROPOSAL', 'test-audience', 'ACTIVE')
+                """,
+                Long.MAX_VALUE
+        )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @Transactional
+    void projectMemberUniqueConstraintRejectsDuplicateMembership() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        Long userId = insertUser(jdbcTemplate, "unique-member");
+        Long projectId = insertProject(jdbcTemplate, userId, "unique-membership");
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO project_members (project_id, user_id, role, joined_at)
+                VALUES (?, ?, 'OWNER', CURRENT_TIMESTAMP)
+                """,
+                projectId,
+                userId
+        );
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                """
+                INSERT INTO project_members (project_id, user_id, role, joined_at)
+                VALUES (?, ?, 'MEMBER', CURRENT_TIMESTAMP)
+                """,
+                projectId,
+                userId
+        )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @Transactional
+    void productEnumsAreStoredAndLoadedAsStrings() {
+        User owner = User.builder()
+                .name("enum-owner")
+                .status(UserStatus.ACTIVE)
+                .build();
+        Project project = Project.builder()
+                .owner(owner)
+                .title("enum-project")
+                .resultType(OutputType.PRESENTATION)
+                .audience("enum-audience")
+                .status(ProjectStatus.ACTIVE)
+                .build();
+        entityManager.persist(owner);
+        entityManager.persist(project);
+        entityManager.flush();
+
+        String storedResultType = new JdbcTemplate(dataSource).queryForObject(
+                "SELECT result_type FROM projects WHERE id = ?",
+                String.class,
+                project.getId()
+        );
+        String storedStatus = new JdbcTemplate(dataSource).queryForObject(
+                "SELECT status FROM projects WHERE id = ?",
+                String.class,
+                project.getId()
+        );
+        entityManager.clear();
+
+        Project loaded = projectRepository.findById(project.getId()).orElseThrow();
+        assertThat(storedResultType).isEqualTo("PRESENTATION");
+        assertThat(storedStatus).isEqualTo("ACTIVE");
+        assertThat(loaded.getResultType()).isEqualTo(OutputType.PRESENTATION);
+        assertThat(loaded.getStatus()).isEqualTo(ProjectStatus.ACTIVE);
+    }
+
+    @Test
+    @Transactional
+    void draftLeaseUniqueConstraintAllowsOnlyOneLeasePerSection() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        Long ownerId = insertUser(jdbcTemplate, "lease-owner");
+        Long memberId = insertUser(jdbcTemplate, "lease-member");
+        Long projectId = insertProject(jdbcTemplate, ownerId, "lease-unique");
+        Long sectionId = jdbcTemplate.queryForObject(
+                """
+                INSERT INTO project_sections (project_id, title, section_order, status)
+                VALUES (?, 'lease-section', 1, 'DRAFTING')
+                RETURNING id
+                """,
+                Long.class,
+                projectId
+        );
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO draft_leases (project_section_id, holder_user_id, lease_until)
+                VALUES (?, ?, CURRENT_TIMESTAMP + INTERVAL '5 minutes')
+                """,
+                sectionId,
+                ownerId
+        );
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                """
+                INSERT INTO draft_leases (project_section_id, holder_user_id, lease_until)
+                VALUES (?, ?, CURRENT_TIMESTAMP + INTERVAL '5 minutes')
+                """,
+                sectionId,
+                memberId
+        )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private Long insertUser(JdbcTemplate jdbcTemplate, String name) {
+        return jdbcTemplate.queryForObject(
+                "INSERT INTO users (name, status) VALUES (?, 'ACTIVE') RETURNING id",
+                Long.class,
+                name
+        );
+    }
+
+    private Long insertProject(JdbcTemplate jdbcTemplate, Long ownerId, String title) {
+        return jdbcTemplate.queryForObject(
+                """
+                INSERT INTO projects (owner_user_id, title, result_type, audience, status)
+                VALUES (?, ?, 'PROPOSAL', 'test-audience', 'ACTIVE')
+                RETURNING id
+                """,
+                Long.class,
+                ownerId,
+                title
+        );
     }
 
     private static String requiredEnvironment(String name) {

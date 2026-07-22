@@ -37,22 +37,33 @@ docker compose up -d
 The reset is intentionally explicit: it proves that V1 alone can construct the complete
 schema instead of accepting an unknown Hibernate-generated starting point.
 
-## Empty PostgreSQL verification
+## PostgreSQL verification
 
-`postgresSchemaTest` applies V1 to a caller-provided empty PostgreSQL database, starts
-the application with `ddl-auto: validate`, and verifies that all 18 entity tables exist.
-It is opt-in so the normal unit-test task stays independent of external infrastructure.
+Database behavior tests use Testcontainers with PostgreSQL 16. Running the normal test
+task starts an isolated PostgreSQL container, applies Flyway migrations, validates the JPA
+mappings, and rolls transactional test data back. Docker must be running locally.
+
+```powershell
+.\gradlew.bat test
+```
+
+`postgresSchemaTest` is the CI service-container gate. It applies V1 to a caller-provided
+empty PostgreSQL database, starts the application with `ddl-auto: validate`, and verifies
+the baseline schema and its major constraints. The GitHub Actions workflow supplies these
+values with dedicated, non-production credentials.
 
 ```powershell
 $env:WEVO_POSTGRES_SCHEMA_TEST='true'
-$env:WEVO_POSTGRES_JDBC_URL='jdbc:postgresql://localhost:55432/wevo_schema_88'
-$env:WEVO_POSTGRES_USERNAME='wevo_schema_88'
+$env:WEVO_POSTGRES_JDBC_URL='jdbc:postgresql://localhost:55432/wevo_schema_test'
+$env:WEVO_POSTGRES_USERNAME='wevo_schema_test'
 $env:WEVO_POSTGRES_PASSWORD='local-schema-test'
 .\gradlew.bat postgresSchemaTest
 ```
 
-The database must be empty for every run. Automated PostgreSQL provisioning in CI is a
-follow-up task; this test does not silently reuse or clean a developer database.
+The database must be empty for every run. This task does not silently reuse, clean, or
+baseline a developer database. GitHub Actions creates a fresh PostgreSQL service container
+for each job, while Testcontainers provides isolated PostgreSQL for the regular integration
+test suite.
 
 ## Opinion resubmission model
 
