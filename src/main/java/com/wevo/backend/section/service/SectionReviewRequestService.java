@@ -3,15 +3,10 @@ package com.wevo.backend.section.service;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.project.service.SectionAccessGuard;
-import com.wevo.backend.section.domain.DraftLease;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.dto.response.SectionReviewRequestResponse;
-import com.wevo.backend.section.repository.DraftLeaseRepository;
 import com.wevo.backend.section.repository.SectionDraftRepository;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,20 +30,18 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class SectionReviewRequestService {
 
-    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
-
     private final SectionAccessGuard sectionAccessGuard;
     private final SectionDraftRepository sectionDraftRepository;
-    private final DraftLeaseRepository draftLeaseRepository;
+    private final DraftLeaseService draftLeaseService;
     private final SectionStatusService sectionStatusService;
 
     public SectionReviewRequestService(SectionAccessGuard sectionAccessGuard,
                                        SectionDraftRepository sectionDraftRepository,
-                                       DraftLeaseRepository draftLeaseRepository,
+                                       DraftLeaseService draftLeaseService,
                                        SectionStatusService sectionStatusService) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.sectionDraftRepository = sectionDraftRepository;
-        this.draftLeaseRepository = draftLeaseRepository;
+        this.draftLeaseService = draftLeaseService;
         this.sectionStatusService = sectionStatusService;
     }
 
@@ -76,29 +69,9 @@ public class SectionReviewRequestService {
         if (!sectionDraftRepository.existsByProjectSection_Id(sectionId)) {
             throw new BusinessException(ErrorCode.SECTION_DRAFT_NOT_FOUND);
         }
-        releaseOrRejectActiveLease(sectionId, userId);
+        draftLeaseService.releaseOwnLeaseOrRejectOther(sectionId, userId);
 
         ProjectSection transitioned = sectionStatusService.markReviewing(sectionId, userId);
         return SectionReviewRequestResponse.from(transitioned);
-    }
-
-    /**
-     * 활성 lease를 검사한다 — 타인 보유면 거부하고, 본인 보유면 원자적으로 해제한다.
-     *
-     * <p>lease 행을 배타 잠금으로 조회해 heartbeat(연장)와 직렬화한다.
-     */
-    private void releaseOrRejectActiveLease(Long sectionId, Long userId) {
-        Optional<DraftLease> lease = draftLeaseRepository.findByProjectSectionIdForUpdate(sectionId);
-        if (lease.isEmpty()) {
-            return;
-        }
-        LocalDateTime now = LocalDateTime.now(KST);
-        if (!lease.get().isActiveAt(now)) {
-            return;
-        }
-        if (!lease.get().getHolderUserId().equals(userId)) {
-            throw new BusinessException(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
-        }
-        lease.get().release(now);
     }
 }

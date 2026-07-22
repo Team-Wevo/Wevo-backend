@@ -358,6 +358,19 @@ class OpinionControllerWebMvcTest {
                 .andExpect(jsonPath("$.code").value("S002"));
     }
 
+    @Test
+    @DisplayName("타인이 편집 중이면 의견 수집 재오픈은 S004를 반환한다")
+    void reopenOpinionGate_otherActiveLease_returnsS004() throws Exception {
+        given(opinionService.reopenOpinionGate(10L, 7L))
+                .willThrow(new BusinessException(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER));
+
+        mockMvc.perform(post(REOPEN_GATE_URL).with(authenticatedUser()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("S004"))
+                .andExpect(jsonPath("$.errors").doesNotExist());
+    }
+
     private RequestPostProcessor authenticatedUser() {
         return authentication(new UsernamePasswordAuthenticationToken(
                 new AuthPrincipal(7L), null, AuthorityUtils.NO_AUTHORITIES));

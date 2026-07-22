@@ -366,6 +366,55 @@ class DraftLeaseServiceTest {
         verifyNoInteractions(draftLeaseRepository);
     }
 
+    @Test
+    @DisplayName("상태 전이 시 lease가 없으면 오류 없이 통과한다")
+    void releaseForTransition_whenMissing_doesNothing() {
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.empty());
+
+        draftLeaseService.releaseOwnLeaseOrRejectOther(SECTION_ID, OWNER_ID);
+
+        verify(draftLeaseRepository).findByProjectSectionIdForUpdate(SECTION_ID);
+    }
+
+    @Test
+    @DisplayName("상태 전이 시 만료된 lease는 오류 없이 통과한다")
+    void releaseForTransition_whenExpired_doesNothing() {
+        DraftLease expired = lease(91L, MEMBER_ID, LocalDateTime.now(KST).minusSeconds(1));
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(expired));
+
+        draftLeaseService.releaseOwnLeaseOrRejectOther(SECTION_ID, OWNER_ID);
+
+        assertThat(expired.getHolderUserId()).isEqualTo(MEMBER_ID);
+    }
+
+    @Test
+    @DisplayName("상태 전이 시 호출자 본인의 활성 lease를 해제한다")
+    void releaseForTransition_whenHeldByCaller_deactivatesLease() {
+        DraftLease lease = lease(91L, OWNER_ID, LocalDateTime.now(KST).plusMinutes(3));
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(lease));
+
+        draftLeaseService.releaseOwnLeaseOrRejectOther(SECTION_ID, OWNER_ID);
+
+        assertThat(lease.isActiveAt(LocalDateTime.now(KST).plusSeconds(1))).isFalse();
+    }
+
+    @Test
+    @DisplayName("상태 전이 시 타인의 활성 lease가 있으면 S004를 반환한다")
+    void releaseForTransition_whenHeldByOther_throwsS004() {
+        DraftLease lease = lease(91L, MEMBER_ID, LocalDateTime.now(KST).plusMinutes(3));
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(lease));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> draftLeaseService.releaseOwnLeaseOrRejectOther(SECTION_ID, OWNER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
+        assertThat(lease.isActiveAt(LocalDateTime.now(KST))).isTrue();
+    }
+
     private DraftLease lease(Long id, Long holderUserId, LocalDateTime leaseUntil) {
         DraftLease lease = DraftLease.builder()
                 .projectSection(section)

@@ -5,11 +5,9 @@ import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.service.SectionAccessGuard;
-import com.wevo.backend.section.domain.DraftLease;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.dto.response.SectionReviewRequestResponse;
-import com.wevo.backend.section.repository.DraftLeaseRepository;
 import com.wevo.backend.section.repository.SectionDraftRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,14 +17,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.Optional;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -36,15 +31,13 @@ class SectionReviewRequestServiceTest {
     private static final Long SECTION_ID = 10L;
     private static final Long PROJECT_ID = 100L;
     private static final Long USER_ID = 1L;
-    private static final Long OTHER_USER_ID = 2L;
-    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     @Mock
     private SectionAccessGuard sectionAccessGuard;
     @Mock
     private SectionDraftRepository sectionDraftRepository;
     @Mock
-    private DraftLeaseRepository draftLeaseRepository;
+    private DraftLeaseService draftLeaseService;
     @Mock
     private SectionStatusService sectionStatusService;
 
@@ -59,32 +52,28 @@ class SectionReviewRequestServiceTest {
         given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, USER_ID))
                 .willReturn(section);
         given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
-        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
-                .willReturn(Optional.empty());
         given(sectionStatusService.markReviewing(SECTION_ID, USER_ID)).willReturn(reviewing);
 
         SectionReviewRequestResponse response = sectionReviewRequestService.request(SECTION_ID, USER_ID);
 
         assertThat(response.sectionId()).isEqualTo(SECTION_ID);
         assertThat(response.sectionStatus()).isEqualTo(ProjectSectionStatus.REVIEWING);
+        verify(draftLeaseService).releaseOwnLeaseOrRejectOther(SECTION_ID, USER_ID);
     }
 
     @Test
-    @DisplayName("호출자 본인이 보유한 활성 lease는 요청과 함께 원자적으로 해제된다 (§3.7.7)")
-    void request_releasesOwnActiveLease() {
+    @DisplayName("검토 요청 전에 호출자의 lease 정리를 공통 서비스에 위임한다")
+    void request_delegatesLeaseHandling() {
         ProjectSection section = section(ProjectSectionStatus.DRAFTING);
-        DraftLease myLease = lease(section, USER_ID, LocalDateTime.now(KST).plusMinutes(3));
         given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, USER_ID))
                 .willReturn(section);
         given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
-        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
-                .willReturn(Optional.of(myLease));
         given(sectionStatusService.markReviewing(SECTION_ID, USER_ID))
                 .willReturn(section(ProjectSectionStatus.REVIEWING));
 
         sectionReviewRequestService.request(SECTION_ID, USER_ID);
 
-        assertThat(myLease.isActiveAt(LocalDateTime.now(KST).plusSeconds(1))).isFalse();
+        verify(draftLeaseService).releaseOwnLeaseOrRejectOther(SECTION_ID, USER_ID);
         verify(sectionStatusService).markReviewing(SECTION_ID, USER_ID);
     }
 
@@ -92,12 +81,11 @@ class SectionReviewRequestServiceTest {
     @DisplayName("타인이 편집 중이면 S004 로 거부한다 (검토 대상 본문 고정)")
     void request_otherActiveEditor_throws() {
         ProjectSection section = section(ProjectSectionStatus.DRAFTING);
-        DraftLease othersLease = lease(section, OTHER_USER_ID, LocalDateTime.now(KST).plusMinutes(3));
         given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, USER_ID))
                 .willReturn(section);
         given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
-        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
-                .willReturn(Optional.of(othersLease));
+        willThrow(new BusinessException(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER))
+                .given(draftLeaseService).releaseOwnLeaseOrRejectOther(SECTION_ID, USER_ID);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> sectionReviewRequestService.request(SECTION_ID, USER_ID));
@@ -110,12 +98,9 @@ class SectionReviewRequestServiceTest {
     @DisplayName("만료된 타인 lease 는 편집자로 보지 않는다 — 요청이 진행된다")
     void request_expiredLease_isIgnored() {
         ProjectSection section = section(ProjectSectionStatus.DRAFTING);
-        DraftLease expired = lease(section, OTHER_USER_ID, LocalDateTime.now(KST).minusMinutes(1));
         given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, USER_ID))
                 .willReturn(section);
         given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
-        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
-                .willReturn(Optional.of(expired));
         given(sectionStatusService.markReviewing(SECTION_ID, USER_ID))
                 .willReturn(section(ProjectSectionStatus.REVIEWING));
 
@@ -179,11 +164,4 @@ class SectionReviewRequestServiceTest {
         return section;
     }
 
-    private DraftLease lease(ProjectSection section, Long holderUserId, LocalDateTime leaseUntil) {
-        return DraftLease.builder()
-                .projectSection(section)
-                .holderUserId(holderUserId)
-                .leaseUntil(leaseUntil)
-                .build();
-    }
 }
