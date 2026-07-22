@@ -1,5 +1,6 @@
 package com.wevo.backend.section.service;
 
+import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.service.ProjectAccessGuard;
 import com.wevo.backend.project.service.SectionAccessGuard;
@@ -59,9 +60,15 @@ public class SectionConfirmReadinessService {
     public SectionConfirmReadinessResponse getReadiness(Long sectionId, Long userId) {
         ProjectSection section = sectionAccessGuard.requireParticipantSection(sectionId, userId);
         Long projectId = section.getProject().getId();
-        
-        boolean callerIsOwner =
-                projectAccessGuard.requireParticipant(projectId, userId).getRole() == ProjectMemberRole.OWNER;
+
+        // canConfirm 판정에 필요한 호출자 역할을 조회한다. requireParticipantSection 이 이미 참여자를
+        // 검증하지만 멤버십을 반환하지 않아 역할을 한 번 더 조회한다 — 그 사이 멤버십이 회수되면
+        // requireParticipant 는 NOT_PROJECT_MEMBER(403)를 던지므로, requireParticipantSection 과 동일하게
+        // 존재 숨김으로 감싸 비멤버 응답을 SECTION_NOT_FOUND(404)로 일관시킨다.
+        boolean callerIsOwner = ProjectAccessGuard.hidingNonMember(
+                ErrorCode.SECTION_NOT_FOUND,
+                () -> projectAccessGuard.requireParticipant(projectId, userId)
+        ).getRole() == ProjectMemberRole.OWNER;
 
         // 팀 검토 관련 두 조건은 같은 목록에서 파생되므로 한 번의 조회로 함께 판정한다.
         ConfirmReviewGate reviewGate = teamReviewService.evaluateConfirmReviewGate(projectId, sectionId);

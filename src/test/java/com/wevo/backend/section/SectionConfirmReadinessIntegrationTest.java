@@ -23,6 +23,7 @@ import com.wevo.backend.user.domain.UserStatus;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,6 +53,10 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @Transactional
 class SectionConfirmReadinessIntegrationTest {
+
+    // 서비스가 편집권 만료를 Asia/Seoul 기준으로 판정하므로 시드도 같은 시간대로 맞춘다
+    // (CI/JVM 기본 시간대가 UTC여도 활성 lease가 만료로 오판되지 않도록).
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     @Autowired
     private MockMvc mockMvc;
@@ -273,7 +278,7 @@ class SectionConfirmReadinessIntegrationTest {
         persistMember(project, member, ProjectMemberRole.MEMBER);
         ProjectSection section = reviewingSectionWithCurrentAiCheck(project);
         persistReview(section, member, TeamReviewStatus.APPROVED, false, false);
-        persistLease(section, member, LocalDateTime.now().minusMinutes(1)); // 만료됨
+        persistLease(section, member, LocalDateTime.now(KST).minusMinutes(1)); // 만료됨
         em.flush();
 
         getReadiness(section.getId(), owner)
@@ -385,7 +390,7 @@ class SectionConfirmReadinessIntegrationTest {
 
     private ProjectMember persistMember(Project project, User user, ProjectMemberRole role) {
         ProjectMember member = ProjectMember.builder()
-                .project(project).user(user).role(role).joinedAt(LocalDateTime.now()).build();
+                .project(project).user(user).role(role).joinedAt(LocalDateTime.now(KST)).build();
         em.persist(member);
         return member;
     }
@@ -431,7 +436,7 @@ class SectionConfirmReadinessIntegrationTest {
     }
 
     private DraftLease persistActiveLease(ProjectSection section, User holder) {
-        return persistLease(section, holder, LocalDateTime.now().plusHours(1));
+        return persistLease(section, holder, LocalDateTime.now(KST).plusHours(1));
     }
 
     private DraftLease persistLease(ProjectSection section, User holder, LocalDateTime leaseUntil) {

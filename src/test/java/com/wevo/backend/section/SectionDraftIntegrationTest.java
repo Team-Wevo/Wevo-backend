@@ -31,6 +31,7 @@ import com.wevo.backend.user.domain.UserStatus;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +57,10 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @Transactional
 class SectionDraftIntegrationTest {
+
+    // 서비스가 편집권 만료를 Asia/Seoul 기준으로 판정하므로 시드도 같은 시간대로 맞춘다
+    // (CI/JVM 기본 시간대가 UTC여도 활성 lease가 만료로 오판되지 않도록).
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     @Autowired
     private MockMvc mockMvc;
@@ -372,7 +377,7 @@ class SectionDraftIntegrationTest {
         ProjectSection section = persistSection(project, ProjectSectionStatus.DRAFTING);
         persistMember(project, owner, ProjectMemberRole.OWNER);
         persistDraft(section, "v1 본문", 1, owner);
-        persistLease(section, owner, LocalDateTime.now().minusMinutes(1)); // 만료됨
+        persistLease(section, owner, LocalDateTime.now(KST).minusMinutes(1)); // 만료됨
         em.flush();
 
         save(section.getId(), owner, "v2 본문", 1)
@@ -424,7 +429,7 @@ class SectionDraftIntegrationTest {
         em.clear();
         // 편집권이 그대로 활성(미래 만료)으로 유지된다
         assertThat(draftLeaseRepository.findByProjectSection_Id(section.getId()).orElseThrow().getLeaseUntil())
-                .isAfter(LocalDateTime.now());
+                .isAfter(LocalDateTime.now(KST));
     }
 
     // --- 헬퍼 ---
@@ -463,7 +468,7 @@ class SectionDraftIntegrationTest {
 
     private ProjectMember persistMember(Project project, User user, ProjectMemberRole role) {
         ProjectMember member = ProjectMember.builder()
-                .project(project).user(user).role(role).joinedAt(LocalDateTime.now()).build();
+                .project(project).user(user).role(role).joinedAt(LocalDateTime.now(KST)).build();
         em.persist(member);
         return member;
     }
@@ -491,7 +496,7 @@ class SectionDraftIntegrationTest {
 
     /** 활성(유효) 편집권을 시드한다 — 저장 시 편집권 검사(§5.2.1)를 통과시키기 위함. */
     private DraftLease persistActiveLease(ProjectSection section, User holder) {
-        return persistLease(section, holder, LocalDateTime.now().plusHours(1));
+        return persistLease(section, holder, LocalDateTime.now(KST).plusHours(1));
     }
 
     private DraftLease persistLease(ProjectSection section, User holder, LocalDateTime leaseUntil) {
