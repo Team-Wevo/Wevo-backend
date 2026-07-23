@@ -80,6 +80,7 @@ com.wevo.backend
 ├─ project
 ├─ section
 ├─ opinion
+├─ issue
 ├─ ai
 ├─ review
 └─ export

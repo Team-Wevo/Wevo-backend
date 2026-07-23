@@ -22,6 +22,12 @@ Do not edit an already-applied migration. Add a new versioned migration instead.
 mappings still match it. See `SCHEMA_FREEZE.md` for the ERD/entity comparison and review
 status.
 
+`V2__add_synthesis_issue_foundation.sql` adds immutable synthesis result sets, issue follow-up
+storage, inherited GAP answer references, and the opinion-gate generation used by synthesis
+snapshot binding. It intentionally leaves V1 unchanged. The generation CHECK is added as
+`NOT VALID`, then `V3__validate_opinion_gate_generation_constraint.sql` validates existing rows
+after Flyway commits V2 so validation does not run while V2's stronger table lock is held.
+
 ## Existing local databases
 
 V1 is an initial migration for an **empty PostgreSQL database**. A database previously
@@ -34,8 +40,8 @@ docker compose up -d
 .\gradlew.bat bootRun --args='--spring.profiles.active=local'
 ```
 
-The reset is intentionally explicit: it proves that V1 alone can construct the complete
-schema instead of accepting an unknown Hibernate-generated starting point.
+The reset is intentionally explicit: it proves that the complete versioned migration chain can
+construct the current schema instead of accepting an unknown Hibernate-generated starting point.
 
 ## PostgreSQL verification
 
@@ -47,9 +53,9 @@ mappings, and rolls transactional test data back. Docker must be running locally
 .\gradlew.bat test
 ```
 
-`postgresSchemaTest` is the CI service-container gate. It applies V1 to a caller-provided
-empty PostgreSQL database, starts the application with `ddl-auto: validate`, and verifies
-the baseline schema and its major constraints. The GitHub Actions workflow supplies these
+`postgresSchemaTest` is the CI service-container gate. It applies every versioned migration to a
+caller-provided empty PostgreSQL database, starts the application with `ddl-auto: validate`, and
+verifies the current schema and its major constraints. The GitHub Actions workflow supplies these
 values with dedicated, non-production credentials.
 
 ```powershell
