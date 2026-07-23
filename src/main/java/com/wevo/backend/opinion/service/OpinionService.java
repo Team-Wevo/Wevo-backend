@@ -16,12 +16,14 @@ import com.wevo.backend.opinion.repository.OpinionRepository;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
+import com.wevo.backend.section.service.DraftLeaseService;
 import com.wevo.backend.section.service.SectionStatusService;
 import com.wevo.backend.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,18 +47,26 @@ import org.springframework.transaction.annotation.Transactional;
 public class OpinionService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final Set<ProjectSectionStatus> REOPENABLE_STATUSES = Set.of(
+            ProjectSectionStatus.SYNTHESIZING,
+            ProjectSectionStatus.DRAFTING,
+            ProjectSectionStatus.REVIEWING
+    );
 
     private final SectionAccessGuard sectionAccessGuard;
     private final OpinionRepository opinionRepository;
+    private final DraftLeaseService draftLeaseService;
     private final SectionStatusService sectionStatusService;
     private final UserRepository userRepository;
 
     public OpinionService(SectionAccessGuard sectionAccessGuard,
                           OpinionRepository opinionRepository,
+                          DraftLeaseService draftLeaseService,
                           SectionStatusService sectionStatusService,
                           UserRepository userRepository) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.opinionRepository = opinionRepository;
+        this.draftLeaseService = draftLeaseService;
         this.sectionStatusService = sectionStatusService;
         this.userRepository = userRepository;
     }
@@ -190,7 +200,12 @@ public class OpinionService {
      */
     @Transactional
     public OpinionGateReopenResponse reopenOpinionGate(Long projectSectionId, Long userId) {
-        sectionAccessGuard.requireOwnedSectionForUpdate(projectSectionId, userId);
+        ProjectSection section =
+                sectionAccessGuard.requireOwnedSectionForUpdate(projectSectionId, userId);
+        if (!REOPENABLE_STATUSES.contains(section.getStatus())) {
+            throw new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
+        }
+        draftLeaseService.releaseOwnLeaseOrRejectOther(projectSectionId, userId);
 
         ProjectSection reopened = sectionStatusService.markCollecting(projectSectionId, userId);
         return OpinionGateReopenResponse.from(reopened, LocalDateTime.now(KST));

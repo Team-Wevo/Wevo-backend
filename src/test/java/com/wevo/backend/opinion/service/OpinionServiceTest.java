@@ -17,6 +17,7 @@ import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
+import com.wevo.backend.section.service.DraftLeaseService;
 import com.wevo.backend.section.service.SectionStatusService;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
@@ -39,8 +40,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willAnswer;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class OpinionServiceTest {
@@ -55,6 +58,8 @@ class OpinionServiceTest {
     private SectionAccessGuard sectionAccessGuard;
     @Mock
     private OpinionRepository opinionRepository;
+    @Mock
+    private DraftLeaseService draftLeaseService;
     @Mock
     private SectionStatusService sectionStatusService;
     @Mock
@@ -469,7 +474,23 @@ class OpinionServiceTest {
         assertThat(response.sectionStatus()).isEqualTo(ProjectSectionStatus.COLLECTING);
         assertThat(response.synthesisStale()).isTrue();
         assertThat(response.reopenedAt()).isNotNull();
+        verify(draftLeaseService).releaseOwnLeaseOrRejectOther(SECTION_ID, USER_ID);
         verify(sectionStatusService).markCollecting(SECTION_ID, USER_ID);
+    }
+
+    @Test
+    @DisplayName("타인이 편집 중이면 S004로 재오픈을 거부하고 상태를 전이하지 않는다")
+    void reopenOpinionGate_otherActiveLease_throwsS004() {
+        ProjectSection section = section(ProjectSectionStatus.DRAFTING);
+        given(sectionAccessGuard.requireOwnedSectionForUpdate(SECTION_ID, USER_ID)).willReturn(section);
+        willThrow(new BusinessException(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER))
+                .given(draftLeaseService).releaseOwnLeaseOrRejectOther(SECTION_ID, USER_ID);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> opinionService.reopenOpinionGate(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
+        verify(sectionStatusService, never()).markCollecting(SECTION_ID, USER_ID);
     }
 
     @Test
@@ -477,14 +498,13 @@ class OpinionServiceTest {
     void reopenOpinionGate_alreadyOpenOrConfirmed_throws() {
         ProjectSection section = section(ProjectSectionStatus.COLLECTING);
         given(sectionAccessGuard.requireOwnedSectionForUpdate(SECTION_ID, USER_ID)).willReturn(section);
-        given(sectionStatusService.markCollecting(SECTION_ID, USER_ID))
-                .willThrow(new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION));
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> opinionService.reopenOpinionGate(SECTION_ID, USER_ID));
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
-        verify(sectionStatusService).markCollecting(SECTION_ID, USER_ID);
+        verifyNoInteractions(draftLeaseService);
+        verify(sectionStatusService, never()).markCollecting(SECTION_ID, USER_ID);
     }
 
     /**

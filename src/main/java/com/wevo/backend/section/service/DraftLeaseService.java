@@ -126,6 +126,33 @@ public class DraftLeaseService {
     }
 
     /**
+     * 상태 전이 전에 활성 편집 잠금을 정리한다.
+     *
+     * <p>호출자가 보유한 활성 lease는 해제하고, 타인이 보유 중이면 {@code S004}로 전이를
+     * 거부한다. lease가 없거나 이미 만료됐으면 전이를 막지 않는다. 호출자는 이 메서드보다 먼저
+     * 섹션 접근 권한을 검증하고 섹션 행을 배타 잠금으로 획득해야 한다. 그래야 lease 획득과 상태
+     * 전이가 같은 잠금 순서로 직렬화된다.
+     */
+    @Transactional
+    public void releaseOwnLeaseOrRejectOther(Long projectSectionId, Long userId) {
+        Optional<DraftLease> lease =
+                draftLeaseRepository.findByProjectSectionIdForUpdate(projectSectionId);
+        if (lease.isEmpty()) {
+            return;
+        }
+
+        // lease 행의 배타 잠금을 획득한 뒤 만료 여부를 판정한다.
+        LocalDateTime now = LocalDateTime.now(KST);
+        if (!lease.get().isActiveAt(now)) {
+            return;
+        }
+        if (!lease.get().getHolderUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
+        }
+        lease.get().release(now);
+    }
+
+    /**
      * 섹션의 현재 편집 잠금 상태를 조회한다.
      *
      * <p>유효한 lease가 있을 때만 {@code locked=true}다. lease가 없거나 만료됐으면

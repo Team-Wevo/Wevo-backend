@@ -527,6 +527,87 @@ class DraftLeaseIntegrationTest {
                 .andExpect(jsonPath("$.code").value("S001"));
     }
 
+    @Test
+    @DisplayName("의견 수집 재오픈 시 OWNER 본인의 활성 lease를 해제하고 COLLECTING으로 전이한다")
+    void reopenOpinionGateReleasesOwnersLease() throws Exception {
+        User owner = persistUser("owner-reopen-lease-1@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistDraft(section, owner);
+        DraftLease lease = DraftLease.builder()
+                .projectSection(section)
+                .holderUserId(owner.getId())
+                .leaseUntil(LocalDateTime.now(KST).plusMinutes(3))
+                .build();
+        em.persist(lease);
+        em.flush();
+
+        mockMvc.perform(post("/api/project-sections/{id}/opinion-gate/reopen", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OPINION_GATE_REOPENED"))
+                .andExpect(jsonPath("$.data.sectionStatus").value("COLLECTING"));
+
+        LocalDateTime afterReopen = LocalDateTime.now(KST);
+        em.flush();
+        em.clear();
+        DraftLease released = draftLeaseRepository.findById(lease.getId()).orElseThrow();
+        ProjectSection reopened = em.find(ProjectSection.class, section.getId());
+        assertThat(released.isActiveAt(afterReopen.plusSeconds(1))).isFalse();
+        assertThat(reopened.getStatus()).isEqualTo(ProjectSectionStatus.COLLECTING);
+    }
+
+    @Test
+    @DisplayName("타인이 활성 lease를 보유하면 의견 수집 재오픈을 S004로 거부한다")
+    void reopenOpinionGateRejectsOtherUsersLease() throws Exception {
+        User owner = persistUser("owner-reopen-lease-2@wevo.com");
+        User member = persistUser("member-reopen-lease-2@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistMember(project, member, ProjectMemberRole.MEMBER);
+        persistDraft(section, member);
+        DraftLease lease = DraftLease.builder()
+                .projectSection(section)
+                .holderUserId(member.getId())
+                .leaseUntil(LocalDateTime.now(KST).plusMinutes(3))
+                .build();
+        em.persist(lease);
+        em.flush();
+
+        mockMvc.perform(post("/api/project-sections/{id}/opinion-gate/reopen", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S004"));
+
+        assertThat(section.getStatus()).isEqualTo(ProjectSectionStatus.DRAFTING);
+        assertThat(lease.isActiveAt(LocalDateTime.now(KST))).isTrue();
+    }
+
+    @Test
+    @DisplayName("만료된 lease는 의견 수집 재오픈을 막지 않는다")
+    void reopenOpinionGateIgnoresExpiredLease() throws Exception {
+        User owner = persistUser("owner-reopen-lease-3@wevo.com");
+        User member = persistUser("member-reopen-lease-3@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project, ProjectSectionStatus.REVIEWING);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistMember(project, member, ProjectMemberRole.MEMBER);
+        persistDraft(section, member);
+        em.persist(DraftLease.builder()
+                .projectSection(section)
+                .holderUserId(member.getId())
+                .leaseUntil(LocalDateTime.now(KST).minusSeconds(1))
+                .build());
+        em.flush();
+
+        mockMvc.perform(post("/api/project-sections/{id}/opinion-gate/reopen", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sectionStatus").value("COLLECTING"));
+    }
+
     private UsernamePasswordAuthenticationToken authOf(User user) {
         return new UsernamePasswordAuthenticationToken(
                 new AuthPrincipal(user.getId()), null, AuthorityUtils.NO_AUTHORITIES);
