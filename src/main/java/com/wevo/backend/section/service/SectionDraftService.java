@@ -26,8 +26,14 @@ import org.springframework.transaction.annotation.Transactional;
  * {@code version = 직전 최신 + 1} 로 append 한다. 확정 본문 버전 추적·검토 만료 판단의 근거가 된다.
  *
  * <p>본문이 바뀌면 이 섹션의 기존 검토는 더 이상 유효하지 않으므로, 저장의 <b>부수효과</b>로
- * 팀 검토와 외부 검토 링크를 모두 만료 처리한다. (§6.1 — 새 본문으로 다시 검토받아야 함)
+ * AI 사전 검토(aiCheckStatus)·팀 검토·외부 검토 링크를 모두 만료 처리한다.
+ * (§5.2.3 · §6.1 — 새 본문으로 다시 검토받아야 함)
  * 반대로 <b>본문이 직전 버전과 같으면 저장을 무시</b>한다 — 버전도 올리지 않고 만료도 하지 않는다.
+ *
+ * <p>기존 초안 수정은 편집권(lease) 보유자만 가능하다 (§5.2.1) — 타인이 편집 중이면 S004,
+ * 미보유·만료면 S005 로 거부한다. 최초 저장(초안 없음)은 예외다.
+ * 새 버전이 실제로 저장되면 편집 라운드가 끝난 것으로 보고 편집권을 해제한다 (§5.2.1) —
+ * 멱등(본문 동일) 저장은 저장을 건너뛰므로 해제하지 않는다.
  *
  * <p>같은 섹션에 대한 동시 저장은 섹션 행 배타 잠금으로 직렬화하고, 클라이언트가 편집을 시작한
  * 기준 버전({@code baseVersion})이 최신과 다르면 409 로 거부해 덮어쓰기(lost update)를 막는다.
@@ -99,7 +105,8 @@ public class SectionDraftService {
      * 만료 처리(외부 링크·팀 검토)도 사용하므로, 저장과 만료가 원자적으로 커밋된다.
      *
      * @throws BusinessException 섹션 없음/미참여(존재 숨김 규칙, {@code S001}), 초안이 없는
-     *                           단계에서의 저장 시도({@code S002}), 기준 버전 불일치({@code C003})
+     *                           단계에서의 저장 시도({@code S002}), 타인이 편집 중({@code S004}),
+     *                           편집권 미보유·만료({@code S005}), 기준 버전 불일치({@code C003})
      */
     @Transactional
     public SectionDraftSaveResponse saveDraft(Long sectionId, Long userId, SectionDraftSaveRequest request) {
@@ -113,6 +120,15 @@ public class SectionDraftService {
                 sectionDraftRepository.findTopByProjectSection_IdOrderByVersionDesc(sectionId);
         // 초안이 없으면(최초 저장) 최신 버전 0 으로 본다(→ version 1).
         int latestVersion = latest.map(SectionDraft::getVersion).orElse(0);
+
+        // 초안을 수정하려면 편집권(lease) 보유자여야 한다 (§5.2.1) — 타인이 편집 중이면 S004, 본인이 미보유(없음·만료)면 S005.
+        // 편집권 검사를 기준 버전 충돌보다 먼저 두어 "편집 권한 없음"을 우선 알린다. 최초 저장(초안 없음)은 보호할 기존 본문이 없고
+        // lease 획득도 초안 존재를 전제로 하므로 예외로 둔다.
+        if (latest.isPresent()) {
+            draftLeaseService.requireActiveHolder(sectionId, userId);
+        }
+
+        //버전 충돌 검사
         if (!request.baseVersion().equals(latestVersion)) {
             throw new BusinessException(ErrorCode.CONFLICT);
         }
@@ -135,9 +151,19 @@ public class SectionDraftService {
             throw new BusinessException(ErrorCode.CONFLICT);
         }
 
-        // 기존 검토·외부 링크를 만료 처리한다.
+        // 본문이 바뀌었으므로 이 섹션의 기존 검토 결과를 같은 트랜잭션에서 모두 만료 처리한다 (§5.2.3).
+        // AI 사전 검토(aiCheckStatus)는 성공한 검토가 있을 때(CURRENT)만 OUTDATED로 내려가며,
+        // 검토 이력이 없으면(null) 그대로 둔다 — ProjectSection#markAiCheckOutdated 가 판정한다.
+        section.markAiCheckOutdated();
         reviewLinkService.markSectionLinksOutdated(sectionId);
         teamReviewService.markSectionTeamReviewsOutdated(sectionId);
+
+        // 저장으로 편집 라운드가 끝났으므로 편집권을 해제한다 (§5.2.1) — 다른 멤버가 즉시 편집할 수 있다.
+        // 멱등(본문 동일) 저장은 위에서 이미 반환해 여기 오지 않으므로, 실제 새 버전 저장 시에만 해제된다.
+        // 최초 저장(초안 없음)은 보유한 편집권이 없어 해제 대상이 아니다.
+        if (latest.isPresent()) {
+            draftLeaseService.releaseHeldBy(sectionId, userId);
+        }
 
         return SectionDraftSaveResponse.from(draft, section.getStatus());
     }
