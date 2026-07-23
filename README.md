@@ -113,8 +113,13 @@ Flyway V1 도입 전에 `ddl-auto=update`로 만든 기존 로컬 DB가 있다�
 - 커밋 메시지는 `타입: 설명 (#이슈번호)` 형식을 사용합니다.
 - Pull Request는 두 명 이상의 승인을 받은 뒤 Merge commit 방식으로 병합합니다.
 
+## 운영 배포
+
+AWS 운영 환경의 수동 배포, 상태 확인, 복구 및 롤백 절차는
+[`DEPLOYMENT.md`](DEPLOYMENT.md)를 참고합니다.
+
 ## 관련 링크
 
 - [Wevo Notion](https://app.notion.com/p/Wevo-34d400ecb7298049a641f56b59666de3)
 - [Team Wevo GitHub](https://github.com/Team-Wevo)
-- [Wevo Frontend](https://wevo-front.vercel.app/)
+- [Wevo Frontend](https://wevo-official.vercel.app/)

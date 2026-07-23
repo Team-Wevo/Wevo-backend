@@ -18,7 +18,7 @@ spring:
     redis:
       host: ${REDIS_HOST:redis}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      password: ${REDIS_PASSWORD}
       timeout: ${REDIS_TIMEOUT:2s}
 
   jpa:
@@ -33,10 +33,29 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 30s
 
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 server:
   port: ${SERVER_PORT:8080}
   forward-headers-strategy: framework
   shutdown: graceful
+
+management:
+  server:
+    port: 8081
+    address: 127.0.0.1
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-components: never
+      show-details: never
 
 jwt:
   secret: ${JWT_SECRET}

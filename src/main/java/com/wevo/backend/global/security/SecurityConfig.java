@@ -3,6 +3,8 @@ package com.wevo.backend.global.security;
 import com.wevo.backend.global.config.CorsProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -66,6 +68,22 @@ public class SecurityConfig {
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        return http.build();
+    }
+
+    /**
+     * 운영 컨테이너 내부의 헬스체크만 인증 없이 허용한다.
+     *
+     * <p>운영 프로필에서는 Actuator가 별도 loopback 포트에서 실행되므로 외부 API로 노출되지 않는다.
+     */
+    @Bean
+    @Order(1)
+    @Profile("prod")
+    public SecurityFilterChain actuatorHealthSecurityFilterChain(HttpSecurity http) throws Exception {
+        http
+                .securityMatcher("/actuator/health")
+                .csrf(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
         return http.build();
     }
 
