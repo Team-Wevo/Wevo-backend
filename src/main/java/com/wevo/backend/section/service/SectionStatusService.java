@@ -88,6 +88,36 @@ public class SectionStatusService {
     }
 
     /**
+     * 섹션 확정 전이. {@code REVIEWING → CONFIRMED} (팀장 전용)
+     *
+     * <p>§6.3 확정 조건의 재검증은 호출측({@code SectionConfirmService})이 담당한다 — 이 메서드는
+     * 전이 규칙·권한·이력과 확정 부수효과(확정 본문 버전 기록 · 드리프트 배지 해소 §6.4)만 책임진다.
+     * {@code REVIEWING}이 아니면 {@link ErrorCode#INVALID_SECTION_STATUS_TRANSITION}으로 거부한다.
+     *
+     * @param contentVersion 확정할 현재 본문 버전 — {@code confirmedVersion}과 이력에 기록한다
+     */
+    @Transactional
+    public ProjectSection markConfirmed(Long sectionId, Long actorUserId, int contentVersion) {
+        ProjectSection section = requireSection(sectionId);
+        ProjectMember actor = requireOwner(section, actorUserId);
+
+        ProjectSectionStatus from = section.getStatus();
+        section.changeStatus(ProjectSectionStatus.CONFIRMED); // REVIEWING이 아니면 ERROR
+        section.recordConfirmedVersion(contentVersion);
+        section.clearDrift(); // 드리프트로 재검토가 요구됐던 섹션이 재확정되면 배지 해소 (§6.4)
+
+        sectionStatusHistoryRepository.save(SectionStatusHistory.builder()
+                .projectSection(section)
+                .actor(actor.getUser())
+                .eventType("CONFIRMED")
+                .fromStatus(from)
+                .toStatus(ProjectSectionStatus.CONFIRMED)
+                .version(contentVersion)
+                .build());
+        return section;
+    }
+
+    /**
      * 공통 전이 처리: 섹션 조회 → 팀장 권한 검증 → 상태 전이(규칙 검증) → 이력 기록.
      */
     private ProjectSection transition(Long sectionId, Long actorUserId,
