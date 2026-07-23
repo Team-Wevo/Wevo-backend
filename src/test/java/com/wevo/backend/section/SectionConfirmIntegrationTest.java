@@ -169,6 +169,50 @@ class SectionConfirmIntegrationTest {
     }
 
     @Test
+    @DisplayName("AI 사전 검토가 최신이 아니면 409 C003 + AI_CHECK_CURRENT 사유")
+    void aiCheckNotCurrent_returnsC003() throws Exception {
+        User owner = persistUser("cf-own8@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User member = persistUser("cf-mem8@wevo.com");
+        persistMember(project, member, ProjectMemberRole.MEMBER);
+        // aiCheck 를 바인딩하지 않아 null (성공한 사전 검토 없음). 나머지 조건은 충족.
+        ProjectSection section = persistSection(project, ProjectSectionStatus.REVIEWING);
+        persistDraft(section, "검토 대상 v1", 1, owner);
+        persistReview(section, member, TeamReviewStatus.APPROVED, false, false);
+        em.flush();
+
+        confirm(section.getId(), owner)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("C003"))
+                .andExpect(jsonPath("$.errors[?(@.field == 'AI_CHECK_CURRENT')].reason")
+                        .value("현재 초안에 대한 AI 사전 검토가 필요합니다."));
+    }
+
+    @Test
+    @DisplayName("미해결 수정요청이 있으면 409 C003 + NO_UNRESOLVED_REQUEST 사유 (동의는 충족)")
+    void unresolvedChangeRequest_returnsC003() throws Exception {
+        User owner = persistUser("cf-own9@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User approver = persistUser("cf-app9@wevo.com");
+        persistMember(project, approver, ProjectMemberRole.MEMBER);
+        User requester = persistUser("cf-req9@wevo.com");
+        persistMember(project, requester, ProjectMemberRole.MEMBER);
+        ProjectSection section = reviewingSectionWithCurrentAiCheck(project);
+        persistReview(section, approver, TeamReviewStatus.APPROVED, false, false);           // 동의 1명
+        persistReview(section, requester, TeamReviewStatus.CHANGES_REQUESTED, false, false); // 미해결 수정요청
+        em.flush();
+
+        confirm(section.getId(), owner)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("C003"))
+                .andExpect(jsonPath("$.errors[?(@.field == 'NO_UNRESOLVED_REQUEST')].reason")
+                        .value("미해결 수정요청이 있습니다."))
+                .andExpect(jsonPath("$.errors[?(@.field == 'MEMBER_APPROVED')]").isEmpty()); // 동의는 충족
+    }
+
+    @Test
     @DisplayName("활성 편집자가 있으면 409 C003 + NO_ACTIVE_EDITOR 사유")
     void activeEditor_returnsC003() throws Exception {
         User owner = persistUser("cf-own6@wevo.com");
