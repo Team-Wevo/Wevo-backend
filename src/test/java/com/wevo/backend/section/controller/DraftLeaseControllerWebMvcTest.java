@@ -1,7 +1,9 @@
 package com.wevo.backend.section.controller;
 
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -179,6 +181,48 @@ class DraftLeaseControllerWebMvcTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("S005"))
                 .andExpect(jsonPath("$.errors").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("인증 없이 편집을 종료하면 A001을 반환한다")
+    void release_withoutAuthentication_returnsA001() throws Exception {
+        mockMvc.perform(delete(LEASE_URL))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("A001"));
+    }
+
+    @Test
+    @DisplayName("보유자가 편집을 종료하면 DRAFT_LEASE_RELEASED를 반환한다")
+    void release_byHolder_returnsReleased() throws Exception {
+        mockMvc.perform(delete(LEASE_URL).with(authenticatedUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("DRAFT_LEASE_RELEASED"))
+                .andExpect(jsonPath("$.message").value("편집을 종료했습니다."))
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("편집 잠금이 없으면 errors 없이 S005를 반환한다")
+    void release_whenMissing_returnsS005() throws Exception {
+        willThrow(new BusinessException(ErrorCode.DRAFT_LEASE_NOT_HELD))
+                .given(draftLeaseService).release(10L, 7L);
+
+        mockMvc.perform(delete(LEASE_URL).with(authenticatedUser()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S005"))
+                .andExpect(jsonPath("$.errors").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("다른 사용자가 편집 중이면 S004를 반환한다")
+    void release_whenHeldByOther_returnsS004() throws Exception {
+        willThrow(new BusinessException(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER))
+                .given(draftLeaseService).release(10L, 7L);
+
+        mockMvc.perform(delete(LEASE_URL).with(authenticatedUser()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S004"));
     }
 
     private RequestPostProcessor authenticatedUser() {

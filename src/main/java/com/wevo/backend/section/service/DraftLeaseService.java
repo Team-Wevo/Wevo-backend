@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 섹션 초안 편집 잠금 획득 로직.
+ * 섹션 초안 편집 잠금 로직.
  *
  * <p>획득 전 섹션 행을 배타 잠금으로 조회해, 같은 섹션에 동시에 들어온 요청을 직렬화한다.
  * 따라서 "lease 없음 확인 → 생성" 경합에서도 활성 lease가 둘 생기지 않는다.
@@ -95,6 +95,7 @@ public class DraftLeaseService {
 
         return DraftLeaseAcquireResponse.from(lease);
     }
+
     /**
      * 프로젝트 멤버가 현재 보유 중인 유효한 편집 잠금을 5분 연장한다.
      *
@@ -103,20 +104,52 @@ public class DraftLeaseService {
      */
     @Transactional
     public DraftLeaseRenewResponse renew(Long projectSectionId, Long userId) {
-        sectionAccessGuard.requireParticipantSectionForUpdate(projectSectionId, userId);
-        DraftLease lease = draftLeaseRepository.findByProjectSectionIdForUpdate(projectSectionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.DRAFT_LEASE_NOT_HELD));
+        HeldLease heldLease = requireActiveLeaseHeldBy(projectSectionId, userId);
 
-        LocalDateTime now = LocalDateTime.now(KST);
-        if (!lease.isActiveAt(now)) {
-            throw new BusinessException(ErrorCode.DRAFT_LEASE_NOT_HELD);
+        heldLease.lease().renewUntil(heldLease.checkedAt().plus(LEASE_DURATION));
+        return DraftLeaseRenewResponse.from(heldLease.lease());
+    }
+
+    /**
+     * 프로젝트 멤버가 현재 보유 중인 편집 잠금을 해제한다.
+     *
+     * <p>섹션 접근 권한을 먼저 검사해 비멤버에게 섹션과 lease의 존재를 숨긴다. 활성 lease를
+     * 타인이 보유하면 {@code S004}(강제 해제 불가), lease가 없거나 만료됐으면 {@code S005}를
+     * 반환한다. 해제는 만료 시각을 현재로 당겨 비활성으로 만들 뿐 행을 삭제하지 않는다
+     * (다음 획득 요청이 재사용하는 기존 모델 유지 — {@link DraftLease#release}).
+     */
+    @Transactional
+    public void release(Long projectSectionId, Long userId) {
+        HeldLease heldLease = requireActiveLeaseHeldBy(projectSectionId, userId);
+
+        heldLease.lease().release(heldLease.checkedAt());
+    }
+
+    /**
+     * 상태 전이 전에 활성 편집 잠금을 정리한다.
+     *
+     * <p>호출자가 보유한 활성 lease는 해제하고, 타인이 보유 중이면 {@code S004}로 전이를
+     * 거부한다. lease가 없거나 이미 만료됐으면 전이를 막지 않는다. 호출자는 이 메서드보다 먼저
+     * 섹션 접근 권한을 검증하고 섹션 행을 배타 잠금으로 획득해야 한다. 그래야 lease 획득과 상태
+     * 전이가 같은 잠금 순서로 직렬화된다.
+     */
+    @Transactional
+    public void releaseOwnLeaseOrRejectOther(Long projectSectionId, Long userId) {
+        Optional<DraftLease> lease =
+                draftLeaseRepository.findByProjectSectionIdForUpdate(projectSectionId);
+        if (lease.isEmpty()) {
+            return;
         }
-        if (!lease.getHolderUserId().equals(userId)) {
+
+        // lease 행의 배타 잠금을 획득한 뒤 만료 여부를 판정한다.
+        LocalDateTime now = LocalDateTime.now(KST);
+        if (!lease.get().isActiveAt(now)) {
+            return;
+        }
+        if (!lease.get().getHolderUserId().equals(userId)) {
             throw new BusinessException(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
         }
-
-        lease.renewUntil(now.plus(LEASE_DURATION));
-        return DraftLeaseRenewResponse.from(lease);
+        lease.get().release(now);
     }
 
     /**
@@ -187,5 +220,28 @@ public class DraftLeaseService {
         draftLeaseRepository.findByProjectSectionIdForUpdate(projectSectionId)
                 .filter(lease -> lease.isActiveAt(now) && lease.getHolderUserId().equals(userId))
                 .ifPresent(lease -> lease.release(now));
+    }
+
+    /**
+     * 참여자 권한을 확인한 뒤, 호출자가 보유한 활성 lease를 배타 잠금으로 반환한다.
+     * renew와 release가 동일한 검증 순서와 오류 계약을 사용하도록 한 곳에서 관리한다.
+     */
+    private HeldLease requireActiveLeaseHeldBy(Long projectSectionId, Long userId) {
+        sectionAccessGuard.requireParticipantSectionForUpdate(projectSectionId, userId);
+        DraftLease lease = draftLeaseRepository.findByProjectSectionIdForUpdate(projectSectionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.DRAFT_LEASE_NOT_HELD));
+
+        // 잠금 대기로 시간이 흐를 수 있으므로 두 배타 잠금을 모두 획득한 뒤 만료 판정 시각을 만든다.
+        LocalDateTime now = LocalDateTime.now(KST);
+        if (!lease.isActiveAt(now)) {
+            throw new BusinessException(ErrorCode.DRAFT_LEASE_NOT_HELD);
+        }
+        if (!lease.getHolderUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
+        }
+        return new HeldLease(lease, now);
+    }
+
+    private record HeldLease(DraftLease lease, LocalDateTime checkedAt) {
     }
 }

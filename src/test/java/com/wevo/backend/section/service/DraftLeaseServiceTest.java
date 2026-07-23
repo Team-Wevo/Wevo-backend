@@ -290,6 +290,131 @@ class DraftLeaseServiceTest {
         verifyNoInteractions(draftLeaseRepository);
     }
 
+    @Test
+    @DisplayName("보유자가 유효한 lease를 해제하면 만료 시각을 현재로 당겨 비활성으로 만든다")
+    void release_byHolder_deactivatesLease() {
+        DraftLease lease = lease(91L, OWNER_ID, LocalDateTime.now(KST).plusMinutes(3));
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
+                .willReturn(section);
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(lease));
+
+        draftLeaseService.release(SECTION_ID, OWNER_ID);
+
+        // 해제는 만료 시각을 해제 시점으로 당긴다 — 그 이후 시점에서는 비활성이다.
+        assertThat(lease.isActiveAt(LocalDateTime.now(KST))).isFalse();
+        verify(draftLeaseRepository, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("lease가 없으면 errors 없이 S005를 반환한다")
+    void release_whenMissing_throwsS005() {
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
+                .willReturn(section);
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.empty());
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> draftLeaseService.release(SECTION_ID, OWNER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DRAFT_LEASE_NOT_HELD);
+        assertThat(exception.getErrors()).isNull();
+    }
+
+    @Test
+    @DisplayName("만료된 lease를 해제하면 errors 없이 S005를 반환한다")
+    void release_whenExpired_throwsS005() {
+        DraftLease lease = lease(91L, OWNER_ID, LocalDateTime.now(KST).minusSeconds(1));
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
+                .willReturn(section);
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(lease));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> draftLeaseService.release(SECTION_ID, OWNER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DRAFT_LEASE_NOT_HELD);
+        assertThat(exception.getErrors()).isNull();
+    }
+
+    @Test
+    @DisplayName("타인이 보유한 활성 lease는 강제 해제할 수 없어 S004를 반환한다")
+    void release_byNonHolder_throwsS004() {
+        DraftLease lease = lease(91L, MEMBER_ID, LocalDateTime.now(KST).plusSeconds(30));
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
+                .willReturn(section);
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(lease));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> draftLeaseService.release(SECTION_ID, OWNER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
+        assertThat(lease.getHolderUserId()).isEqualTo(MEMBER_ID);
+    }
+
+    @Test
+    @DisplayName("비멤버는 섹션 존재를 숨겨 S001을 반환하고 lease를 조회하지 않는다")
+    void release_byNonMember_throwsS001BeforeLeaseLookup() {
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, OWNER_ID))
+                .willThrow(new BusinessException(ErrorCode.SECTION_NOT_FOUND));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> draftLeaseService.release(SECTION_ID, OWNER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
+        verifyNoInteractions(draftLeaseRepository);
+    }
+
+    @Test
+    @DisplayName("상태 전이 시 lease가 없으면 오류 없이 통과한다")
+    void releaseForTransition_whenMissing_doesNothing() {
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.empty());
+
+        draftLeaseService.releaseOwnLeaseOrRejectOther(SECTION_ID, OWNER_ID);
+
+        verify(draftLeaseRepository).findByProjectSectionIdForUpdate(SECTION_ID);
+    }
+
+    @Test
+    @DisplayName("상태 전이 시 만료된 lease는 오류 없이 통과한다")
+    void releaseForTransition_whenExpired_doesNothing() {
+        DraftLease expired = lease(91L, MEMBER_ID, LocalDateTime.now(KST).minusSeconds(1));
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(expired));
+
+        draftLeaseService.releaseOwnLeaseOrRejectOther(SECTION_ID, OWNER_ID);
+
+        assertThat(expired.getHolderUserId()).isEqualTo(MEMBER_ID);
+    }
+
+    @Test
+    @DisplayName("상태 전이 시 호출자 본인의 활성 lease를 해제한다")
+    void releaseForTransition_whenHeldByCaller_deactivatesLease() {
+        DraftLease lease = lease(91L, OWNER_ID, LocalDateTime.now(KST).plusMinutes(3));
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(lease));
+
+        draftLeaseService.releaseOwnLeaseOrRejectOther(SECTION_ID, OWNER_ID);
+
+        assertThat(lease.isActiveAt(LocalDateTime.now(KST).plusSeconds(1))).isFalse();
+    }
+
+    @Test
+    @DisplayName("상태 전이 시 타인의 활성 lease가 있으면 S004를 반환한다")
+    void releaseForTransition_whenHeldByOther_throwsS004() {
+        DraftLease lease = lease(91L, MEMBER_ID, LocalDateTime.now(KST).plusMinutes(3));
+        given(draftLeaseRepository.findByProjectSectionIdForUpdate(SECTION_ID))
+                .willReturn(Optional.of(lease));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> draftLeaseService.releaseOwnLeaseOrRejectOther(SECTION_ID, OWNER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DRAFT_LEASE_HELD_BY_OTHER);
+        assertThat(lease.isActiveAt(LocalDateTime.now(KST))).isTrue();
+    }
+
     private DraftLease lease(Long id, Long holderUserId, LocalDateTime leaseUntil) {
         DraftLease lease = DraftLease.builder()
                 .projectSection(section)
