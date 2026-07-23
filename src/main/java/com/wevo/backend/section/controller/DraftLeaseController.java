@@ -8,6 +8,7 @@ import com.wevo.backend.section.dto.response.DraftLeaseStatusResponse;
 import com.wevo.backend.section.service.DraftLeaseService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -59,5 +60,15 @@ public class DraftLeaseController {
                 draftLeaseService.renew(projectSectionId, principal.userId());
         return ResponseEntity.ok(
                 ApiResponse.success("DRAFT_LEASE_RENEWED", "편집권이 연장되었습니다.", response));
+    }
+
+    @DeleteMapping("/{projectSectionId}/draft/lease")
+    public ResponseEntity<ApiResponse<Void>> release(
+            @PathVariable Long projectSectionId,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        draftLeaseService.release(projectSectionId, principal.userId());
+        return ResponseEntity.ok(
+                ApiResponse.success("DRAFT_LEASE_RELEASED", "편집을 종료했습니다.", null));
     }
 }

@@ -2,6 +2,7 @@ package com.wevo.backend.section;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -371,6 +372,156 @@ class DraftLeaseIntegrationTest {
         em.flush();
 
         mockMvc.perform(put("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(outsider))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("S001"));
+    }
+
+    @Test
+    @DisplayName("편집 잠금 보유자가 종료하면 lease가 비활성화되고 행은 보존된다")
+    void holderReleasesActiveLease() throws Exception {
+        User owner = persistUser("owner-lease-release-1@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        DraftLease lease = DraftLease.builder()
+                .projectSection(section)
+                .holderUserId(owner.getId())
+                .leaseUntil(LocalDateTime.now(KST).plusMinutes(3))
+                .build();
+        em.persist(lease);
+        em.flush();
+
+        mockMvc.perform(delete("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("DRAFT_LEASE_RELEASED"))
+                .andExpect(jsonPath("$.message").value("편집을 종료했습니다."))
+                .andExpect(jsonPath("$.data").doesNotExist());
+
+        // PostgreSQL timestamp의 microsecond 반올림 경계를 피하면서, 해제 전 +3분이던 lease가
+        // 해제 직후 시점으로 당겨져 비활성화됐는지 검증한다.
+        LocalDateTime afterRelease = LocalDateTime.now(KST);
+        em.flush();
+        em.clear();
+        DraftLease released = draftLeaseRepository.findById(lease.getId()).orElseThrow();
+        assertThat(released.isActiveAt(afterRelease.plusSeconds(1))).isFalse();
+    }
+
+    @Test
+    @DisplayName("해제된 편집 잠금은 다른 프로젝트 참여자가 곧바로 재획득한다")
+    void releasedLeaseCanBeReacquiredByOther() throws Exception {
+        User owner = persistUser("owner-lease-release-2@wevo.com");
+        User member = persistUser("member-lease-release-2@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistMember(project, member, ProjectMemberRole.MEMBER);
+        persistDraft(section, owner);
+        em.persist(DraftLease.builder()
+                .projectSection(section)
+                .holderUserId(owner.getId())
+                .leaseUntil(LocalDateTime.now(KST).plusMinutes(3))
+                .build());
+        em.flush();
+
+        mockMvc.perform(delete("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(member))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.expiresAt").exists());
+
+        em.flush();
+        em.clear();
+        DraftLease lease = draftLeaseRepository.findByProjectSection_Id(section.getId()).orElseThrow();
+        assertThat(lease.getHolderUserId()).isEqualTo(member.getId());
+    }
+
+    @Test
+    @DisplayName("타인이 보유한 활성 편집 잠금은 강제 해제할 수 없어 S004를 반환한다")
+    void nonHolderCannotReleaseLease() throws Exception {
+        User owner = persistUser("owner-lease-release-3@wevo.com");
+        User member = persistUser("member-lease-release-3@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistMember(project, member, ProjectMemberRole.MEMBER);
+        DraftLease lease = DraftLease.builder()
+                .projectSection(section)
+                .holderUserId(owner.getId())
+                .leaseUntil(LocalDateTime.now(KST).plusSeconds(30))
+                .build();
+        em.persist(lease);
+        em.flush();
+
+        mockMvc.perform(delete("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(member))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S004"));
+
+        em.flush();
+        em.clear();
+        DraftLease unchanged = draftLeaseRepository.findById(lease.getId()).orElseThrow();
+        assertThat(unchanged.getHolderUserId()).isEqualTo(owner.getId());
+        assertThat(unchanged.isActiveAt(LocalDateTime.now(KST))).isTrue();
+    }
+
+    @Test
+    @DisplayName("편집 잠금이 없으면 종료 시 errors 없이 S005를 반환한다")
+    void missingLeaseCannotBeReleased() throws Exception {
+        User owner = persistUser("owner-lease-release-4@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        mockMvc.perform(delete("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S005"))
+                .andExpect(jsonPath("$.errors").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("만료된 편집 잠금을 종료하면 errors 없이 S005를 반환한다")
+    void expiredLeaseCannotBeReleased() throws Exception {
+        User owner = persistUser("owner-lease-release-5@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        em.persist(DraftLease.builder()
+                .projectSection(section)
+                .holderUserId(owner.getId())
+                .leaseUntil(LocalDateTime.now(KST).minusSeconds(1))
+                .build());
+        em.flush();
+
+        mockMvc.perform(delete("/api/project-sections/{id}/draft/lease", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("S005"))
+                .andExpect(jsonPath("$.errors").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("비멤버의 편집 종료는 섹션 존재를 숨겨 S001을 반환한다")
+    void nonMemberCannotDetectLeaseByRelease() throws Exception {
+        User owner = persistUser("owner-lease-release-6@wevo.com");
+        User outsider = persistUser("outsider-lease-release-6@wevo.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSection(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        em.persist(DraftLease.builder()
+                .projectSection(section)
+                .holderUserId(owner.getId())
+                .leaseUntil(LocalDateTime.now(KST).plusMinutes(1))
+                .build());
+        em.flush();
+
+        mockMvc.perform(delete("/api/project-sections/{id}/draft/lease", section.getId())
                         .with(authentication(authOf(outsider))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("S001"));
