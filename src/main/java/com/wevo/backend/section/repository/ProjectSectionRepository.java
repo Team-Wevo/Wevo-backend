@@ -25,6 +25,9 @@ public interface ProjectSectionRepository extends JpaRepository<ProjectSection, 
 
     List<ProjectSection> findByProjectIdOrderBySectionOrder(Long projectId);
 
+    List<ProjectSection> findByProject_IdAndTemplate_IdInOrderBySectionOrderAscIdAsc(
+            Long projectId, List<Long> templateIds);
+
     long countByProjectId(Long projectId);
 
     long countByProjectIdAndStatus(Long projectId, ProjectSectionStatus status);
@@ -38,4 +41,8 @@ public interface ProjectSectionRepository extends JpaRepository<ProjectSection, 
     @Query("SELECT s FROM ProjectSection s LEFT JOIN FETCH s.template "
             + "WHERE s.project.id = :projectId ORDER BY s.sectionOrder")
     List<ProjectSection> findAllWithTemplateByProjectId(@Param("projectId") Long projectId);
+
+    @Query("SELECT s FROM ProjectSection s JOIN FETCH s.template "
+            + "WHERE s.id = :sectionId")
+    Optional<ProjectSection> findByIdWithTemplate(@Param("sectionId") Long sectionId);
 }

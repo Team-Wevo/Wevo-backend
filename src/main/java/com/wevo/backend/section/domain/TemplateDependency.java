@@ -19,7 +19,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 템플릿 간 의존 관계 (예: A 섹션이 확정되어야 B 섹션을 작성 가능 등).
+ * 템플릿 간 직접 의존 관계.
+ *
+ * <p>제품 정책의 {@code dependsOn}은 {@code REQUIRES}로 저장하며 방향은
+ * {@code fromTemplate = 의존하는 하위}, {@code toTemplate = 의존 대상 상위}다.
+ * 화면 순서나 간접 선행 관계는 이 그래프에 포함하지 않는다.
  */
 @Entity
 @Table(
@@ -52,6 +56,18 @@ public class TemplateDependency extends BaseTimeEntity {
     @Builder
     private TemplateDependency(SectionTemplate fromTemplate, SectionTemplate toTemplate,
                                TemplateDependencyType dependencyType) {
+        if (fromTemplate == null || toTemplate == null) {
+            throw new IllegalArgumentException("의존 관계의 양쪽 템플릿은 필수입니다.");
+        }
+        if (fromTemplate == toTemplate) {
+            throw new IllegalArgumentException("템플릿은 자기 자신에 의존할 수 없습니다.");
+        }
+        if (fromTemplate.getResultType() != toTemplate.getResultType()) {
+            throw new IllegalArgumentException("서로 다른 결과물 유형의 템플릿을 연결할 수 없습니다.");
+        }
+        if (dependencyType == null) {
+            throw new IllegalArgumentException("의존 관계 type은 필수입니다.");
+        }
         this.fromTemplate = fromTemplate;
         this.toTemplate = toTemplate;
         this.dependencyType = dependencyType;

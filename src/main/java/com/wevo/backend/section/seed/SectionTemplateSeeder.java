@@ -2,17 +2,25 @@ package com.wevo.backend.section.seed;
 
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.section.domain.SectionTemplate;
+import com.wevo.backend.section.domain.TemplateDependency;
+import com.wevo.backend.section.domain.TemplateDependencyType;
 import com.wevo.backend.section.repository.SectionTemplateRepository;
+import com.wevo.backend.section.repository.TemplateDependencyRepository;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 결과물 유형별 고정 섹션 baseline 을 시드한다. (제품 정책서 §2.3, §2.4.3/§2.4.4)
  *
- * <p>멱등: 이미 시드돼 있으면(테이블 비어있지 않으면) 아무것도 하지 않는다.
+ * <p>멱등: 빈 DB에는 template을 먼저 만들고 dependency를 연결한다. 이미 일부 dependency가 있으면
+ * 정책에 맞는 누락 edge만 보완한 뒤 전체 기준 데이터를 재검증한다. template 자체가 부분
+ * 초기화됐거나 정책과 다른 graph면 잘못된 상태로 실행하지 않고 시작을 실패시킨다.
  * <p>필드 매핑(ERD 준수 — 질문 전용 컬럼 없음): {@code description} = 기본 핵심 질문,
  * {@code guideText} = 작성 가이드. (섹션 목적/의도는 title 로 대변)
  */
@@ -20,17 +28,54 @@ import java.util.List;
 public class SectionTemplateSeeder implements ApplicationRunner {
 
     private final SectionTemplateRepository sectionTemplateRepository;
+    private final TemplateDependencyRepository templateDependencyRepository;
 
-    public SectionTemplateSeeder(SectionTemplateRepository sectionTemplateRepository) {
+    public SectionTemplateSeeder(
+            SectionTemplateRepository sectionTemplateRepository,
+            TemplateDependencyRepository templateDependencyRepository
+    ) {
         this.sectionTemplateRepository = sectionTemplateRepository;
+        this.templateDependencyRepository = templateDependencyRepository;
     }
 
     @Override
+    @Transactional
     public void run(ApplicationArguments args) {
-        if (sectionTemplateRepository.count() > 0) {
-            return;
+        List<SectionTemplate> templates = sectionTemplateRepository.findAll();
+        if (templates.isEmpty()) {
+            templates = sectionTemplateRepository.saveAllAndFlush(baselineTemplates());
         }
-        sectionTemplateRepository.saveAll(baselineTemplates());
+
+        Map<TemplateDependencyReferenceData.TemplateKey, SectionTemplate> indexed =
+                TemplateDependencyReferenceData.validateAndIndexTemplates(templates);
+        List<TemplateDependency> existing = templateDependencyRepository.findAllWithTemplates();
+        TemplateDependencyReferenceData.validateExistingEdges(existing, false);
+
+        List<TemplateDependencyReferenceData.Edge> existingEdges = existing.stream()
+                .map(dependency -> new TemplateDependencyReferenceData.Edge(
+                        new TemplateDependencyReferenceData.TemplateKey(
+                                dependency.getFromTemplate().getResultType(),
+                                dependency.getFromTemplate().getSectionKey()),
+                        new TemplateDependencyReferenceData.TemplateKey(
+                                dependency.getToTemplate().getResultType(),
+                                dependency.getToTemplate().getSectionKey())))
+                .toList();
+        List<TemplateDependency> missing = new ArrayList<>();
+        for (TemplateDependencyReferenceData.Edge edge : TemplateDependencyReferenceData.EDGES) {
+            if (!existingEdges.contains(edge)) {
+                missing.add(TemplateDependency.builder()
+                        .fromTemplate(indexed.get(edge.from()))
+                        .toTemplate(indexed.get(edge.to()))
+                        .dependencyType(TemplateDependencyType.REQUIRES)
+                        .build());
+            }
+        }
+        if (!missing.isEmpty()) {
+            templateDependencyRepository.saveAllAndFlush(missing);
+        }
+
+        TemplateDependencyReferenceData.validateExistingEdges(
+                templateDependencyRepository.findAllWithTemplates(), true);
     }
 
     private List<SectionTemplate> baselineTemplates() {
