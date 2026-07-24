@@ -238,6 +238,48 @@ class SectionStatusServiceTest {
         assertThat(section.getStatus()).isEqualTo(ProjectSectionStatus.COLLECTING);
     }
 
+    @Test
+    @DisplayName("팀장이 REVIEWING 섹션을 확정하면 CONFIRMED 전이 + 확정 버전 기록 + 드리프트 해소 + 이력")
+    void markConfirmed_fromReviewingByOwner_recordsVersionAndClearsDrift() {
+        User owner = user(OWNER_ID);
+        ProjectSection section = section(ProjectSectionStatus.REVIEWING);
+        section.markDriftReviewRequired(); // 확정으로 해소되는지 확인하기 위해 드리프트를 걸어 둔다
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectAccessGuard.requireOwner(PROJECT_ID, OWNER_ID))
+                .willReturn(member(owner, ProjectMemberRole.OWNER, section.getProject()));
+
+        ProjectSection confirmed = sectionStatusService.markConfirmed(SECTION_ID, OWNER_ID, 3);
+
+        assertThat(confirmed.getStatus()).isEqualTo(ProjectSectionStatus.CONFIRMED);
+        assertThat(confirmed.getConfirmedVersion()).isEqualTo(3);
+        assertThat(confirmed.getDriftStatus()).isEqualTo(com.wevo.backend.section.domain.DriftStatus.NONE);
+
+        ArgumentCaptor<SectionStatusHistory> captor = ArgumentCaptor.forClass(SectionStatusHistory.class);
+        verify(sectionStatusHistoryRepository).save(captor.capture());
+        assertThat(captor.getValue().getEventType()).isEqualTo("CONFIRMED");
+        assertThat(captor.getValue().getFromStatus()).isEqualTo(ProjectSectionStatus.REVIEWING);
+        assertThat(captor.getValue().getToStatus()).isEqualTo(ProjectSectionStatus.CONFIRMED);
+        assertThat(captor.getValue().getVersion()).isEqualTo(3);
+        assertThat(captor.getValue().getActor()).isEqualTo(owner);
+    }
+
+    @Test
+    @DisplayName("REVIEWING 이 아닌 섹션의 확정 전이는 S002 로 거부되고 이력을 남기지 않는다")
+    void markConfirmed_notReviewing_throws() {
+        User owner = user(OWNER_ID);
+        ProjectSection section = section(ProjectSectionStatus.DRAFTING);
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectAccessGuard.requireOwner(PROJECT_ID, OWNER_ID))
+                .willReturn(member(owner, ProjectMemberRole.OWNER, section.getProject()));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> sectionStatusService.markConfirmed(SECTION_ID, OWNER_ID, 1));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
+        assertThat(section.getStatus()).isEqualTo(ProjectSectionStatus.DRAFTING);
+        verify(sectionStatusHistoryRepository, never()).save(any());
+    }
+
     // ── 픽스처 ──
 
     private User user(Long id) {
