@@ -23,10 +23,26 @@ wevo:
     default-options:
       model: ${NVIDIA_API_MODEL:mistralai/mistral-medium-3.5-128b}
       timeout: ${NVIDIA_API_TIMEOUT:60s}
+      # system/user prompt + JSON schema + context payload 전체의 상한
+      max-input-tokens: ${AI_DEFAULT_MAX_INPUT_TOKENS:100000}
       max-output-tokens: ${NVIDIA_API_MAX_TOKENS:4096}
+      model-context-limit: ${AI_MODEL_CONTEXT_LIMIT:131072}
+      # input/output 예약에 포함되지 않는 context window 안전 여유
+      safety-margin-tokens: ${AI_SAFETY_MARGIN_TOKENS:8192}
+      token-estimation-policy: conservative-char-v1
+      single-input-overflow-policy: reject-oversized-input-v1
       max-retries: ${AI_MAX_RETRIES:2}
       initial-backoff: 500ms
       max-backoff: 8s
+    features:
+      issue-detection:
+        max-input-tokens: ${AI_ISSUE_DETECTION_MAX_INPUT_TOKENS:64000}
+      opinion-synthesis:
+        max-input-tokens: ${AI_OPINION_SYNTHESIS_MAX_INPUT_TOKENS:72000}
+      draft-generation:
+        max-input-tokens: ${AI_DRAFT_GENERATION_MAX_INPUT_TOKENS:48000}
+      draft-review:
+        max-input-tokens: ${AI_DRAFT_REVIEW_MAX_INPUT_TOKENS:64000}
     nvidia:
       temperature: ${NVIDIA_API_TEMPERATURE:0.1}
       reasoning-effort: ${NVIDIA_API_REASONING_EFFORT:none}

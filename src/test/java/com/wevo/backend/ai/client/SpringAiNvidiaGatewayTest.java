@@ -328,7 +328,17 @@ class SpringAiNvidiaGatewayTest {
         AiProperties properties = new AiProperties(
                 "nvidia",
                 new AiProperties.ModelOptions(
-                        "test-model", timeout, 128, maxTransportRetries, Duration.ZERO, Duration.ofSeconds(8)
+                        "test-model",
+                        timeout,
+                        100_000,
+                        128,
+                        131_072,
+                        8_192,
+                        AiProperties.ModelOptions.CONSERVATIVE_CHAR_V1,
+                        AiProperties.ModelOptions.REJECT_OVERSIZED_INPUT_V1,
+                        maxTransportRetries,
+                        Duration.ZERO,
+                        Duration.ofSeconds(8)
                 ),
                 Map.of(),
                 new AiProperties.StructuredOutputOptions(maxCorrectionRetries)
