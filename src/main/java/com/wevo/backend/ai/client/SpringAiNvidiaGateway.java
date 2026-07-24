@@ -2,6 +2,8 @@ package com.wevo.backend.ai.client;
 
 import com.wevo.backend.ai.config.AiProperties;
 import com.wevo.backend.ai.config.NvidiaProviderProperties;
+import com.wevo.backend.ai.context.AiTokenBudgetEstimator;
+import com.wevo.backend.ai.context.AiTokenBudgetInput;
 import com.wevo.backend.ai.exception.AiProviderException;
 import com.wevo.backend.ai.exception.NvidiaExceptionTranslator;
 import com.wevo.backend.global.exception.ErrorCode;
@@ -42,6 +44,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
     private final ExecutorService providerRequestExecutor;
     private final AiUsageExtractor usageExtractor;
     private final AiRetrySleeper retrySleeper;
+    private final AiTokenBudgetEstimator tokenBudgetEstimator;
 
     public SpringAiNvidiaGateway(
             ChatClient chatClient,
@@ -50,7 +53,8 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
             NvidiaExceptionTranslator exceptionTranslator,
             ExecutorService providerRequestExecutor,
             AiUsageExtractor usageExtractor,
-            AiRetrySleeper retrySleeper
+            AiRetrySleeper retrySleeper,
+            AiTokenBudgetEstimator tokenBudgetEstimator
     ) {
         this.chatClient = chatClient;
         this.properties = properties;
@@ -59,6 +63,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
         this.providerRequestExecutor = providerRequestExecutor;
         this.usageExtractor = usageExtractor;
         this.retrySleeper = retrySleeper;
+        this.tokenBudgetEstimator = tokenBudgetEstimator;
     }
 
     @Override
@@ -191,6 +196,10 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
             String userPrompt,
             AiProperties.ModelOptions options
     ) {
+        tokenBudgetEstimator.requireWithinBudget(
+                request.feature(),
+                AiTokenBudgetInput.of(request.prompt().systemPrompt(), userPrompt)
+        );
         Future<ResponseEntity<ChatResponse, StructuredConversionResult<T>>> future = providerRequestExecutor.submit(
                 () -> callProviderStructured(request, userPrompt, options)
         );
@@ -367,6 +376,12 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
     }
 
     private AiProviderResponse generateOnce(AiProviderRequest request, AiProperties.ModelOptions options) {
+        tokenBudgetEstimator.requireWithinBudget(
+                request.feature(),
+                new AiTokenBudgetInput(request.messages().stream()
+                        .map(AiChatMessage::content)
+                        .toList())
+        );
         Future<ChatResponse> future = providerRequestExecutor.submit(() -> callProvider(request, options));
 
         try {
