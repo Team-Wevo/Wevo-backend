@@ -6,6 +6,11 @@ spring:
     model:
       chat: none
       embedding: none
+      image: none
+      audio:
+        speech: none
+        transcription: none
+      moderation: none
     chat:
       client:
         observations:
