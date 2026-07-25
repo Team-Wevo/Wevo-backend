@@ -42,7 +42,7 @@ public interface ProjectSectionRepository extends JpaRepository<ProjectSection, 
             + "WHERE s.project.id = :projectId ORDER BY s.sectionOrder")
     List<ProjectSection> findAllWithTemplateByProjectId(@Param("projectId") Long projectId);
 
-    @Query("SELECT s FROM ProjectSection s JOIN FETCH s.template "
+    @Query("SELECT s FROM ProjectSection s LEFT JOIN FETCH s.template "
             + "WHERE s.id = :sectionId")
     Optional<ProjectSection> findByIdWithTemplate(@Param("sectionId") Long sectionId);
 }

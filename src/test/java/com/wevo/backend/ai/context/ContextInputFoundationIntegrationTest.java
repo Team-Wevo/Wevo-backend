@@ -184,6 +184,21 @@ class ContextInputFoundationIntegrationTest {
     }
 
     @Test
+    void templateLessSectionReachesDedicatedIntegrityValidation() {
+        ProjectSection templateLess = projectSectionRepository.saveAndFlush(ProjectSection.builder()
+                .project(project)
+                .title("템플릿 없는 섹션")
+                .sectionOrder(99)
+                .status(ProjectSectionStatus.DRAFTING)
+                .build());
+
+        assertThatThrownBy(() ->
+                dependencyQueryService.findDirectPrerequisites(access, templateLess.getId()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("template이 없습니다");
+    }
+
+    @Test
     void projectAndSectionContractsExposeOnlyImmutableAiInputValues() {
         ProjectAiContext projectContext = projectQueryService.getProjectContext(access);
         SectionAiMetadata sectionContext =

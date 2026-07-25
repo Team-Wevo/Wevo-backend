@@ -79,7 +79,7 @@ public class SynthesisSetQueryService {
 
         Map<Long, GapAnswerContext> unique = new HashMap<>();
         for (IssueAnswer answer : direct) {
-            validateAnswer(answer, current.getId(), sectionId, answer.getIssue().getId());
+            validateDirectAnswer(answer, current.getId(), sectionId);
             unique.put(answer.getId(), toContext(answer));
         }
         for (SynthesisInheritedGapAnswer reference : inherited) {
@@ -87,11 +87,7 @@ public class SynthesisSetQueryService {
                 throw new IllegalStateException("승계 GAP 답변이 다른 synthesis set에 속합니다.");
             }
             IssueAnswer answer = sourceById.get(reference.getSourceAnswerId());
-            validateAnswer(
-                    answer,
-                    answer.getIssue().getSynthesisSet().getId(),
-                    sectionId,
-                    reference.getSourceIssueId());
+            validateInheritedAnswer(answer, sectionId, reference.getSourceIssueId());
             unique.putIfAbsent(answer.getId(), toContext(answer));
         }
 
@@ -105,25 +101,41 @@ public class SynthesisSetQueryService {
                 sorted);
     }
 
-    private void validateAnswer(
+    private void validateDirectAnswer(
             IssueAnswer answer,
             Long expectedSetId,
+            Long expectedSectionId
+    ) {
+        if (isInvalidAnswer(answer)
+                || !expectedSetId.equals(answer.getIssue().getSynthesisSet().getId())
+                || !expectedSectionId.equals(
+                        answer.getIssue().getSynthesisSet().getProjectSectionId())) {
+            throw new IllegalStateException("AI context GAP 답변 참조의 무결성이 깨졌습니다.");
+        }
+    }
+
+    private void validateInheritedAnswer(
+            IssueAnswer answer,
             Long expectedSectionId,
             Long expectedIssueId
     ) {
-        if (answer == null
+        if (isInvalidAnswer(answer)
+                || !expectedSectionId.equals(
+                        answer.getIssue().getSynthesisSet().getProjectSectionId())
+                || !expectedIssueId.equals(answer.getIssue().getId())) {
+            throw new IllegalStateException("AI context GAP 답변 참조의 무결성이 깨졌습니다.");
+        }
+    }
+
+    private boolean isInvalidAnswer(IssueAnswer answer) {
+        return answer == null
                 || answer.getId() == null
                 || answer.getIssue() == null
                 || answer.getIssue().getSynthesisSet() == null
                 || answer.getIssue().getType() != IssueType.GAP
-                || !expectedSetId.equals(answer.getIssue().getSynthesisSet().getId())
-                || !expectedSectionId.equals(answer.getIssue().getSynthesisSet().getProjectSectionId())
-                || !expectedIssueId.equals(answer.getIssue().getId())
                 || answer.getAnsweredAt() == null
                 || answer.getContent() == null
-                || answer.getContent().isBlank()) {
-            throw new IllegalStateException("AI context GAP 답변 참조의 무결성이 깨졌습니다.");
-        }
+                || answer.getContent().isBlank();
     }
 
     private GapAnswerContext toContext(IssueAnswer answer) {
