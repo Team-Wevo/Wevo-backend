@@ -39,7 +39,12 @@ wevo:
     default-options:
       model: test-model
       timeout: 1s
+      max-input-tokens: 1000
       max-output-tokens: 128
+      model-context-limit: 2048
+      safety-margin-tokens: 256
+      token-estimation-policy: conservative-char-v1
+      single-input-overflow-policy: reject-oversized-input-v1
       max-retries: 0
       initial-backoff: 0ms
       max-backoff: 0ms

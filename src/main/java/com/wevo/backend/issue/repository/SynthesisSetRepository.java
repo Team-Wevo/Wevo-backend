@@ -10,4 +10,6 @@ public interface SynthesisSetRepository extends JpaRepository<SynthesisSet, Long
     boolean existsByProjectSectionId(Long projectSectionId);
 
     Optional<SynthesisSet> findByRequestId(UUID requestId);
+
+    Optional<SynthesisSet> findTopByProjectSectionIdOrderByCreatedAtDescIdDesc(Long projectSectionId);
 }

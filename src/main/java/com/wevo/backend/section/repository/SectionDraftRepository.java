@@ -17,6 +17,8 @@ public interface SectionDraftRepository extends JpaRepository<SectionDraft, Long
      */
     Optional<SectionDraft> findTopByProjectSection_IdOrderByVersionDesc(Long sectionId);
 
+    Optional<SectionDraft> findByProjectSection_IdAndVersion(Long sectionId, Integer version);
+
     /**
      * 프로젝트의 <b>확정된</b> 섹션에 대해 확정본(각 섹션의 {@code confirmedVersion} 에 해당하는
      * 초안)을 섹션 순서대로 조회한다. (최종 결과물 조립 — API_SPEC §3.6.1)

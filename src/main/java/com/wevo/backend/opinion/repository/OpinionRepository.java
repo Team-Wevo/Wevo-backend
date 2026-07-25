@@ -30,4 +30,17 @@ public interface OpinionRepository extends JpaRepository<Opinion, Long> {
     List<Opinion> findAllWithAuthorByProjectSectionIdAndStatus(
             @Param("projectSectionId") Long projectSectionId,
             @Param("status") OpinionStatus status);
+
+    /**
+     * AI 내부 입력용 제출 의견. 사용자 공개 gate와 작성자 profile fetch를 사용하지 않으며,
+     * project 소속을 쿼리에서 제한하고 동률까지 결정적으로 정렬한다.
+     */
+    @Query("SELECT o FROM Opinion o "
+            + "WHERE o.projectSection.id = :sectionId "
+            + "AND o.projectSection.project.id = :projectId "
+            + "AND o.status = com.wevo.backend.opinion.domain.OpinionStatus.SUBMITTED "
+            + "ORDER BY o.submittedAt ASC, o.id ASC")
+    List<Opinion> findSubmittedForAiContext(
+            @Param("projectId") Long projectId,
+            @Param("sectionId") Long sectionId);
 }

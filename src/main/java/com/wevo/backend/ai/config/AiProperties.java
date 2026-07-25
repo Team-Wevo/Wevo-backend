@@ -6,13 +6,20 @@ import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Wevo AI 기능에서 사용하는 모델 실행 정책.
  *
  * <p>Provider 연결 자체의 설정은 Spring AI provider 설정이 담당하고,
- * 이 설정은 기능별 모델, 제한 시간, 출력 토큰 한도를 선택하는 데 사용한다.</p>
+ * 이 설정은 기능별 모델, 제한 시간, 입출력 token budget을 선택하는 데 사용한다.</p>
+ *
+ * <p>{@code maxInputTokens}는 system/user prompt, JSON schema와 context payload를 모두 포함하는
+ * Provider 입력 상한이다. {@code safetyMarginTokens}는 여기에 포함되지 않는 context window의
+ * 미할당 여유분이며, 항상
+ * {@code maxInputTokens + maxOutputTokens + safetyMarginTokens <= modelContextLimit}이어야 한다.</p>
  */
 @Validated
 @ConfigurationProperties(prefix = "wevo.ai")
@@ -36,35 +43,72 @@ public record AiProperties(
         }
         defaultOptions.validate("wevo.ai.default-options");
         features = features == null ? Map.of() : Map.copyOf(features);
+        Set<String> supportedFeatureKeys = new HashSet<>();
+        for (AiFeature feature : AiFeature.values()) {
+            supportedFeatureKeys.add(feature.configKey());
+        }
+        if (!supportedFeatureKeys.containsAll(features.keySet())) {
+            throw new IllegalArgumentException("wevo.ai.features에 지원하지 않는 기능 key가 있습니다.");
+        }
+        for (AiFeature feature : AiFeature.values()) {
+            resolveOptions(defaultOptions, features, feature)
+                    .validate("wevo.ai.features." + feature.configKey());
+        }
         structuredOutput = structuredOutput == null ? new StructuredOutputOptions(2) : structuredOutput;
     }
 
     public ModelOptions optionsFor(AiFeature feature) {
+        if (feature == null) {
+            throw new IllegalArgumentException("AI feature는 필수입니다.");
+        }
+        return resolveOptions(defaultOptions, features, feature);
+    }
+
+    private static ModelOptions resolveOptions(
+            ModelOptions defaults,
+            Map<String, FeatureOptions> configuredFeatures,
+            AiFeature feature
+    ) {
         String featureKey = feature.configKey();
-        FeatureOptions featureOptions = features.get(featureKey);
+        FeatureOptions featureOptions = configuredFeatures.get(featureKey);
         if (featureOptions == null) {
-            return defaultOptions;
+            return defaults;
         }
 
         ModelOptions resolved = new ModelOptions(
                 StringUtils.hasText(featureOptions.model())
                         ? featureOptions.model()
-                        : defaultOptions.model(),
+                        : defaults.model(),
                 featureOptions.timeout() != null
                         ? featureOptions.timeout()
-                        : defaultOptions.timeout(),
+                        : defaults.timeout(),
+                featureOptions.maxInputTokens() != null
+                        ? featureOptions.maxInputTokens()
+                        : defaults.maxInputTokens(),
                 featureOptions.maxOutputTokens() != null
                         ? featureOptions.maxOutputTokens()
-                        : defaultOptions.maxOutputTokens(),
+                        : defaults.maxOutputTokens(),
+                featureOptions.modelContextLimit() != null
+                        ? featureOptions.modelContextLimit()
+                        : defaults.modelContextLimit(),
+                featureOptions.safetyMarginTokens() != null
+                        ? featureOptions.safetyMarginTokens()
+                        : defaults.safetyMarginTokens(),
+                StringUtils.hasText(featureOptions.tokenEstimationPolicy())
+                        ? featureOptions.tokenEstimationPolicy()
+                        : defaults.tokenEstimationPolicy(),
+                StringUtils.hasText(featureOptions.singleInputOverflowPolicy())
+                        ? featureOptions.singleInputOverflowPolicy()
+                        : defaults.singleInputOverflowPolicy(),
                 featureOptions.maxRetries() != null
                         ? featureOptions.maxRetries()
-                        : defaultOptions.maxRetries(),
+                        : defaults.maxRetries(),
                 featureOptions.initialBackoff() != null
                         ? featureOptions.initialBackoff()
-                        : defaultOptions.initialBackoff(),
+                        : defaults.initialBackoff(),
                 featureOptions.maxBackoff() != null
                         ? featureOptions.maxBackoff()
-                        : defaultOptions.maxBackoff()
+                        : defaults.maxBackoff()
         );
         resolved.validate("wevo.ai.features." + featureKey);
         return resolved;
@@ -73,11 +117,19 @@ public record AiProperties(
     public record ModelOptions(
             String model,
             Duration timeout,
+            Integer maxInputTokens,
             Integer maxOutputTokens,
+            Integer modelContextLimit,
+            Integer safetyMarginTokens,
+            String tokenEstimationPolicy,
+            String singleInputOverflowPolicy,
             Integer maxRetries,
             Duration initialBackoff,
             Duration maxBackoff
     ) {
+
+        public static final String CONSERVATIVE_CHAR_V1 = "conservative-char-v1";
+        public static final String REJECT_OVERSIZED_INPUT_V1 = "reject-oversized-input-v1";
 
         private void validate(String path) {
             if (!StringUtils.hasText(model)) {
@@ -91,6 +143,29 @@ public record AiProperties(
             }
             if (maxOutputTokens == null || maxOutputTokens <= 0 || maxOutputTokens > 65_536) {
                 throw new IllegalArgumentException(path + ".max-output-tokens는 1 이상 65536 이하여야 합니다.");
+            }
+            if (maxInputTokens == null || maxInputTokens <= 0) {
+                throw new IllegalArgumentException(path + ".max-input-tokens는 0보다 커야 합니다.");
+            }
+            if (modelContextLimit == null || modelContextLimit <= 0 || modelContextLimit > 1_000_000) {
+                throw new IllegalArgumentException(
+                        path + ".model-context-limit은 1 이상 1000000 이하여야 합니다.");
+            }
+            if (safetyMarginTokens == null || safetyMarginTokens <= 0) {
+                throw new IllegalArgumentException(path + ".safety-margin-tokens는 0보다 커야 합니다.");
+            }
+            long reserved = (long) maxInputTokens + maxOutputTokens + safetyMarginTokens;
+            if (reserved > modelContextLimit) {
+                throw new IllegalArgumentException(
+                        path + "의 input + output + safety margin이 model context limit을 초과합니다.");
+            }
+            if (!CONSERVATIVE_CHAR_V1.equals(tokenEstimationPolicy)) {
+                throw new IllegalArgumentException(
+                        path + ".token-estimation-policy는 지원되는 version이어야 합니다.");
+            }
+            if (!REJECT_OVERSIZED_INPUT_V1.equals(singleInputOverflowPolicy)) {
+                throw new IllegalArgumentException(
+                        path + ".single-input-overflow-policy는 지원되는 version이어야 합니다.");
             }
             if (maxRetries == null || maxRetries < 0) {
                 throw new IllegalArgumentException(path + ".max-retries는 0 이상이어야 합니다.");
@@ -107,7 +182,12 @@ public record AiProperties(
     public record FeatureOptions(
             String model,
             Duration timeout,
+            Integer maxInputTokens,
             Integer maxOutputTokens,
+            Integer modelContextLimit,
+            Integer safetyMarginTokens,
+            String tokenEstimationPolicy,
+            String singleInputOverflowPolicy,
             Integer maxRetries,
             Duration initialBackoff,
             Duration maxBackoff

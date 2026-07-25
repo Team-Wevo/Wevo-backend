@@ -47,6 +47,25 @@ public class SectionAccessGuard {
     }
 
     /**
+     * 이미 검증된 project 접근과 section 소속의 일치를 확인해 내부 조회용 증거를 발급한다.
+     *
+     * <p>AI use case처럼 project 권한 검증을 먼저 수행한 흐름에서 중복 멤버십 조회 없이 사용한다.
+     * 다른 project의 section이면 빈 결과 대신 명시적으로 실패한다.
+     */
+    public VerifiedSectionAccess verifySectionAccess(
+            VerifiedProjectAccess projectAccess, Long sectionId
+    ) {
+        if (projectAccess == null) {
+            throw new IllegalArgumentException("검증된 project 접근 정보는 필수입니다.");
+        }
+        ProjectSection section = requireSection(sectionId);
+        if (!projectAccess.projectId().equals(section.getProject().getId())) {
+            throw new IllegalStateException("검증된 project와 대상 section의 소속이 일치하지 않습니다.");
+        }
+        return VerifiedSectionAccess.of(section);
+    }
+
+    /**
      * 섹션 행을 <b>배타 잠금(PESSIMISTIC_WRITE)</b>으로 조회하고 요청자가 프로젝트 참여자인지 검증한다.
      *
      * <p>상태 확인 후 쓰기가 이어지는 참여자 공용 경로(의견 임시저장·제출 등) 전용 —
