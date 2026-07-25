@@ -26,6 +26,7 @@ import com.wevo.backend.user.domain.UserStatus;
 import com.wevo.backend.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -67,13 +68,7 @@ class SynthesisRequestServiceIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        // REQUIRES_NEW로 커밋되는 ai_jobs는 테스트 롤백으로 정리되지 않으므로 명시적으로 비운다.
-        aiJobRepository.deleteAll();
-        opinionRepository.deleteAll();
-        projectMemberRepository.deleteAll();
-        projectSectionRepository.deleteAll();
-        projectRepository.deleteAll();
-        userRepository.deleteAll();
+        deleteAllFixtures();
 
         owner = userRepository.save(User.builder()
                 .name("윤호").email("owner@wevo.com").status(UserStatus.ACTIVE).build());
@@ -95,6 +90,25 @@ class SynthesisRequestServiceIntegrationTest {
                 .status(OpinionStatus.DRAFT).build();
         opinion.submit(NOW.minusHours(1));
         opinionRepository.save(opinion);
+    }
+
+    /**
+     * 남긴 데이터를 <b>끝날 때도 지운다</b> — 롤백되지 않는 통합 테스트라 의견 행이 남으면
+     * 섹션만 지우는 다른 통합 테스트의 정리가 {@code opinions → project_sections} FK로 실패한다.
+     */
+    @AfterEach
+    void tearDown() {
+        deleteAllFixtures();
+    }
+
+    /** 자식 → 부모 순으로 지운다. REQUIRES_NEW로 커밋되는 ai_jobs도 명시적으로 비운다. */
+    private void deleteAllFixtures() {
+        aiJobRepository.deleteAll();
+        opinionRepository.deleteAll();
+        projectMemberRepository.deleteAll();
+        projectSectionRepository.deleteAll();
+        projectRepository.deleteAll();
+        userRepository.deleteAll();
     }
 
     @Test

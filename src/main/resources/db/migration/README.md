@@ -28,6 +28,10 @@ snapshot binding. It intentionally leaves V1 unchanged. The generation CHECK is 
 `NOT VALID`, then `V3__validate_opinion_gate_generation_constraint.sql` validates existing rows
 after Flyway commits V2 so validation does not run while V2's stronger table lock is held.
 
+`V4__add_ai_jobs_section_feature_indexes.sql` indexes the two lookups behind `GET` synthesis
+(latest execution, and latest successful execution per section and feature). It adds indexes only —
+no table, column, or constraint changes — so JPA mapping validation is unaffected.
+
 ## Existing local databases
 
 V1 is an initial migration for an **empty PostgreSQL database**. A database previously
