@@ -5,6 +5,8 @@ import com.openai.core.http.Headers;
 import com.openai.errors.OpenAIServiceException;
 import com.wevo.backend.ai.config.AiProperties;
 import com.wevo.backend.ai.config.NvidiaProviderProperties;
+import com.wevo.backend.ai.context.AiTokenBudgetEstimator;
+import com.wevo.backend.ai.context.AiInputBudgetExceededException;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.exception.AiProviderException;
 import com.wevo.backend.ai.exception.NvidiaExceptionTranslator;
@@ -114,6 +116,23 @@ class SpringAiNvidiaGatewayTest {
                 .isInstanceOf(AiProviderException.class)
                 .extracting(exception -> ((AiProviderException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.AI_PROVIDER_TIMEOUT);
+    }
+
+    @Test
+    void rejectsFinalRenderedInputBeforeCallingProvider() {
+        AtomicInteger providerCalls = new AtomicInteger();
+        SpringAiNvidiaGateway gateway = gateway(prompt -> {
+            providerCalls.incrementAndGet();
+            return response("must not be called");
+        }, Duration.ofSeconds(1), 0, 2);
+        String oversized = "x".repeat(100_001);
+
+        assertThatThrownBy(() -> gateway.generate(
+                new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", oversized)
+        ))
+                .isInstanceOf(AiInputBudgetExceededException.class)
+                .hasMessageNotContaining(oversized);
+        assertThat(providerCalls).hasValue(0);
     }
 
     @Test
@@ -367,7 +386,8 @@ class SpringAiNvidiaGatewayTest {
                 new NvidiaExceptionTranslator(),
                 executor,
                 new AiUsageExtractor(),
-                retrySleeper
+                retrySleeper,
+                new AiTokenBudgetEstimator(properties)
         );
     }
 
