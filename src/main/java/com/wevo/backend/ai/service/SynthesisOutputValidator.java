@@ -33,7 +33,9 @@ public class SynthesisOutputValidator implements StructuredOutputValidator<Synth
         requireText(output.consensusSummary(), MAX_CONSENSUS_LENGTH);
 
         List<IssueOut> issues = output.issues();
-        if (issues == null || issues.size() > SynthesisContract.MAX_TOTAL_ISSUES) {
+        if (issues == null
+                || issues.size() > SynthesisContract.MAX_TOTAL_ISSUES
+                || issues.stream().anyMatch(issue -> issue == null)) {
             throw reject();
         }
 

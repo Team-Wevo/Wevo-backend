@@ -7,6 +7,7 @@ import com.wevo.backend.ai.client.StructuredOutputSemanticException;
 import com.wevo.backend.ai.client.StructuredOutputValidationContext;
 import com.wevo.backend.ai.service.SynthesisAiOutput.IssueOut;
 import com.wevo.backend.issue.domain.IssueType;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
@@ -56,6 +57,17 @@ class SynthesisOutputValidatorTest {
         SynthesisAiOutput output = new SynthesisAiOutput("합의점", List.of(
                 gap(List.of(1L)), gap(List.of(2L)),
                 conflict(List.of(1L)), conflict(List.of(2L)), conflict(List.of(3L))));
+
+        assertThatThrownBy(() -> validate(output))
+                .isInstanceOf(StructuredOutputSemanticException.class);
+    }
+
+    @Test
+    @DisplayName("쟁점 배열에 null 원소가 있으면 의미 검증 실패로 거부한다")
+    void validate_nullIssue_rejectedAsSemanticFailure() {
+        SynthesisAiOutput output = new SynthesisAiOutput(
+                "합의점",
+                Collections.singletonList(null));
 
         assertThatThrownBy(() -> validate(output))
                 .isInstanceOf(StructuredOutputSemanticException.class);
