@@ -92,6 +92,33 @@ public class AiJobPersistenceService {
         findForUpdate(requestId).heartbeat(heartbeatAt);
     }
 
+    /**
+     * 행 잠금 후 heartbeat가 <b>여전히</b> 기준 시각보다 오래됐을 때만 작업을 실패로 회수한다.
+     *
+     * <p>회수 스케줄러의 "오래된 작업 조회 → 실패 처리" 사이에 worker가 heartbeat를 갱신하는 경합에서,
+     * 살아 있는 작업을 오회수(정상 AI 결과·비용 유실)하지 않도록 실패 전이 직전에 조건을 원자적으로
+     * 재확인한다. worker의 {@link #heartbeat}도 같은 행을 잠그므로 둘은 직렬화된다.
+     *
+     * @return 실제로 회수(FAILED 전이)했으면 {@code true}, 조건 불충족으로 건너뛰었으면 {@code false}
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean failIfHeartbeatStale(UUID requestId, LocalDateTime threshold, LocalDateTime failedAt) {
+        AiJob job = findForUpdate(requestId);
+        if (job.getStatus() != AiJobStatus.RUNNING) {
+            return false;
+        }
+        LocalDateTime lastHeartbeatAt = job.getLastHeartbeatAt();
+        if (lastHeartbeatAt != null && !lastHeartbeatAt.isBefore(threshold)) {
+            return false; // 조회 이후 heartbeat가 갱신됨 — 살아 있는 작업이므로 회수하지 않는다.
+        }
+        job.fail(
+                AiErrorType.WORKER_HEARTBEAT_TIMEOUT,
+                "AI 작업 worker의 heartbeat 제한 시간이 초과되었습니다.",
+                failedAt
+        );
+        return true;
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void fail(
             UUID requestId,

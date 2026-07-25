@@ -275,7 +275,8 @@ class AiJobServiceIntegrationTest {
 
         UUID heartbeatTimeout = jobService.createOrGet(command("c".repeat(64))).requestId();
         jobService.start(heartbeatTimeout, "c".repeat(64));
-        jobService.markWorkerHeartbeatTimedOut(heartbeatTimeout);
+        boolean recovered = jobService.recoverIfHeartbeatStale(heartbeatTimeout, futureThreshold);
+        assertThat(recovered).isTrue();
         assertThat(jobRepository.findByRequestId(heartbeatTimeout).orElseThrow().getFinalErrorType())
                 .isEqualTo(AiErrorType.WORKER_HEARTBEAT_TIMEOUT);
     }

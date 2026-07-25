@@ -11,6 +11,7 @@ import com.wevo.backend.project.service.VerifiedSectionAccess;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
@@ -144,5 +145,51 @@ public class SynthesisSetQueryService {
                 answer.getId(),
                 answer.getContent(),
                 answer.getAnsweredAt());
+    }
+
+    /**
+     * 섹션의 현재 정리 세트를 기준으로 <b>AI 재정리 입력에 포함할 GAP 답변 집합</b>을 조회한다. (§3.8.1)
+     *
+     * <p>집합은 <b>현재 세트의 직접 답변</b>과 <b>현재 세트가 승계한 이전 답변의 원본</b>의 합집합이며
+     * {@code answerId} 기준으로 중복을 제거한다 — 여러 세대에 걸쳐 재정리해도 앞선 답변이 유실되지
+     * 않는다. 정리 이력이 없으면 빈 목록을 반환한다.
+     *
+     * <p>반환 순서는 {@code answerId} 오름차순으로 고정한다 — 입력 스냅샷 해시가 조회 순서에
+     * 흔들리지 않게 하기 위한 canonical 정렬이다.
+     */
+    public List<GapAnswerInputView> findCurrentGapAnswerInput(Long projectSectionId) {
+        SynthesisSet current = synthesisSetRepository
+                .findTopByProjectSectionIdOrderByCreatedAtDescIdDesc(projectSectionId)
+                .orElse(null);
+        if (current == null) {
+            return List.of();
+        }
+        Long currentSetId = current.getId();
+
+        Map<Long, GapAnswerInputView> byAnswerId = new LinkedHashMap<>();
+        for (IssueAnswer answer : issueAnswerRepository.findAllByIssue_SynthesisSet_Id(currentSetId)) {
+            byAnswerId.putIfAbsent(answer.getId(), new GapAnswerInputView(
+                    answer.getId(),
+                    answer.getIssue().getId(),
+                    answer.getAuthorNameSnapshot(),
+                    answer.getContent()
+            ));
+        }
+        inheritedGapAnswerRepository.findAllBySynthesisSet_Id(currentSetId).forEach(ref -> {
+            if (byAnswerId.containsKey(ref.getSourceAnswerId())) {
+                return;
+            }
+            issueAnswerRepository.findById(ref.getSourceAnswerId()).ifPresent(answer ->
+                    byAnswerId.put(answer.getId(), new GapAnswerInputView(
+                            answer.getId(),
+                            ref.getSourceIssueId(),
+                            answer.getAuthorNameSnapshot(),
+                            answer.getContent()
+                    )));
+        });
+
+        return byAnswerId.values().stream()
+                .sorted(Comparator.comparing(GapAnswerInputView::answerId))
+                .toList();
     }
 }
