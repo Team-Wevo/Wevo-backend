@@ -96,14 +96,24 @@ public class AiJobService {
         return persistenceService.start(requestId, currentSnapshotHash, now());
     }
 
+    /**
+     * 완료 처리 트랜잭션 안에서 입력을 재대조하고, 통과했을 때만 결과를 저장한다.
+     *
+     * <p>현재 입력 해시는 {@code snapshotProbe}로 <b>저장 트랜잭션 안에서</b> 계산된다
+     * ({@link AiJobSnapshotProbe} 참고 — 계산과 저장 사이의 입력 변경을 막기 위한 계약이다).
+     */
     public AiJobCompletionResult succeed(
             UUID requestId,
-            String currentSnapshotHash,
+            AiJobSnapshotProbe snapshotProbe,
             AiJobResultWriter resultWriter
     ) {
-        requireSnapshotHash(currentSnapshotHash);
+        Objects.requireNonNull(snapshotProbe, "snapshotProbe는 필수입니다.");
         Objects.requireNonNull(resultWriter, "resultWriter는 필수입니다.");
-        return persistenceService.succeed(requestId, currentSnapshotHash, resultWriter, now());
+        return persistenceService.succeed(
+                requestId,
+                () -> requireSnapshotHash(snapshotProbe.currentSnapshotHash()),
+                resultWriter,
+                now());
     }
 
     public void heartbeat(UUID requestId) {
@@ -205,9 +215,10 @@ public class AiJobService {
         return LocalDateTime.now(clock);
     }
 
-    private void requireSnapshotHash(String snapshotHash) {
+    private String requireSnapshotHash(String snapshotHash) {
         if (snapshotHash == null || !snapshotHash.matches("[0-9a-f]{64}")) {
             throw new IllegalArgumentException("currentSnapshotHash는 64자리 소문자 SHA-256 hex여야 합니다.");
         }
+        return snapshotHash;
     }
 }

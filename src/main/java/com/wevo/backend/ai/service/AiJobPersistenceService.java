@@ -67,10 +67,18 @@ public class AiJobPersistenceService {
         return new AiJobStartResult(job.getRequestId(), job.getStatus(), true);
     }
 
+    /**
+     * 입력 재대조와 결과 저장을 <b>한 트랜잭션에서</b> 처리한다.
+     *
+     * <p>현재 입력 해시는 호출자가 미리 계산해 넘기지 않고 {@link AiJobSnapshotProbe}로 <b>이 트랜잭션
+     * 안에서</b> 계산한다 — 밖에서 계산하면 계산과 저장 사이에 의견·답변이 커밋돼도 AiJob 행 잠금으로는
+     * 막히지 않아, 대조는 통과했지만 낡은 입력 기준의 결과가 저장될 수 있다. probe가 입력 쓰기 경로와
+     * 같은 잠금(섹션 행)을 먼저 잡으므로, 이 트랜잭션이 시작된 뒤의 입력 변경은 반드시 대조에 반영된다.
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public AiJobCompletionResult succeed(
             UUID requestId,
-            String currentSnapshotHash,
+            AiJobSnapshotProbe snapshotProbe,
             AiJobResultWriter resultWriter,
             LocalDateTime completedAt
     ) {
@@ -78,7 +86,7 @@ public class AiJobPersistenceService {
         if (job.getStatus() != AiJobStatus.RUNNING) {
             throw new BusinessException(ErrorCode.AI_JOB_INVALID_STATE_TRANSITION);
         }
-        if (!job.hasSameSnapshot(currentSnapshotHash)) {
+        if (!job.hasSameSnapshot(snapshotProbe.currentSnapshotHash())) {
             job.markStale(completedAt);
             return new AiJobCompletionResult(job.getRequestId(), job.getStatus(), null, false);
         }

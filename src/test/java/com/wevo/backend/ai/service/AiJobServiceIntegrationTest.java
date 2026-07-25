@@ -125,7 +125,7 @@ class AiJobServiceIntegrationTest {
         assertThat(jobRepository.count()).isEqualTo(1);
 
         jobService.start(created.requestId(), SNAPSHOT);
-        jobService.succeed(created.requestId(), SNAPSHOT, () -> 91L);
+        jobService.succeed(created.requestId(), () -> SNAPSHOT, () -> 91L);
 
         AiJobCreateResult reused = jobService.createOrGet(command());
         assertThat(reused.resultReused()).isTrue();
@@ -168,7 +168,7 @@ class AiJobServiceIntegrationTest {
         jobService.start(beforeCompletion, CHANGED_SNAPSHOT);
         AtomicBoolean writerCalled = new AtomicBoolean();
 
-        AiJobCompletionResult stale = jobService.succeed(beforeCompletion, SNAPSHOT, () -> {
+        AiJobCompletionResult stale = jobService.succeed(beforeCompletion, () -> SNAPSHOT, () -> {
             writerCalled.set(true);
             return 92L;
         });
@@ -184,7 +184,7 @@ class AiJobServiceIntegrationTest {
         UUID requestId = jobService.createOrGet(command()).requestId();
         AtomicBoolean writerCalled = new AtomicBoolean();
 
-        assertThatThrownBy(() -> jobService.succeed(requestId, SNAPSHOT, () -> {
+        assertThatThrownBy(() -> jobService.succeed(requestId, () -> SNAPSHOT, () -> {
             writerCalled.set(true);
             return 1L;
         })).isInstanceOf(BusinessException.class);
@@ -228,7 +228,7 @@ class AiJobServiceIntegrationTest {
         assertThat(activeRetry.requestId()).isEqualTo(active);
 
         jobService.start(active, SNAPSHOT);
-        jobService.succeed(active, SNAPSHOT, () -> 10L);
+        jobService.succeed(active, () -> SNAPSHOT, () -> 10L);
         assertThatThrownBy(() -> jobService.retry(active, user))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())

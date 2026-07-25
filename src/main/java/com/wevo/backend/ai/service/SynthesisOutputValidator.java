@@ -81,6 +81,12 @@ public class SynthesisOutputValidator implements StructuredOutputValidator<Synth
     private void validateGap(IssueOut issue) {
         // GAP은 질문·선택지를 갖지 않는다 (§5.1.3 — 결정은 CONFLICT만).
         // 잘못된 출력(질문·선택지가 있는 GAP)은 저장 단계에서 버리기 전에 여기서 교정 재시도시킨다.
+        //
+        // 빈 문자열·빈 배열은 <b>정상</b>이다 — 구조화 출력 스키마는 record의 모든 필드를 요구하므로
+        // GAP의 question은 ""로, options는 []로 오는 것이 계약이다(SynthesisAiOutput 참고).
+        // 저장 경로(SynthesisJobHandler#toIssueSpec)가 GAP의 question을 null로 정규화하므로
+        // Issue 도메인의 "GAP은 question을 가질 수 없다" 불변식과도 어긋나지 않는다.
+        // 따라서 여기서는 "값이 실제로 들어있는" 경우만 거부한다.
         if (issue.question() != null && !issue.question().isBlank()) {
             throw reject();
         }
