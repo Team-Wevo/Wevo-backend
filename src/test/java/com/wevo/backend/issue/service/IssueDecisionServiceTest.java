@@ -20,10 +20,11 @@ import com.wevo.backend.issue.dto.response.IssueDecisionResponse;
 import com.wevo.backend.issue.repository.IssueDecisionRepository;
 import com.wevo.backend.issue.repository.IssueOptionRepository;
 import com.wevo.backend.issue.repository.IssueRepository;
-import com.wevo.backend.issue.repository.SynthesisSetRepository;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.section.domain.ProjectSection;
+import java.sql.SQLException;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,6 +32,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,17 +42,18 @@ class IssueDecisionServiceTest {
     private static final Long SET_ID = 20L;
     private static final Long SECTION_ID = 30L;
     private static final Long OWNER_ID = 40L;
+    private static final UUID SET_REQUEST_ID =
+            UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final String OPTION_TEXT = "대학생 팀";
 
     @Mock private IssueRepository issueRepository;
     @Mock private IssueOptionRepository issueOptionRepository;
     @Mock private IssueDecisionRepository issueDecisionRepository;
-    @Mock private SynthesisSetRepository synthesisSetRepository;
+    @Mock private CurrentSynthesisSetResolver currentSynthesisSetResolver;
     @Mock private SectionAccessGuard sectionAccessGuard;
     @Mock private Issue issue;
     @Mock private IssueOption option;
     @Mock private SynthesisSet issueSet;
-    @Mock private SynthesisSet anotherSet;
     @Mock private ProjectSection section;
 
     private IssueDecisionService service;
@@ -61,7 +64,7 @@ class IssueDecisionServiceTest {
                 issueRepository,
                 issueOptionRepository,
                 issueDecisionRepository,
-                synthesisSetRepository,
+                currentSynthesisSetResolver,
                 sectionAccessGuard);
     }
 
@@ -153,9 +156,10 @@ class IssueDecisionServiceTest {
         givenIssueAndSet();
         given(sectionAccessGuard.requireOwnedSectionForUpdate(SECTION_ID, OWNER_ID))
                 .willReturn(section);
-        given(anotherSet.getId()).willReturn(99L);
-        given(synthesisSetRepository.findTopByProjectSectionIdOrderByCreatedAtDescIdDesc(SECTION_ID))
-                .willReturn(Optional.of(anotherSet));
+        given(currentSynthesisSetResolver.findCurrent(SECTION_ID))
+                .willReturn(Optional.of(new CurrentSynthesisSetReference(
+                        UUID.fromString("99999999-9999-9999-9999-999999999999"),
+                        99L)));
 
         assertError(
                 () -> service.decide(
@@ -205,16 +209,34 @@ class IssueDecisionServiceTest {
     }
 
     @Test
-    @DisplayName("DB 유니크 제약 경합은 409 C003으로 변환한다")
+    @DisplayName("결정 중복 유니크 제약은 409 C003으로 변환한다")
     void decide_uniqueConstraintRace_returnsC003() {
         givenValidPendingConflict();
         given(issueDecisionRepository.saveAndFlush(any(IssueDecision.class)))
-                .willThrow(new DataIntegrityViolationException("duplicate"));
+                .willThrow(constraintViolation("uk_issue_decisions_issue"));
 
         assertError(
                 () -> service.decide(
                         ISSUE_ID, OWNER_ID, new IssueDecisionRequest(null, "직접 결정")),
                 ErrorCode.CONFLICT);
+    }
+
+    @Test
+    @DisplayName("예상하지 못한 DB 무결성 오류는 C003으로 숨기지 않고 내부 오류로 전환한다")
+    void decide_unexpectedConstraint_wrapsAsInternalError() {
+        givenValidPendingConflict();
+        DataIntegrityViolationException unexpected =
+                constraintViolation("fk_issue_decisions_decided_by");
+        given(issueDecisionRepository.saveAndFlush(any(IssueDecision.class)))
+                .willThrow(unexpected);
+
+        assertThatThrownBy(() -> service.decide(
+                ISSUE_ID,
+                OWNER_ID,
+                new IssueDecisionRequest(null, "직접 결정")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("예상하지 못한 쟁점 결정 데이터 무결성 오류입니다.")
+                .hasCause(unexpected);
     }
 
     @Test
@@ -238,8 +260,10 @@ class IssueDecisionServiceTest {
         givenIssueAndSet();
         given(sectionAccessGuard.requireOwnedSectionForUpdate(SECTION_ID, OWNER_ID))
                 .willReturn(section);
-        given(synthesisSetRepository.findTopByProjectSectionIdOrderByCreatedAtDescIdDesc(SECTION_ID))
-                .willReturn(Optional.of(issueSet));
+        given(issueSet.getRequestId()).willReturn(SET_REQUEST_ID);
+        given(currentSynthesisSetResolver.findCurrent(SECTION_ID))
+                .willReturn(Optional.of(
+                        new CurrentSynthesisSetReference(SET_REQUEST_ID, SET_ID)));
     }
 
     private void givenIssueAndSet() {
@@ -254,5 +278,13 @@ class IssueDecisionServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(exception -> assertThat(
                         ((BusinessException) exception).getErrorCode()).isEqualTo(expected));
+    }
+
+    private DataIntegrityViolationException constraintViolation(String constraintName) {
+        ConstraintViolationException cause = new ConstraintViolationException(
+                "constraint violation",
+                new SQLException("constraint violation"),
+                constraintName);
+        return new DataIntegrityViolationException("constraint violation", cause);
     }
 }

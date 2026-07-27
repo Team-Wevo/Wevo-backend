@@ -3,14 +3,20 @@ package com.wevo.backend.issue.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.wevo.backend.global.config.CorsProperties;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.global.security.AuthPrincipal;
+import com.wevo.backend.global.security.JwtProvider;
+import com.wevo.backend.global.security.RestAccessDeniedHandler;
+import com.wevo.backend.global.security.RestAuthenticationEntryPoint;
+import com.wevo.backend.global.security.SecurityConfig;
 import com.wevo.backend.issue.domain.IssueStatus;
 import com.wevo.backend.issue.dto.request.IssueDecisionRequest;
 import com.wevo.backend.issue.dto.response.IssueDecisionResponse;
@@ -18,16 +24,31 @@ import com.wevo.backend.issue.service.IssueDecisionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration;
+import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterAutoConfiguration;
+import org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
-@SpringBootTest
-@AutoConfigureMockMvc
+@WebMvcTest(IssueController.class)
+@ImportAutoConfiguration({
+        SecurityAutoConfiguration.class,
+        ServletWebSecurityAutoConfiguration.class,
+        SecurityFilterAutoConfiguration.class
+})
+@Import({
+        SecurityConfig.class,
+        RestAuthenticationEntryPoint.class,
+        RestAccessDeniedHandler.class
+})
+@EnableConfigurationProperties(CorsProperties.class)
 class IssueControllerWebMvcTest {
 
     private static final String URL = "/api/issues/10/decision";
@@ -37,6 +58,9 @@ class IssueControllerWebMvcTest {
 
     @MockitoBean
     private IssueDecisionService issueDecisionService;
+
+    @MockitoBean
+    private JwtProvider jwtProvider;
 
     @Test
     @DisplayName("인증 없이 호출하면 401 A001을 반환한다")
@@ -66,6 +90,9 @@ class IssueControllerWebMvcTest {
                 .andExpect(jsonPath("$.data.issueId").value(10))
                 .andExpect(jsonPath("$.data.status").value("RESOLVED"))
                 .andExpect(jsonPath("$.timestamp").exists());
+
+        then(issueDecisionService).should()
+                .decide(eq(10L), eq(7L), any(IssueDecisionRequest.class));
     }
 
     @Test
@@ -138,6 +165,20 @@ class IssueControllerWebMvcTest {
     }
 
     @Test
+    @DisplayName("선택지 문자열이 200자를 초과하면 400 C001이다")
+    void tooLongSelectedOption_returnsC001() throws Exception {
+        String tooLong = "가".repeat(201);
+
+        mockMvc.perform(post(URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"selectedOption\":\"" + tooLong + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"))
+                .andExpect(jsonPath("$.errors[0].field").value("selectedOption"));
+    }
+
+    @Test
     @DisplayName("멤버지만 OWNER가 아니면 403 A002이다")
     void member_returnsA002() throws Exception {
         given(issueDecisionService.decide(eq(10L), eq(7L), any(IssueDecisionRequest.class)))
@@ -177,6 +218,21 @@ class IssueControllerWebMvcTest {
                         .content("{\"customInput\":\"직접 결정\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("C003"));
+    }
+
+    @Test
+    @DisplayName("예상하지 못한 내부 오류는 500 C999로 반환한다")
+    void unexpectedError_returnsC999() throws Exception {
+        given(issueDecisionService.decide(eq(10L), eq(7L), any(IssueDecisionRequest.class)))
+                .willThrow(new IllegalStateException("internal detail"));
+
+        mockMvc.perform(post(URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"customInput\":\"직접 결정\"}"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("C999"))
+                .andExpect(jsonPath("$.message").value(ErrorCode.INTERNAL_SERVER_ERROR.getMessage()));
     }
 
     private RequestPostProcessor authenticatedUser() {

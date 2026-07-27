@@ -20,6 +20,8 @@ import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.issue.domain.IssueStatus;
 import com.wevo.backend.issue.domain.IssueType;
+import com.wevo.backend.issue.service.CurrentSynthesisSetReference;
+import com.wevo.backend.issue.service.CurrentSynthesisSetResolver;
 import com.wevo.backend.issue.service.SynthesisSetView;
 import com.wevo.backend.issue.service.SynthesisSetView.AnswerView;
 import com.wevo.backend.issue.service.SynthesisSetView.DecisionView;
@@ -55,6 +57,7 @@ class SynthesisQueryServiceTest {
 
     @Mock private SectionAccessGuard sectionAccessGuard;
     @Mock private AiJobRepository aiJobRepository;
+    @Mock private CurrentSynthesisSetResolver currentSynthesisSetResolver;
     @Mock private SynthesisSetViewService synthesisSetViewService;
     @Mock private ProjectSection section;
 
@@ -62,7 +65,11 @@ class SynthesisQueryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new SynthesisQueryService(sectionAccessGuard, aiJobRepository, synthesisSetViewService);
+        service = new SynthesisQueryService(
+                sectionAccessGuard,
+                aiJobRepository,
+                currentSynthesisSetResolver,
+                synthesisSetViewService);
         given(sectionAccessGuard.requireParticipantSection(SECTION_ID, USER_ID)).willReturn(section);
         given(section.isSynthesisStale()).willReturn(false);
     }
@@ -78,10 +85,7 @@ class SynthesisQueryServiceTest {
         assertThat(response.synthesisStale()).isNull();
         assertThat(response.latestJob()).isNull();
         assertThat(response.currentSet()).isNull();
-        verifyNoInteractions(synthesisSetViewService);
-        verify(aiJobRepository, never())
-                .findTopByProjectSection_IdAndFeatureAndStatusOrderByCompletedAtDescIdDesc(
-                        anyLong(), any(), any());
+        verifyNoInteractions(currentSynthesisSetResolver, synthesisSetViewService);
     }
 
     @Test
@@ -227,7 +231,8 @@ class SynthesisQueryServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.SECTION_NOT_FOUND));
 
-        verifyNoInteractions(aiJobRepository, synthesisSetViewService);
+        verifyNoInteractions(
+                aiJobRepository, currentSynthesisSetResolver, synthesisSetViewService);
     }
 
     private void givenLatestJob(AiJob job) {
@@ -237,9 +242,11 @@ class SynthesisQueryServiceTest {
     }
 
     private void givenLatestSucceededJob(AiJob job) {
-        given(aiJobRepository.findTopByProjectSection_IdAndFeatureAndStatusOrderByCompletedAtDescIdDesc(
-                SECTION_ID, AiFeature.OPINION_SYNTHESIS, AiJobStatus.SUCCEEDED))
-                .willReturn(Optional.ofNullable(job));
+        CurrentSynthesisSetReference reference = job == null
+                ? null
+                : new CurrentSynthesisSetReference(job.getRequestId(), job.getResultId());
+        given(currentSynthesisSetResolver.findCurrent(SECTION_ID))
+                .willReturn(Optional.ofNullable(reference));
     }
 
     private AiJob job(UUID requestId, AiJobStatus status, AiErrorType errorType,

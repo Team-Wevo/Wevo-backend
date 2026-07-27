@@ -36,6 +36,16 @@ class IssueDomainTest {
     }
 
     @Test
+    @DisplayName("선택지는 200자를 초과할 수 없다")
+    void option_rejectsTextOverMaxLength() {
+        assertThatIllegalArgumentException().isThrownBy(() -> IssueOption.builder()
+                .issue(conflict())
+                .optionText("가".repeat(IssueOption.MAX_OPTION_TEXT_LENGTH + 1))
+                .sortOrder(1)
+                .build());
+    }
+
+    @Test
     @DisplayName("결정은 CONFLICT에 선택지 또는 직접 입력 하나만 저장한다")
     void decision_acceptsExactlyOneChoiceForConflict() {
         Issue conflict = conflict();

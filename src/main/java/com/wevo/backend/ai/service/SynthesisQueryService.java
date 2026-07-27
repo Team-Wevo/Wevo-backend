@@ -3,7 +3,6 @@ package com.wevo.backend.ai.service;
 import com.wevo.backend.ai.domain.AiErrorType;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
-import com.wevo.backend.ai.domain.AiJobStatus;
 import com.wevo.backend.ai.domain.AiRequestStatus;
 import com.wevo.backend.ai.dto.response.SynthesisResponse;
 import com.wevo.backend.ai.dto.response.SynthesisResponse.AnswerResponse;
@@ -16,6 +15,8 @@ import com.wevo.backend.ai.dto.response.SynthesisResponse.LatestJobResponse;
 import com.wevo.backend.ai.dto.response.SynthesisResponse.RelatedOpinionResponse;
 import com.wevo.backend.ai.repository.AiJobRepository;
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.issue.service.CurrentSynthesisSetReference;
+import com.wevo.backend.issue.service.CurrentSynthesisSetResolver;
 import com.wevo.backend.issue.service.SynthesisSetView;
 import com.wevo.backend.issue.service.SynthesisSetViewService;
 import com.wevo.backend.project.service.SectionAccessGuard;
@@ -43,13 +44,16 @@ public class SynthesisQueryService {
 
     private final SectionAccessGuard sectionAccessGuard;
     private final AiJobRepository aiJobRepository;
+    private final CurrentSynthesisSetResolver currentSynthesisSetResolver;
     private final SynthesisSetViewService synthesisSetViewService;
 
     public SynthesisQueryService(SectionAccessGuard sectionAccessGuard,
                                  AiJobRepository aiJobRepository,
+                                 CurrentSynthesisSetResolver currentSynthesisSetResolver,
                                  SynthesisSetViewService synthesisSetViewService) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.aiJobRepository = aiJobRepository;
+        this.currentSynthesisSetResolver = currentSynthesisSetResolver;
         this.synthesisSetViewService = synthesisSetViewService;
     }
 
@@ -91,10 +95,8 @@ public class SynthesisQueryService {
      * 최신 성공 실행의 결과를 현재 세트로 조립한다. 성공 이력이 없으면 {@code null}(응답에서 생략).
      */
     private CurrentSetResponse currentSet(Long projectSectionId) {
-        return aiJobRepository
-                .findTopByProjectSection_IdAndFeatureAndStatusOrderByCompletedAtDescIdDesc(
-                        projectSectionId, FEATURE, AiJobStatus.SUCCEEDED)
-                .map(succeeded -> linkedSetView(projectSectionId, succeeded))
+        return currentSynthesisSetResolver.findCurrent(projectSectionId)
+                .map(reference -> linkedSetView(projectSectionId, reference))
                 .map(this::toCurrentSetResponse)
                 .orElse(null);
     }
@@ -108,13 +110,17 @@ public class SynthesisQueryService {
      * <b>다른 세대 세트</b>를 가리키는 어긋난 참조도 정상 응답으로 나가므로, 여기서 요청 ID 일치를
      * 확인해 조용한 오답 대신 즉시 실패로 드러낸다.
      */
-    private SynthesisSetView linkedSetView(Long projectSectionId, AiJob succeeded) {
+    private SynthesisSetView linkedSetView(
+            Long projectSectionId,
+            CurrentSynthesisSetReference reference
+    ) {
         SynthesisSetView view =
-                synthesisSetViewService.getSetView(projectSectionId, succeeded.getResultId());
-        if (!succeeded.getRequestId().equals(view.setId())) {
+                synthesisSetViewService.getSetView(
+                        projectSectionId, reference.synthesisSetId());
+        if (!reference.requestId().equals(view.setId())) {
             throw new IllegalStateException(
                     "성공한 AI 작업과 정리 세트의 requestId가 일치하지 않습니다: resultId="
-                            + succeeded.getResultId());
+                            + reference.synthesisSetId());
         }
         return view;
     }

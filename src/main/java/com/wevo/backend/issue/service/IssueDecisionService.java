@@ -13,11 +13,11 @@ import com.wevo.backend.issue.dto.response.IssueDecisionResponse;
 import com.wevo.backend.issue.repository.IssueDecisionRepository;
 import com.wevo.backend.issue.repository.IssueOptionRepository;
 import com.wevo.backend.issue.repository.IssueRepository;
-import com.wevo.backend.issue.repository.SynthesisSetRepository;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Objects;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,24 +29,25 @@ import org.springframework.transaction.annotation.Transactional;
 public class IssueDecisionService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final String UNIQUE_DECISION_CONSTRAINT = "uk_issue_decisions_issue";
 
     private final IssueRepository issueRepository;
     private final IssueOptionRepository issueOptionRepository;
     private final IssueDecisionRepository issueDecisionRepository;
-    private final SynthesisSetRepository synthesisSetRepository;
+    private final CurrentSynthesisSetResolver currentSynthesisSetResolver;
     private final SectionAccessGuard sectionAccessGuard;
 
     public IssueDecisionService(
             IssueRepository issueRepository,
             IssueOptionRepository issueOptionRepository,
             IssueDecisionRepository issueDecisionRepository,
-            SynthesisSetRepository synthesisSetRepository,
+            CurrentSynthesisSetResolver currentSynthesisSetResolver,
             SectionAccessGuard sectionAccessGuard
     ) {
         this.issueRepository = issueRepository;
         this.issueOptionRepository = issueOptionRepository;
         this.issueDecisionRepository = issueDecisionRepository;
-        this.synthesisSetRepository = synthesisSetRepository;
+        this.currentSynthesisSetResolver = currentSynthesisSetResolver;
         this.sectionAccessGuard = sectionAccessGuard;
     }
 
@@ -80,8 +81,11 @@ public class IssueDecisionService {
             issueDecisionRepository.saveAndFlush(decision);
             issue.resolve(decision);
         } catch (DataIntegrityViolationException exception) {
-            // DB 유니크·복합 FK 제약은 애플리케이션 검사와 별개인 최종 무결성 경계다.
-            throw new BusinessException(ErrorCode.CONFLICT);
+            if (violatesConstraint(exception, UNIQUE_DECISION_CONSTRAINT)) {
+                throw new BusinessException(ErrorCode.CONFLICT);
+            }
+            throw new IllegalStateException(
+                    "예상하지 못한 쟁점 결정 데이터 무결성 오류입니다.", exception);
         }
 
         return IssueDecisionResponse.resolved(issueId);
@@ -122,11 +126,12 @@ public class IssueDecisionService {
     }
 
     private void requireCurrentSet(SynthesisSet issueSet) {
-        SynthesisSet current = synthesisSetRepository
-                .findTopByProjectSectionIdOrderByCreatedAtDescIdDesc(issueSet.getProjectSectionId())
+        CurrentSynthesisSetReference current = currentSynthesisSetResolver
+                .findCurrent(issueSet.getProjectSectionId())
                 .orElseThrow(() -> new IllegalStateException(
                         "쟁점이 속한 섹션의 현재 정리 세트가 없습니다."));
-        if (!Objects.equals(current.getId(), issueSet.getId())) {
+        if (!Objects.equals(current.synthesisSetId(), issueSet.getId())
+                || !Objects.equals(current.requestId(), issueSet.getRequestId())) {
             throw new BusinessException(ErrorCode.CONFLICT);
         }
     }
@@ -154,5 +159,19 @@ public class IssueDecisionService {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private boolean violatesConstraint(
+            DataIntegrityViolationException exception,
+            String expectedConstraint
+    ) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof ConstraintViolationException constraintViolation) {
+                return expectedConstraint.equals(constraintViolation.getConstraintName());
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 }

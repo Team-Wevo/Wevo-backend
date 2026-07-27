@@ -185,6 +185,50 @@ class IssueDecisionIntegrationTest {
     }
 
     @Test
+    @DisplayName("세트 생성 순서와 작업 완료 순서가 달라도 최신 완료 작업의 쟁점만 결정할 수 있다")
+    void currentSet_followsLatestSucceededJobResult() {
+        SynthesisSet latestByCompletion =
+                succeededSet("완료 기준 현재 세트", NOW.plusSeconds(3));
+        Issue currentIssue = conflict(latestByCompletion, 1);
+        SynthesisSet latestByCreation =
+                succeededSet("생성 기준 최신 세트", NOW.plusSeconds(2));
+        Issue supersededIssue = conflict(latestByCreation, 1);
+
+        IssueDecisionResponse response = issueDecisionService.decide(
+                currentIssue.getId(),
+                owner.getId(),
+                new IssueDecisionRequest(null, "완료 시각 기준 현재 쟁점 결정"));
+
+        assertThat(response.issueId()).isEqualTo(currentIssue.getId());
+        assertError(
+                () -> issueDecisionService.decide(
+                        supersededIssue.getId(),
+                        owner.getId(),
+                        new IssueDecisionRequest(null, "생성 시각 기준 쟁점 결정")),
+                ErrorCode.CONFLICT);
+    }
+
+    @Test
+    @DisplayName("DB에 미해소 쟁점의 결정이 이미 있으면 유니크 제약을 409 C003으로 변환한다")
+    void existingDecisionConstraint_returnsC003() {
+        SynthesisSet set = succeededSet("유니크 제약 검증 세트");
+        Issue issue = conflict(set, 1);
+        issueDecisionRepository.saveAndFlush(
+                IssueDecision.custom(issue, owner.getId(), "기존 결정", NOW));
+
+        assertError(
+                () -> issueDecisionService.decide(
+                        issue.getId(),
+                        owner.getId(),
+                        new IssueDecisionRequest(null, "중복 결정")),
+                ErrorCode.CONFLICT);
+
+        assertThat(issueDecisionRepository.findAll()).hasSize(1);
+        assertThat(issueRepository.findById(issue.getId()).orElseThrow().getStatus())
+                .isEqualTo(IssueStatus.PENDING);
+    }
+
+    @Test
     @DisplayName("동일 쟁점의 동시 결정은 정확히 하나만 성공하고 결정도 하나만 저장된다")
     void concurrentDecision_onlyOneSucceeds() throws Exception {
         Issue issue = conflict(succeededSet("동시 결정 세트"), 1);
@@ -245,6 +289,10 @@ class IssueDecisionIntegrationTest {
     }
 
     private SynthesisSet succeededSet(String summary) {
+        return succeededSet(summary, NOW.plusSeconds(1));
+    }
+
+    private SynthesisSet succeededSet(String summary, LocalDateTime completedAt) {
         UUID requestId = UUID.randomUUID();
         AiJob job = aiJobRepository.save(AiJob.queue(
                 requestId,
@@ -259,15 +307,15 @@ class IssueDecisionIntegrationTest {
                 "model-x",
                 4096,
                 requestId.toString().replace("-", "").repeat(2),
-                NOW));
+                completedAt.minusMinutes(1)));
         SynthesisSet set = synthesisSetRepository.save(SynthesisSet.builder()
                 .requestId(requestId)
                 .projectSectionId(section.getId())
                 .opinionGateGeneration(0)
                 .consensusSummary(summary)
                 .build());
-        job.start(NOW);
-        job.succeed(set.getId(), NOW.plusSeconds(1));
+        job.start(completedAt.minusSeconds(1));
+        job.succeed(set.getId(), completedAt);
         aiJobRepository.save(job);
         return set;
     }

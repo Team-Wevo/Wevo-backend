@@ -28,6 +28,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class IssueOption extends BaseTimeEntity {
 
+    public static final int MAX_OPTION_TEXT_LENGTH = 200;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -47,6 +49,9 @@ public class IssueOption extends BaseTimeEntity {
         this.issue = requireConflict(issue);
         if (optionText == null || optionText.isBlank()) {
             throw new IllegalArgumentException("optionText는 필수입니다.");
+        }
+        if (optionText.length() > MAX_OPTION_TEXT_LENGTH) {
+            throw new IllegalArgumentException("optionText는 200자 이하여야 합니다.");
         }
         if (sortOrder <= 0) {
             throw new IllegalArgumentException("sortOrder는 1 이상이어야 합니다.");

@@ -4,6 +4,7 @@ import com.wevo.backend.ai.client.StructuredOutputValidationContext;
 import com.wevo.backend.ai.client.StructuredOutputSemanticException;
 import com.wevo.backend.ai.client.StructuredOutputValidator;
 import com.wevo.backend.ai.service.SynthesisAiOutput.IssueOut;
+import com.wevo.backend.issue.domain.IssueOption;
 import com.wevo.backend.issue.domain.IssueType;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -24,7 +25,7 @@ public class SynthesisOutputValidator implements StructuredOutputValidator<Synth
     static final int MAX_CONSENSUS_LENGTH = 2_000;
     static final int MAX_DESCRIPTION_LENGTH = 2_000;
     static final int MAX_QUESTION_LENGTH = 500;
-    static final int MAX_OPTION_LENGTH = 200;
+    static final int MAX_OPTION_LENGTH = IssueOption.MAX_OPTION_TEXT_LENGTH;
     static final int MIN_CONFLICT_OPTIONS = 2;
     static final int MAX_CONFLICT_OPTIONS = 5;
 
