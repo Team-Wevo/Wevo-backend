@@ -44,7 +44,8 @@ import org.springframework.stereotype.Component;
  * 영구 잔류해 큐를 막는 것을 방지한다. ② claim 직후부터 최종 종료(succeed·markStale·fail)까지
  * <b>RUNNING 생명주기 전체를 heartbeat로 감싼다</b> — DB 잠금·커넥션 지연으로 오래 걸려도 살아 있는
  * 작업이 회수되지 않게 한다. ③ 입력 스냅샷을 재대조해 요청 이후 입력이 바뀌었으면 STALE 종료.
- * ④ AI 호출·출력 검증. ⑤ 완료 시점 스냅샷 재대조 하에 정리 세트 저장·재정리 플래그 해제를 원자적으로 반영.
+ * ④ AI 호출·출력 검증. ⑤ 완료 처리 트랜잭션에서 섹션 행을 잠그고 입력을 재대조한 뒤, 통과했을 때만
+ * 정리 세트 저장·재정리 플래그 해제를 원자적으로 반영.
  *
  * <p>{@code AiInvocationService}는 provider가 구성된 경우에만 존재하므로 {@link ObjectProvider}로
  * 지연 조회한다.
@@ -141,8 +142,15 @@ public class SynthesisJobHandler implements AiJobHandler {
         SynthesisPersistCommand command = toPersistCommand(job, sectionId, snapshot, output);
 
         // 완료 시점 스냅샷 재대조 — 불일치면 저장하지 않고 STALE로 종료.
-        String completionHash = inputHasher.hash(snapshotAssembler.assemble(sectionId));
-        aiJobService.succeed(requestId, completionHash, () -> {
+        //
+        // 재대조용 조회는 완료 처리 트랜잭션 <b>안에서</b> 수행한다. 밖에서 미리 계산하면 계산과 저장
+        // 사이에 의견·GAP 답변이 커밋돼도 AiJob 행 잠금으로는 막히지 않아, 대조는 통과했는데 저장된
+        // 결과는 낡은 입력 기준이 된다. 섹션 행을 먼저 잠가(의견 저장·제출·마감/재오픈이 잡는 것과 같은
+        // 잠금) 입력 변경과 직렬화한 뒤 현재 입력을 다시 읽는다.
+        aiJobService.succeed(requestId, () -> {
+            sectionSynthesisStateService.lockForResultCommit(sectionId);
+            return inputHasher.hash(snapshotAssembler.assemble(sectionId));
+        }, () -> {
             Long setId = synthesisResultWriteService.persist(command);
             sectionSynthesisStateService.clearSynthesisStale(sectionId);
             return setId;

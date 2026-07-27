@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -45,6 +46,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -132,7 +134,7 @@ class SynthesisJobHandlerTest {
         givenClaimed();
         given(aiInvocationService.invokeStructured(any(), any(), any()))
                 .willReturn(new AiInvocationResult<>(validOutput(), 1L, REQUEST_ID));
-        given(aiJobService.succeed(eq(REQUEST_ID), anyString(), any()))
+        given(aiJobService.succeed(eq(REQUEST_ID), any(), any()))
                 .willReturn(new AiJobCompletionResult(REQUEST_ID, AiJobStatus.SUCCEEDED, 55L, true));
         given(synthesisResultWriteService.persist(any())).willReturn(55L);
 
@@ -150,7 +152,7 @@ class SynthesisJobHandlerTest {
         handler.run(REQUEST_ID);
 
         verify(aiInvocationService, never()).invokeStructured(any(), any(), any());
-        verify(aiJobService, never()).succeed(any(), anyString(), any());
+        verify(aiJobService, never()).succeed(any(), any(), any());
         verify(aiJobService, never()).fail(any(), any());
     }
 
@@ -161,7 +163,7 @@ class SynthesisJobHandlerTest {
         given(aiInvocationService.invokeStructured(any(), any(), any()))
                 .willReturn(new AiInvocationResult<>(validOutput(), 1L, REQUEST_ID));
         given(synthesisResultWriteService.persist(any())).willReturn(55L);
-        given(aiJobService.succeed(eq(REQUEST_ID), anyString(), any())).willAnswer(invocation -> {
+        given(aiJobService.succeed(eq(REQUEST_ID), any(), any())).willAnswer(invocation -> {
             AiJobResultWriter writer = invocation.getArgument(2);
             Long setId = writer.persist();
             return new AiJobCompletionResult(REQUEST_ID, AiJobStatus.SUCCEEDED, setId, true);
@@ -184,6 +186,34 @@ class SynthesisJobHandlerTest {
     }
 
     @Test
+    @DisplayName("완료 재대조는 저장 트랜잭션 안에서 섹션을 잠근 뒤 현재 입력을 다시 읽어 계산한다")
+    void completionProbe_locksSectionThenRereadsInput() {
+        givenClaimed();
+        given(aiInvocationService.invokeStructured(any(), any(), any()))
+                .willReturn(new AiInvocationResult<>(validOutput(), 1L, REQUEST_ID));
+        given(synthesisResultWriteService.persist(any())).willReturn(55L);
+        given(aiJobService.succeed(eq(REQUEST_ID), any(), any())).willAnswer(invocation -> {
+            AiJobSnapshotProbe probe = invocation.getArgument(1);
+            // 완료 처리 전에는 섹션을 잠그지 않는다 — 잠금·재조회는 probe 평가(=저장 트랜잭션) 시점이다.
+            verify(sectionSynthesisStateService, never()).lockForResultCommit(SECTION_ID);
+
+            assertThat(probe.currentSnapshotHash()).isEqualTo(HASH);
+
+            // 잠금이 재조회보다 먼저 — 입력 변경 쓰기 경로와 직렬화된 뒤에 현재 입력을 읽는다.
+            InOrder order = inOrder(sectionSynthesisStateService, snapshotAssembler);
+            order.verify(sectionSynthesisStateService).lockForResultCommit(SECTION_ID);
+            order.verify(snapshotAssembler).assemble(SECTION_ID);
+
+            AiJobResultWriter writer = invocation.getArgument(2);
+            return new AiJobCompletionResult(REQUEST_ID, AiJobStatus.SUCCEEDED, writer.persist(), true);
+        });
+
+        handler.run(REQUEST_ID);
+
+        verify(synthesisResultWriteService).persist(any());
+    }
+
+    @Test
     @DisplayName("claim 후 입력이 바뀌었으면 실행하지 않고 STALE로 종료한다")
     void inputChangedAfterClaim_marksStale() {
         givenClaimed();
@@ -193,7 +223,7 @@ class SynthesisJobHandlerTest {
 
         verify(aiJobService).markStale(REQUEST_ID);
         verify(aiInvocationService, never()).invokeStructured(any(), any(), any());
-        verify(aiJobService, never()).succeed(any(), anyString(), any());
+        verify(aiJobService, never()).succeed(any(), any(), any());
     }
 
     @Test
@@ -218,7 +248,7 @@ class SynthesisJobHandlerTest {
         handler.run(REQUEST_ID);
 
         verify(aiJobService).fail(eq(REQUEST_ID), any(RuntimeException.class));
-        verify(aiJobService, never()).succeed(any(), anyString(), any());
+        verify(aiJobService, never()).succeed(any(), any(), any());
         verify(synthesisResultWriteService, never()).persist(any());
     }
 
@@ -248,7 +278,7 @@ class SynthesisJobHandlerTest {
             heartbeatSeen.await(2, TimeUnit.SECONDS); // 실행 중 heartbeat가 최소 1회 발생할 때까지 대기
             return new AiInvocationResult<>(validOutput(), 1L, REQUEST_ID);
         });
-        given(aiJobService.succeed(eq(REQUEST_ID), anyString(), any()))
+        given(aiJobService.succeed(eq(REQUEST_ID), any(), any()))
                 .willReturn(new AiJobCompletionResult(REQUEST_ID, AiJobStatus.SUCCEEDED, 55L, true));
 
         fastHandler.run(REQUEST_ID);

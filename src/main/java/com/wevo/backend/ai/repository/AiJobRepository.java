@@ -21,6 +21,30 @@ public interface AiJobRepository extends JpaRepository<AiJob, Long> {
 
     Optional<AiJob> findTopByIdempotencyKeyOrderByExecutionSequenceDesc(String idempotencyKey);
 
+    /**
+     * 섹션의 해당 기능 <b>최신 실행</b>을 조회한다. (API_SPEC §3.8.2 {@code latestJob})
+     *
+     * <p>멱등키 기준으로는 부족하다 — 의견 재오픈으로 마감 세대가 바뀌면 입력 스냅샷도 달라져
+     * 멱등키가 갈리므로, 섹션 전체에서 가장 최근에 큐잉된 실행을 찾아야 한다.
+     */
+    Optional<AiJob> findTopByProjectSection_IdAndFeatureOrderByQueuedAtDescIdDesc(
+            Long projectSectionId,
+            AiFeature feature
+    );
+
+    /**
+     * 섹션의 해당 기능 <b>최신 성공 실행</b>을 조회한다. 현재 정리 세트({@code resultId})의 출처다.
+     *
+     * <p>대체(supersede)는 성공 시에만 일어나므로(§3.8.1), 진행 중·실패한 재실행이 있어도
+     * 이 실행의 결과가 현재 세트로 남는다. 정렬 기준은 큐잉 순서가 아니라 <b>완료 시각</b>이다 —
+     * 세트가 만들어지는 시점이 곧 대체 시점이기 때문이다.
+     */
+    Optional<AiJob> findTopByProjectSection_IdAndFeatureAndStatusOrderByCompletedAtDescIdDesc(
+            Long projectSectionId,
+            AiFeature feature,
+            AiJobStatus status
+    );
+
     List<AiJob> findAllByIdempotencyKeyOrderByExecutionSequenceAsc(String idempotencyKey);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

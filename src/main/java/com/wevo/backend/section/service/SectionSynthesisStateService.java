@@ -36,6 +36,22 @@ public class SectionSynthesisStateService {
     }
 
     /**
+     * 정리 결과를 반영하는 트랜잭션에서 섹션 행을 <b>배타 잠금</b>한다. (§3.8.1 오래된 결과 반영 방지)
+     *
+     * <p>의견 임시저장·제출·수집 마감/재오픈이 모두 같은 섹션 행을 배타 잠금하므로, 완료 처리가 이
+     * 잠금을 먼저 잡으면 "현재 입력 재대조 → 결과 저장"이 입력 변경과 직렬화된다. 잠금 없이 재대조하면
+     * 대조와 저장 사이에 커밋된 입력 변경을 놓쳐 낡은 결과가 저장될 수 있다.
+     *
+     * <p>반드시 결과 저장과 <b>같은 트랜잭션</b>에서 호출한다({@link Propagation#MANDATORY}) —
+     * 별도 트랜잭션에서 잠그면 즉시 해제되어 직렬화 효과가 없다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockForResultCommit(Long projectSectionId) {
+        projectSectionRepository.findByIdForUpdate(projectSectionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_NOT_FOUND));
+    }
+
+    /**
      * 섹션의 현재 의견 수집 마감 세대를 조회한다. AI 정리 입력 스냅샷의 경계값으로 쓰인다(§3.8.1) —
      * 의견·답변이 같아도 재오픈으로 세대가 바뀌면 이전 마감의 결과를 재사용하지 않게 한다.
      */

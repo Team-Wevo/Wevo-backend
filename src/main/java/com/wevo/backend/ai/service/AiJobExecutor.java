@@ -97,7 +97,13 @@ public class AiJobExecutor {
             handler.run(requestId);
         } catch (Exception exception) {
             // 핸들러가 자체적으로 작업을 실패 처리한다. 여기서는 마지막 방어선으로만 기록한다.
-            log.error("AI 작업 실행 중 처리되지 않은 예외 requestId={}", requestId, exception);
+            //
+            // 예외 객체를 넘기지 않고 타입만 남긴다 — 예외 메시지에 AI 응답 원문이나 제출 의견 본문이
+            // 섞여 들어올 수 있고, 프롬프트·응답 원문과 개인 식별정보는 로그에 남기지 않는다(CLAUDE.md §7).
+            // 같은 이유로 이 클래스의 다른 로그도 exceptionType만 남긴다. 실패 사유는 작업 레코드의
+            // finalErrorType·safeErrorMessage(세정 완료)로 확인한다.
+            log.error("AI 작업 실행 중 처리되지 않은 예외 requestId={}, exceptionType={}",
+                    requestId, exception.getClass().getSimpleName());
         } finally {
             slots.release();
         }
