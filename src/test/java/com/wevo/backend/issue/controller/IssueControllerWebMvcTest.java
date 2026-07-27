@@ -18,8 +18,11 @@ import com.wevo.backend.global.security.RestAccessDeniedHandler;
 import com.wevo.backend.global.security.RestAuthenticationEntryPoint;
 import com.wevo.backend.global.security.SecurityConfig;
 import com.wevo.backend.issue.domain.IssueStatus;
+import com.wevo.backend.issue.dto.request.EvidenceRequestCreateRequest;
 import com.wevo.backend.issue.dto.request.IssueDecisionRequest;
+import com.wevo.backend.issue.dto.response.EvidenceRequestResponse;
 import com.wevo.backend.issue.dto.response.IssueDecisionResponse;
+import com.wevo.backend.issue.service.EvidenceRequestService;
 import com.wevo.backend.issue.service.IssueDecisionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,12 +55,16 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 class IssueControllerWebMvcTest {
 
     private static final String URL = "/api/issues/10/decision";
+    private static final String EVIDENCE_REQUEST_URL = "/api/issues/10/evidence-request";
 
     @Autowired
     private MockMvc mockMvc;
 
     @MockitoBean
     private IssueDecisionService issueDecisionService;
+
+    @MockitoBean
+    private EvidenceRequestService evidenceRequestService;
 
     @MockitoBean
     private JwtProvider jwtProvider;
@@ -233,6 +240,129 @@ class IssueControllerWebMvcTest {
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.code").value("C999"))
                 .andExpect(jsonPath("$.message").value(ErrorCode.INTERNAL_SERVER_ERROR.getMessage()));
+    }
+
+    @Test
+    @DisplayName("인증 없이 추가 근거를 요청하면 401 A001이다")
+    void requestEvidence_withoutAuthentication_returnsA001() throws Exception {
+        mockMvc.perform(post(EVIDENCE_REQUEST_URL)
+                        .contentType("application/json")
+                        .content("{\"targetUserId\":20}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("A001"));
+    }
+
+    @Test
+    @DisplayName("GAP 추가 근거 요청은 대상 사용자 스냅샷을 반환한다")
+    void requestEvidence_validRequest_returnsSuccess() throws Exception {
+        given(evidenceRequestService.request(
+                eq(10L), eq(7L), any(EvidenceRequestCreateRequest.class)))
+                .willReturn(EvidenceRequestResponse.requested(10L, 20L, "팀원"));
+
+        mockMvc.perform(post(EVIDENCE_REQUEST_URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"targetUserId\":20}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("EVIDENCE_REQUESTED"))
+                .andExpect(jsonPath("$.message").value("추가 근거를 요청했습니다."))
+                .andExpect(jsonPath("$.data.issueId").value(10))
+                .andExpect(jsonPath("$.data.requestedTo.userId").value(20))
+                .andExpect(jsonPath("$.data.requestedTo.name").value("팀원"))
+                .andExpect(jsonPath("$.timestamp").exists());
+
+        then(evidenceRequestService).should().request(
+                eq(10L), eq(7L), any(EvidenceRequestCreateRequest.class));
+    }
+
+    @Test
+    @DisplayName("targetUserId가 없으면 400 C001이다")
+    void requestEvidence_missingTarget_returnsC001() throws Exception {
+        mockMvc.perform(post(EVIDENCE_REQUEST_URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("C001"))
+                .andExpect(jsonPath("$.errors[0].field").value("targetUserId"));
+    }
+
+    @Test
+    @DisplayName("추가 근거 요청 권한이 없으면 403 A002이다")
+    void requestEvidence_member_returnsA002() throws Exception {
+        given(evidenceRequestService.request(
+                eq(10L), eq(7L), any(EvidenceRequestCreateRequest.class)))
+                .willThrow(new BusinessException(ErrorCode.FORBIDDEN));
+
+        mockMvc.perform(post(EVIDENCE_REQUEST_URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"targetUserId\":20}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A002"));
+    }
+
+    @Test
+    @DisplayName("쟁점 없음 또는 비멤버의 추가 근거 요청은 404 I001이다")
+    void requestEvidence_hiddenIssue_returnsI001() throws Exception {
+        given(evidenceRequestService.request(
+                eq(10L), eq(7L), any(EvidenceRequestCreateRequest.class)))
+                .willThrow(new BusinessException(ErrorCode.ISSUE_NOT_FOUND));
+
+        mockMvc.perform(post(EVIDENCE_REQUEST_URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"targetUserId\":20}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("I001"));
+    }
+
+    @Test
+    @DisplayName("관련 의견 작성자가 아닌 대상은 400 C001이다")
+    void requestEvidence_unrelatedTarget_returnsC001() throws Exception {
+        given(evidenceRequestService.request(
+                eq(10L), eq(7L), any(EvidenceRequestCreateRequest.class)))
+                .willThrow(new BusinessException(ErrorCode.INVALID_INPUT));
+
+        mockMvc.perform(post(EVIDENCE_REQUEST_URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"targetUserId\":20}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+    }
+
+    @Test
+    @DisplayName("이미 추가 근거를 요청한 쟁점은 409 I003이다")
+    void requestEvidence_alreadyRequested_returnsI003() throws Exception {
+        given(evidenceRequestService.request(
+                eq(10L), eq(7L), any(EvidenceRequestCreateRequest.class)))
+                .willThrow(new BusinessException(ErrorCode.EVIDENCE_REQUEST_ALREADY_SENT));
+
+        mockMvc.perform(post(EVIDENCE_REQUEST_URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"targetUserId\":20}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("I003"));
+    }
+
+    @Test
+    @DisplayName("CONFLICT 또는 이전 세트에 추가 근거를 요청하면 409 C003이다")
+    void requestEvidence_conflict_returnsC003() throws Exception {
+        given(evidenceRequestService.request(
+                eq(10L), eq(7L), any(EvidenceRequestCreateRequest.class)))
+                .willThrow(new BusinessException(ErrorCode.CONFLICT));
+
+        mockMvc.perform(post(EVIDENCE_REQUEST_URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"targetUserId\":20}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("C003"));
     }
 
     private RequestPostProcessor authenticatedUser() {
