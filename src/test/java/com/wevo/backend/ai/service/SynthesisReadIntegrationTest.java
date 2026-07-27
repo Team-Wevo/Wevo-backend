@@ -217,6 +217,8 @@ class SynthesisReadIntegrationTest {
         assertThat(conflictResponse.answer()).isNull();
         assertThat(conflictResponse.relatedOpinions()).hasSize(1);
         assertThat(conflictResponse.relatedOpinions().get(0).authorName()).isEqualTo("팀원");
+        assertThat(conflictResponse.relatedOpinions().get(0).authorUserId())
+                .isEqualTo(member.getId());
 
         SynthesisResponse.IssueResponse gapResponse = response.currentSet().issues().get(1);
         assertThat(gapResponse.type()).isEqualTo(IssueType.GAP);

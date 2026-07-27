@@ -47,8 +47,18 @@ public record SynthesisSetView(
     ) {
     }
 
-    /** 쟁점의 근거가 된 제출 의견. 작성자 이름은 세트 생성 당시 스냅샷이다. */
-    public record RelatedOpinionView(Long opinionId, String authorName, String excerpt) {
+    /**
+     * 쟁점의 근거가 된 제출 의견.
+     *
+     * <p>{@code authorUserId}는 GAP 추가 근거 요청 대상을 식별하고,
+     * 작성자 이름은 세트 생성 당시 스냅샷을 표시한다.
+     */
+    public record RelatedOpinionView(
+            Long opinionId,
+            Long authorUserId,
+            String authorName,
+            String excerpt
+    ) {
     }
 
     /** CONFLICT 결정 결과. {@code selectedOption}과 {@code customInput} 중 하나만 값을 갖는다. */

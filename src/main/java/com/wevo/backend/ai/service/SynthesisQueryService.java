@@ -169,7 +169,10 @@ public class SynthesisQueryService {
                 issue.description(),
                 issue.relatedOpinions().stream()
                         .map(related -> new RelatedOpinionResponse(
-                                related.opinionId(), related.authorName(), related.excerpt()))
+                                related.opinionId(),
+                                related.authorUserId(),
+                                related.authorName(),
+                                related.excerpt()))
                         .toList(),
                 issue.question(),
                 issue.options(),

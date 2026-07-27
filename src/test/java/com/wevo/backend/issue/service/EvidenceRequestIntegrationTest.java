@@ -52,6 +52,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 
 /**
  * 실제 PostgreSQL에서 GAP 추가 근거 요청의 권한·현재 세트·동시성 제약을 검증한다.
@@ -213,6 +214,30 @@ class EvidenceRequestIntegrationTest {
                 ErrorCode.EVIDENCE_REQUEST_ALREADY_SENT);
 
         assertThat(evidenceRequestRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("PostgreSQL 유니크 제약 이름을 쟁점 중복 요청 제약으로 식별한다")
+    void uniqueConstraintName_isRecognizedFromPostgresException() {
+        Issue gap = gap(succeededSet("제약 이름 검증 세트"), 1);
+        evidenceRequestRepository.saveAndFlush(EvidenceRequest.builder()
+                .issue(gap)
+                .requestedByUserId(owner.getId())
+                .targetUserId(member.getId())
+                .requestedAt(NOW)
+                .build());
+
+        assertThatThrownBy(() -> evidenceRequestRepository.saveAndFlush(
+                EvidenceRequest.builder()
+                        .issue(gap)
+                        .requestedByUserId(owner.getId())
+                        .targetUserId(member.getId())
+                        .requestedAt(NOW.plusMinutes(1))
+                        .build()))
+                .isInstanceOfSatisfying(
+                        DataIntegrityViolationException.class,
+                        exception -> assertThat(IssueConstraintViolationMatcher.matches(
+                                exception, "uk_evidence_requests_issue")).isTrue());
     }
 
     @Test
