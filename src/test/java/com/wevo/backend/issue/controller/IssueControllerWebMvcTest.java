@@ -19,11 +19,15 @@ import com.wevo.backend.global.security.RestAuthenticationEntryPoint;
 import com.wevo.backend.global.security.SecurityConfig;
 import com.wevo.backend.issue.domain.IssueStatus;
 import com.wevo.backend.issue.dto.request.EvidenceRequestCreateRequest;
+import com.wevo.backend.issue.dto.request.IssueAnswerRequest;
 import com.wevo.backend.issue.dto.request.IssueDecisionRequest;
 import com.wevo.backend.issue.dto.response.EvidenceRequestResponse;
+import com.wevo.backend.issue.dto.response.IssueAnswerResponse;
 import com.wevo.backend.issue.dto.response.IssueDecisionResponse;
 import com.wevo.backend.issue.service.EvidenceRequestService;
+import com.wevo.backend.issue.service.IssueAnswerService;
 import com.wevo.backend.issue.service.IssueDecisionService;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +60,7 @@ class IssueControllerWebMvcTest {
 
     private static final String URL = "/api/issues/10/decision";
     private static final String EVIDENCE_REQUEST_URL = "/api/issues/10/evidence-request";
+    private static final String ANSWER_URL = "/api/issues/10/answers";
 
     @Autowired
     private MockMvc mockMvc;
@@ -65,6 +70,9 @@ class IssueControllerWebMvcTest {
 
     @MockitoBean
     private EvidenceRequestService evidenceRequestService;
+
+    @MockitoBean
+    private IssueAnswerService issueAnswerService;
 
     @MockitoBean
     private JwtProvider jwtProvider;
@@ -361,6 +369,108 @@ class IssueControllerWebMvcTest {
                         .with(authenticatedUser())
                         .contentType("application/json")
                         .content("{\"targetUserId\":20}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("C003"));
+    }
+
+    @Test
+    @DisplayName("인증 없이 보충 근거를 답변하면 401 A001이다")
+    void answerEvidence_withoutAuthentication_returnsA001() throws Exception {
+        mockMvc.perform(post(ANSWER_URL)
+                        .contentType("application/json")
+                        .content("{\"content\":\"보충 근거\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("A001"));
+    }
+
+    @Test
+    @DisplayName("지목된 팀원의 보충 근거 답변은 200 EVIDENCE_ANSWERED를 반환한다")
+    void answerEvidence_validRequest_returnsSuccess() throws Exception {
+        LocalDateTime answeredAt = LocalDateTime.of(2026, 7, 28, 15, 30);
+        given(issueAnswerService.answer(eq(10L), eq(7L), any(IssueAnswerRequest.class)))
+                .willReturn(new IssueAnswerResponse(10L, 30L, answeredAt));
+
+        mockMvc.perform(post(ANSWER_URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"content\":\"시장 규모 통계를 보충합니다.\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("EVIDENCE_ANSWERED"))
+                .andExpect(jsonPath("$.message").value("추가 근거 답변이 등록되었습니다."))
+                .andExpect(jsonPath("$.data.issueId").value(10))
+                .andExpect(jsonPath("$.data.answerId").value(30))
+                .andExpect(jsonPath("$.data.answeredAt").value("2026-07-28T15:30:00"))
+                .andExpect(jsonPath("$.timestamp").exists());
+
+        then(issueAnswerService).should()
+                .answer(eq(10L), eq(7L), any(IssueAnswerRequest.class));
+    }
+
+    @Test
+    @DisplayName("보충 근거 본문이 누락되거나 공백이면 400 C001이다")
+    void answerEvidence_blankContent_returnsC001() throws Exception {
+        mockMvc.perform(post(ANSWER_URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"content\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("C001"))
+                .andExpect(jsonPath("$.errors[0].field").value("content"));
+    }
+
+    @Test
+    @DisplayName("보충 근거 본문이 1000자를 초과하면 400 C001이다")
+    void answerEvidence_tooLongContent_returnsC001() throws Exception {
+        mockMvc.perform(post(ANSWER_URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"content\":\"" + "가".repeat(1001) + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"))
+                .andExpect(jsonPath("$.errors[0].field").value("content"));
+    }
+
+    @Test
+    @DisplayName("보충 근거 요청 대상자가 아니면 403 A002이다")
+    void answerEvidence_notTarget_returnsA002() throws Exception {
+        given(issueAnswerService.answer(eq(10L), eq(7L), any(IssueAnswerRequest.class)))
+                .willThrow(new BusinessException(ErrorCode.FORBIDDEN));
+
+        mockMvc.perform(post(ANSWER_URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"content\":\"보충 근거\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A002"));
+    }
+
+    @Test
+    @DisplayName("쟁점 없음 또는 비멤버의 보충 근거 답변은 404 I001이다")
+    void answerEvidence_hiddenIssue_returnsI001() throws Exception {
+        given(issueAnswerService.answer(eq(10L), eq(7L), any(IssueAnswerRequest.class)))
+                .willThrow(new BusinessException(ErrorCode.ISSUE_NOT_FOUND));
+
+        mockMvc.perform(post(ANSWER_URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"content\":\"보충 근거\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("I001"));
+    }
+
+    @Test
+    @DisplayName("요청 없음·중복 답변·이전 세트는 409 C003이다")
+    void answerEvidence_conflict_returnsC003() throws Exception {
+        given(issueAnswerService.answer(eq(10L), eq(7L), any(IssueAnswerRequest.class)))
+                .willThrow(new BusinessException(ErrorCode.CONFLICT));
+
+        mockMvc.perform(post(ANSWER_URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"content\":\"보충 근거\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("C003"));
     }

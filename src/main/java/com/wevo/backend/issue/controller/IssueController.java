@@ -3,10 +3,13 @@ package com.wevo.backend.issue.controller;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.issue.dto.request.EvidenceRequestCreateRequest;
+import com.wevo.backend.issue.dto.request.IssueAnswerRequest;
 import com.wevo.backend.issue.dto.request.IssueDecisionRequest;
 import com.wevo.backend.issue.dto.response.EvidenceRequestResponse;
+import com.wevo.backend.issue.dto.response.IssueAnswerResponse;
 import com.wevo.backend.issue.dto.response.IssueDecisionResponse;
 import com.wevo.backend.issue.service.EvidenceRequestService;
+import com.wevo.backend.issue.service.IssueAnswerService;
 import com.wevo.backend.issue.service.IssueDecisionService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -24,13 +27,16 @@ public class IssueController {
 
     private final IssueDecisionService issueDecisionService;
     private final EvidenceRequestService evidenceRequestService;
+    private final IssueAnswerService issueAnswerService;
 
     public IssueController(
             IssueDecisionService issueDecisionService,
-            EvidenceRequestService evidenceRequestService
+            EvidenceRequestService evidenceRequestService,
+            IssueAnswerService issueAnswerService
     ) {
         this.issueDecisionService = issueDecisionService;
         this.evidenceRequestService = evidenceRequestService;
+        this.issueAnswerService = issueAnswerService;
     }
 
     /** OWNER가 현재 정리 세트의 CONFLICT 쟁점을 결정한다. */
@@ -59,6 +65,22 @@ public class IssueController {
                 ApiResponse.success(
                         "EVIDENCE_REQUESTED",
                         "추가 근거를 요청했습니다.",
+                        response));
+    }
+
+    /** 지목된 팀원이 현재 정리 세트의 GAP 쟁점에 보충 근거를 답변한다. */
+    @PostMapping("/{issueId}/answers")
+    public ResponseEntity<ApiResponse<IssueAnswerResponse>> answerEvidenceRequest(
+            @PathVariable Long issueId,
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @Valid @RequestBody IssueAnswerRequest request
+    ) {
+        IssueAnswerResponse response =
+                issueAnswerService.answer(issueId, principal.userId(), request);
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "EVIDENCE_ANSWERED",
+                        "추가 근거 답변이 등록되었습니다.",
                         response));
     }
 }

@@ -45,6 +45,19 @@ public class IssueCommandAccessGuard {
         return issue;
     }
 
+    /**
+     * 프로젝트 참여자가 변경할 수 있는 현재 세트의 쟁점을 잠근 상태로 반환한다.
+     */
+    public Issue requireCurrentIssueForParticipant(Long issueId, Long actorUserId) {
+        Issue issue = issueRepository.findByIdForUpdate(issueId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ISSUE_NOT_FOUND));
+        SynthesisSet issueSet = requireSynthesisSet(issue);
+
+        requireParticipant(issueSet.getProjectSectionId(), actorUserId);
+        requireCurrentSet(issueSet);
+        return issue;
+    }
+
     private SynthesisSet requireSynthesisSet(Issue issue) {
         if (issue.getSynthesisSet() == null
                 || issue.getSynthesisSet().getId() == null
@@ -58,11 +71,23 @@ public class IssueCommandAccessGuard {
         try {
             sectionAccessGuard.requireOwnedSectionForUpdate(sectionId, actorUserId);
         } catch (BusinessException exception) {
-            if (exception.getErrorCode() == ErrorCode.SECTION_NOT_FOUND) {
-                throw new BusinessException(ErrorCode.ISSUE_NOT_FOUND);
-            }
-            throw exception;
+            hideSectionNotFound(exception);
         }
+    }
+
+    private void requireParticipant(Long sectionId, Long actorUserId) {
+        try {
+            sectionAccessGuard.requireParticipantSectionForUpdate(sectionId, actorUserId);
+        } catch (BusinessException exception) {
+            hideSectionNotFound(exception);
+        }
+    }
+
+    private void hideSectionNotFound(BusinessException exception) {
+        if (exception.getErrorCode() == ErrorCode.SECTION_NOT_FOUND) {
+            throw new BusinessException(ErrorCode.ISSUE_NOT_FOUND);
+        }
+        throw exception;
     }
 
     private void requireCurrentSet(SynthesisSet issueSet) {
