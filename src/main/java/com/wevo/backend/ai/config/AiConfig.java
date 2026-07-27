@@ -11,6 +11,7 @@ import java.time.Clock;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 @Configuration(proxyBeanMethods = false)
 @EnableScheduling
@@ -44,6 +45,20 @@ public class AiConfig {
     @Bean(destroyMethod = "close")
     public ExecutorService providerRequestExecutor() {
         return Executors.newVirtualThreadPerTaskExecutor();
+    }
+
+    /**
+     * 실행 중인 AI 작업의 heartbeat(생존 신호)를 주기적으로 갱신하는 실행기. 실행 worker가 살아
+     * 있는 동안 {@code lastHeartbeatAt}을 갱신해, 재시도로 오래 걸리는 정상 작업이 회수(FAILED)되지
+     * 않게 한다. heartbeat는 짧은 DB update이므로 소수 스레드로 충분하다.
+     */
+    @Bean(destroyMethod = "shutdown")
+    public ScheduledExecutorService aiHeartbeatScheduler() {
+        return Executors.newScheduledThreadPool(2, runnable -> {
+            Thread thread = new Thread(runnable, "ai-heartbeat");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     @Bean

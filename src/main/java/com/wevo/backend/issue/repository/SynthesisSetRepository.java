@@ -11,5 +11,8 @@ public interface SynthesisSetRepository extends JpaRepository<SynthesisSet, Long
 
     Optional<SynthesisSet> findByRequestId(UUID requestId);
 
+    /**
+     * 섹션의 현재 정리 세트를 {@code createdAt DESC, id DESC} 기준으로 조회한다.
+     */
     Optional<SynthesisSet> findTopByProjectSectionIdOrderByCreatedAtDescIdDesc(Long projectSectionId);
 }

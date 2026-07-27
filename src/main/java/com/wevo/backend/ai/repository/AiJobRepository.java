@@ -1,9 +1,11 @@
 package com.wevo.backend.ai.repository;
 
+import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiJobStatus;
 import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -44,6 +46,18 @@ public interface AiJobRepository extends JpaRepository<AiJob, Long> {
             order by job.createdAt asc
             """)
     List<UUID> findQueuedRequestIds(Pageable pageable);
+
+    @Query("""
+            select job.requestId
+            from AiJob job
+            where job.status = com.wevo.backend.ai.domain.AiJobStatus.QUEUED
+              and job.feature in :features
+            order by job.createdAt asc
+            """)
+    List<UUID> findQueuedRequestIdsByFeatureIn(
+            @Param("features") Collection<AiFeature> features,
+            Pageable pageable
+    );
 
     @Query("""
             select job.requestId
