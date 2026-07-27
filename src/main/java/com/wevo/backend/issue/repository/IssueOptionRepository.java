@@ -2,6 +2,7 @@ package com.wevo.backend.issue.repository;
 
 import com.wevo.backend.issue.domain.IssueOption;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -9,6 +10,8 @@ import org.springframework.data.repository.query.Param;
 public interface IssueOptionRepository extends JpaRepository<IssueOption, Long> {
 
     List<IssueOption> findAllByIssue_IdOrderBySortOrderAsc(Long issueId);
+
+    Optional<IssueOption> findByIssue_IdAndOptionText(Long issueId, String optionText);
 
     /**
      * 세트에 속한 모든 쟁점의 선택지를 한 번에 조회한다. 쟁점 수만큼 쿼리가 늘지 않게 하기 위한
