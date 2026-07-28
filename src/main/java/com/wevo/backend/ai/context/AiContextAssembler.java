@@ -1,9 +1,14 @@
 package com.wevo.backend.ai.context;
 
 import com.wevo.backend.ai.config.AiProperties;
+import com.wevo.backend.global.exception.BusinessException;
+import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.issue.service.CurrentSynthesisContext;
+import com.wevo.backend.issue.service.ConflictDecisionContext;
 import com.wevo.backend.issue.service.GapAnswerContext;
+import com.wevo.backend.issue.service.GapIssueContext;
 import com.wevo.backend.issue.service.SynthesisSetQueryService;
+import com.wevo.backend.issue.service.SynthesisOpinionEvidenceContext;
 import com.wevo.backend.opinion.service.SubmittedOpinionContext;
 import com.wevo.backend.opinion.service.SubmittedOpinionQueryService;
 import com.wevo.backend.project.service.ProjectAiContext;
@@ -101,19 +106,43 @@ public class AiContextAssembler {
             VerifiedProjectAccess access,
             Long sectionId
     ) {
+        AssembledAiContext<DraftGenerationContext> assembled =
+                assembleDraftGenerationSnapshot(access, sectionId);
+        DraftGenerationContext context = assembled.context();
+        if (context.section().synthesisStale()
+                || context.synthesis().opinionGateGeneration()
+                != context.section().opinionGateGeneration()) {
+            throw new BusinessException(ErrorCode.CONFLICT);
+        }
+        if (context.synthesis().hasUnresolvedConflict()) {
+            throw new BusinessException(ErrorCode.ISSUE_CONFLICT_UNDECIDED);
+        }
+        return assembled;
+    }
+
+    /**
+     * 작업 실행·완료 시 입력 변경 대조를 위한 ungated snapshot.
+     * 실행 조건이 깨진 상태도 hash로 표현해 기존 작업과 달라지게 한다.
+     */
+    public AssembledAiContext<DraftGenerationContext> assembleDraftGenerationSnapshot(
+            VerifiedProjectAccess access,
+            Long sectionId
+    ) {
         requireAssemblyTarget(access, sectionId);
         return safely(() -> {
             CommonInputs common = commonInputs(access, sectionId);
-            AiSynthesisContext synthesis = currentSynthesis(access, sectionId);
-            if (common.section().synthesisStale()
-                    || synthesis.opinionGateGeneration() != common.section().opinionGateGeneration()) {
-                throw new IllegalStateException("최신 유효 synthesis가 아닙니다.");
-            }
+            AiDraftSynthesisContext synthesis = currentDraftSynthesis(access, sectionId);
+            SectionVersionedContent latest =
+                    sectionQueryService.getLatestDraftOrEmpty(access, sectionId);
             DraftGenerationContext context = new DraftGenerationContext(
                     common.projectIdentity(),
                     common.projectBrief(),
                     common.section(),
                     synthesis,
+                    new AiBaseDraftContext(
+                            latest.contentVersion(),
+                            normalizeOptional(latest.content())
+                    ),
                     prerequisites(sectionQueryService.findDirectConfirmedPrerequisites(access, sectionId))
             );
             return assembled(context);
@@ -214,9 +243,74 @@ public class AiContextAssembler {
     private AiSynthesisContext currentSynthesis(VerifiedProjectAccess access, Long sectionId) {
         CurrentSynthesisContext current = synthesisQueryService.getCurrentForAiContext(
                 sectionAccessGuard.verifySectionAccess(access, sectionId));
+        requireCurrentSynthesisIdentity(current);
+        List<AiGapAnswerContext> answers = gapAnswers(current);
+        return new AiSynthesisContext(
+                current.synthesisSetId(),
+                current.opinionGateGeneration(),
+                normalizeRequired(current.consensusSummary()),
+                answers
+        );
+    }
+
+    private AiDraftSynthesisContext currentDraftSynthesis(
+            VerifiedProjectAccess access,
+            Long sectionId
+    ) {
+        CurrentSynthesisContext current = synthesisQueryService.getCurrentForDraftGeneration(
+                sectionAccessGuard.verifySectionAccess(access, sectionId));
+        requireCurrentSynthesisIdentity(current);
+        List<AiDraftGapAnswerContext> answers = draftGapAnswers(current);
+        List<AiOpinionEvidenceContext> opinionEvidence =
+                current.opinionEvidence().stream()
+                        .sorted(Comparator.comparing(SynthesisOpinionEvidenceContext::opinionId))
+                        .map(evidence -> new AiOpinionEvidenceContext(
+                                requirePositive(evidence.opinionId(), "opinionId"),
+                                normalizeRequired(evidence.authorNameSnapshot()),
+                                normalizeRequired(evidence.content())
+                        ))
+                        .toList();
+        List<AiConflictDecisionContext> decisions =
+                current.conflictDecisions().stream()
+                        .sorted(Comparator.comparing(ConflictDecisionContext::issueId))
+                        .map(decision -> new AiConflictDecisionContext(
+                                requirePositive(decision.issueId(), "issueId"),
+                                requirePositive(decision.decisionId(), "decisionId"),
+                                normalizeRequired(decision.description()),
+                                normalizeRequired(decision.question()),
+                                normalizeRequired(decision.decision()),
+                                sortedPositiveIds(decision.evidenceOpinionIds(), "decision evidence")
+                        ))
+                        .toList();
+        List<AiGapIssueContext> gapIssues =
+                current.gapIssues().stream()
+                        .sorted(Comparator.comparing(GapIssueContext::issueId))
+                        .map(gap -> new AiGapIssueContext(
+                                requirePositive(gap.issueId(), "issueId"),
+                                normalizeRequired(gap.description()),
+                                gap.answered(),
+                                sortedPositiveIds(gap.evidenceOpinionIds(), "GAP evidence")
+                        ))
+                        .toList();
+        return new AiDraftSynthesisContext(
+                current.synthesisSetId(),
+                current.opinionGateGeneration(),
+                normalizeRequired(current.consensusSummary()),
+                answers,
+                opinionEvidence,
+                decisions,
+                gapIssues,
+                current.hasUnresolvedConflict()
+        );
+    }
+
+    private void requireCurrentSynthesisIdentity(CurrentSynthesisContext current) {
         if (current.synthesisSetId() == null || current.opinionGateGeneration() < 0) {
             throw new IllegalStateException("AI context current synthesis 식별 데이터가 유효하지 않습니다.");
         }
+    }
+
+    private List<AiGapAnswerContext> gapAnswers(CurrentSynthesisContext current) {
         List<AiGapAnswerContext> answers = new ArrayList<>();
         Set<Long> answerIds = new HashSet<>();
         List<GapAnswerContext> sorted = new ArrayList<>(current.gapAnswers());
@@ -234,15 +328,52 @@ public class AiContextAssembler {
                     answer.sourceIssueId(),
                     answer.answerId(),
                     normalizeRequired(answer.content()),
-                    DATE_TIME_FORMAT.format(answer.answeredAt())
+                    DATE_TIME_FORMAT.format(answer.answeredAt())));
+        }
+        return List.copyOf(answers);
+    }
+
+    private List<AiDraftGapAnswerContext> draftGapAnswers(CurrentSynthesisContext current) {
+        List<GapAnswerContext> sorted = new ArrayList<>(current.gapAnswers());
+        sorted.sort(Comparator.comparing(GapAnswerContext::answeredAt)
+                .thenComparing(GapAnswerContext::answerId));
+        Set<Long> answerIds = new HashSet<>();
+        List<AiDraftGapAnswerContext> result = new ArrayList<>();
+        for (GapAnswerContext answer : sorted) {
+            if (answer == null || answer.sourceIssueId() == null || answer.answerId() == null
+                    || answer.answeredAt() == null || !answerIds.add(answer.answerId())) {
+                throw new IllegalStateException("AI context GAP 답변 식별 데이터가 유효하지 않습니다.");
+            }
+            result.add(new AiDraftGapAnswerContext(
+                    answer.sourceIssueId(),
+                    answer.answerId(),
+                    normalizeRequired(answer.content()),
+                    DATE_TIME_FORMAT.format(answer.answeredAt()),
+                    normalizeRequired(answer.authorNameSnapshot()),
+                    answer.inherited()
             ));
         }
-        return new AiSynthesisContext(
-                current.synthesisSetId(),
-                current.opinionGateGeneration(),
-                normalizeRequired(current.consensusSummary()),
-                answers
-        );
+        return List.copyOf(result);
+    }
+
+    private Long requirePositive(Long value, String field) {
+        if (value == null || value <= 0) {
+            throw new IllegalStateException("AI context " + field + "가 유효하지 않습니다.");
+        }
+        return value;
+    }
+
+    private List<Long> sortedPositiveIds(List<Long> values, String field) {
+        if (values == null) {
+            throw new IllegalStateException("AI context " + field + "가 유효하지 않습니다.");
+        }
+        List<Long> sorted = new ArrayList<>(values);
+        if (sorted.stream().anyMatch(value -> value == null || value <= 0)
+                || new HashSet<>(sorted).size() != sorted.size()) {
+            throw new IllegalStateException("AI context " + field + "가 유효하지 않습니다.");
+        }
+        sorted.sort(Long::compareTo);
+        return List.copyOf(sorted);
     }
 
     private List<AiPrerequisiteContext> prerequisites(List<PrerequisiteSectionContent> inputs) {

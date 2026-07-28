@@ -4,17 +4,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.wevo.backend.issue.domain.Issue;
 import com.wevo.backend.issue.domain.IssueAnswer;
+import com.wevo.backend.issue.domain.IssueDecision;
+import com.wevo.backend.issue.domain.IssueStatus;
 import com.wevo.backend.issue.domain.IssueType;
 import com.wevo.backend.issue.domain.SynthesisInheritedGapAnswer;
 import com.wevo.backend.issue.domain.SynthesisSet;
 import com.wevo.backend.issue.repository.IssueAnswerRepository;
+import com.wevo.backend.issue.repository.IssueDecisionRepository;
+import com.wevo.backend.issue.repository.IssueRelatedOpinionRepository;
+import com.wevo.backend.issue.repository.IssueRepository;
+import com.wevo.backend.issue.repository.SynthesisConsensusEvidenceRepository;
 import com.wevo.backend.issue.repository.SynthesisInheritedGapAnswerRepository;
 import com.wevo.backend.issue.repository.SynthesisSetRepository;
+import com.wevo.backend.project.service.VerifiedSectionAccess;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -34,6 +42,10 @@ class SynthesisSetQueryServiceTest {
     @Mock private SynthesisSetRepository synthesisSetRepository;
     @Mock private IssueAnswerRepository issueAnswerRepository;
     @Mock private SynthesisInheritedGapAnswerRepository inheritedGapAnswerRepository;
+    @Mock private IssueRepository issueRepository;
+    @Mock private IssueDecisionRepository issueDecisionRepository;
+    @Mock private IssueRelatedOpinionRepository issueRelatedOpinionRepository;
+    @Mock private SynthesisConsensusEvidenceRepository consensusEvidenceRepository;
     @Mock private SynthesisSet currentSet;
     @Mock private SynthesisInheritedGapAnswer inheritedReference;
     @Mock private IssueAnswer sourceAnswer;
@@ -47,7 +59,11 @@ class SynthesisSetQueryServiceTest {
         service = new SynthesisSetQueryService(
                 synthesisSetRepository,
                 issueAnswerRepository,
-                inheritedGapAnswerRepository);
+                inheritedGapAnswerRepository,
+                issueRepository,
+                issueDecisionRepository,
+                issueRelatedOpinionRepository,
+                consensusEvidenceRepository);
     }
 
     @Test
@@ -111,6 +127,46 @@ class SynthesisSetQueryServiceTest {
         verify(issueAnswerRepository, never()).findById(anyLong());
     }
 
+    @Test
+    @DisplayName("초안 생성 조회는 current CONFLICT 결정 본문을 포함하고 미결 여부를 계산한다")
+    void getCurrentForDraftGeneration_includesResolvedDecisionAndDetectsUnresolved() {
+        VerifiedSectionAccess access = mock(VerifiedSectionAccess.class);
+        Issue resolved = mock(Issue.class);
+        Issue unresolved = mock(Issue.class);
+        IssueDecision decision = mock(IssueDecision.class);
+        given(access.sectionId()).willReturn(SECTION_ID);
+        givenCurrentSet();
+        given(currentSet.getOpinionGateGeneration()).willReturn(3L);
+        given(currentSet.getConsensusSummary()).willReturn("합의");
+        given(issueAnswerRepository.findAllWithIssueBySynthesisSetId(SET_ID))
+                .willReturn(List.of());
+        given(inheritedGapAnswerRepository.findAllBySynthesisSet_Id(SET_ID))
+                .willReturn(List.of());
+        given(issueRepository.findAllBySynthesisSet_IdOrderBySortOrderAsc(SET_ID))
+                .willReturn(List.of(resolved, unresolved));
+        givenIssue(resolved, 31L, IssueStatus.RESOLVED, "결정된 충돌", "결정 질문");
+        givenIssue(unresolved, 32L, IssueStatus.PENDING, "미결 충돌", "미결 질문");
+        given(decision.getId()).willReturn(41L);
+        given(decision.getIssue()).willReturn(resolved);
+        given(decision.getCustomInput()).willReturn("OWNER 직접 결정");
+        given(issueDecisionRepository.findAllWithIssueBySynthesisSetId(SET_ID))
+                .willReturn(List.of(decision));
+        given(issueRelatedOpinionRepository.findAllWithIssueBySynthesisSetId(SET_ID))
+                .willReturn(List.of());
+        given(consensusEvidenceRepository.findAllBySynthesisSet_IdOrderBySortOrderAsc(SET_ID))
+                .willReturn(List.of());
+
+        CurrentSynthesisContext result = service.getCurrentForDraftGeneration(access);
+
+        assertThat(result.hasUnresolvedConflict()).isTrue();
+        assertThat(result.conflictDecisions()).singleElement()
+                .satisfies(item -> {
+                    assertThat(item.issueId()).isEqualTo(31L);
+                    assertThat(item.decisionId()).isEqualTo(41L);
+                    assertThat(item.decision()).isEqualTo("OWNER 직접 결정");
+                });
+    }
+
     private void givenCurrentSet() {
         given(synthesisSetRepository
                 .findTopByProjectSectionIdOrderByCreatedAtDescIdDesc(SECTION_ID))
@@ -134,5 +190,22 @@ class SynthesisSetQueryServiceTest {
         given(sourceIssue.getType()).willReturn(IssueType.GAP);
         given(sourceIssue.getSynthesisSet()).willReturn(sourceSet);
         given(sourceSet.getProjectSectionId()).willReturn(SECTION_ID);
+    }
+
+    private void givenIssue(
+            Issue issue,
+            Long issueId,
+            IssueStatus status,
+            String description,
+            String question
+    ) {
+        given(issue.getId()).willReturn(issueId);
+        given(issue.getSynthesisSet()).willReturn(currentSet);
+        given(issue.getType()).willReturn(IssueType.CONFLICT);
+        given(issue.getStatus()).willReturn(status);
+        given(issue.getDescription()).willReturn(description);
+        if (status == IssueStatus.RESOLVED) {
+            given(issue.getQuestion()).willReturn(question);
+        }
     }
 }
