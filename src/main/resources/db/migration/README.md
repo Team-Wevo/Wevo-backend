@@ -32,6 +32,11 @@ after Flyway commits V2 so validation does not run while V2's stronger table loc
 (latest execution, and latest successful execution per section and feature). It adds indexes only —
 no table, column, or constraint changes — so JPA mapping validation is unaffected.
 
+`V5__expand_issue_decision_custom_input.sql` changes `issue_decisions.custom_input` from
+`VARCHAR(200)` to `TEXT`. The API and domain enforce a maximum of 200 non-whitespace UTF-16
+characters while preserving the submitted whitespace, so the database column cannot retain a
+raw-length limit of 200.
+
 ## Existing local databases
 
 V1 is an initial migration for an **empty PostgreSQL database**. A database previously

@@ -12,6 +12,7 @@ import com.wevo.backend.issue.repository.EvidenceRequestRepository;
 import com.wevo.backend.issue.repository.IssueRelatedOpinionRepository;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -70,7 +71,7 @@ public class EvidenceRequestService {
                 .issue(issue)
                 .requestedByUserId(actorUserId)
                 .targetUserId(request.targetUserId())
-                .requestedAt(LocalDateTime.now(KST))
+                .requestedAt(LocalDateTime.now(KST).truncatedTo(ChronoUnit.MICROS))
                 .build();
         save(evidenceRequest);
 

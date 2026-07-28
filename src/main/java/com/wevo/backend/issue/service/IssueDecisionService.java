@@ -2,6 +2,7 @@ package com.wevo.backend.issue.service;
 
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.global.validation.TextLengthPolicy;
 import com.wevo.backend.issue.domain.Issue;
 import com.wevo.backend.issue.domain.IssueDecision;
 import com.wevo.backend.issue.domain.IssueOption;
@@ -85,7 +86,8 @@ public class IssueDecisionService {
         boolean hasCustomInput = hasText(request.customInput());
         if (hasSelectedOption == hasCustomInput
                 || hasCustomInput
-                && request.customInput().length() > IssueDecision.MAX_CUSTOM_INPUT_LENGTH) {
+                && TextLengthPolicy.exceedsNonWhitespaceLimit(
+                        request.customInput(), IssueDecision.MAX_CUSTOM_INPUT_LENGTH)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
     }

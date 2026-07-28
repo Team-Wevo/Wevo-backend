@@ -75,6 +75,7 @@ class EvidenceRequestServiceTest {
         assertThat(saved.getRequestedByUserId()).isEqualTo(OWNER_ID);
         assertThat(saved.getTargetUserId()).isEqualTo(TARGET_ID);
         assertThat(saved.getRequestedAt()).isNotNull();
+        assertThat(saved.getRequestedAt().getNano() % 1_000).isZero();
     }
 
     @Test
