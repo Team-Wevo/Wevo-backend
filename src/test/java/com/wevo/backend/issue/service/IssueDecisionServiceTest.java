@@ -81,19 +81,34 @@ class IssueDecisionServiceTest {
     @DisplayName("직접 입력 결정을 저장하고 쟁점을 해소한다")
     void decide_customInput_resolvesIssue() {
         givenValidPendingConflict();
+        String customInput = "가 ".repeat(IssueDecision.MAX_CUSTOM_INPUT_LENGTH);
 
         IssueDecisionResponse response = service.decide(
-                ISSUE_ID, OWNER_ID, new IssueDecisionRequest(null, "대학생 팀을 우선한다."));
+                ISSUE_ID, OWNER_ID, new IssueDecisionRequest(null, customInput));
 
         ArgumentCaptor<IssueDecision> decisionCaptor = ArgumentCaptor.forClass(IssueDecision.class);
         verify(issueDecisionRepository).saveAndFlush(decisionCaptor.capture());
         IssueDecision decision = decisionCaptor.getValue();
         assertThat(decision.getSelectedOption()).isNull();
-        assertThat(decision.getCustomInput()).isEqualTo("대학생 팀을 우선한다.");
+        assertThat(decision.getCustomInput()).isEqualTo(customInput);
         verify(issue).resolve(decision);
         assertThat(response.status()).isEqualTo(IssueStatus.RESOLVED);
         verify(issueOptionRepository, never())
                 .findByIssue_IdAndOptionText(any(), any());
+    }
+
+    @Test
+    @DisplayName("직접 입력의 비공백 문자가 200자를 초과하면 저장소 조회 전에 400 C001이다")
+    void decide_customInputOverNonWhitespaceLimit_returnsC001() {
+        String tooLong = "가 ".repeat(IssueDecision.MAX_CUSTOM_INPUT_LENGTH + 1);
+
+        assertError(
+                () -> service.decide(
+                        ISSUE_ID, OWNER_ID, new IssueDecisionRequest(null, tooLong)),
+                ErrorCode.INVALID_INPUT);
+
+        verify(issueCommandAccessGuard, never())
+                .requireCurrentIssueForOwner(any(), any());
     }
 
     @Test

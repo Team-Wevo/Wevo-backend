@@ -136,16 +136,17 @@ class IssueDecisionIntegrationTest {
     void customInput_persistsDecision() {
         SynthesisSet set = succeededSet("직접 입력 결정 세트");
         Issue issue = conflict(set, 1);
+        String customInput = "가 ".repeat(IssueDecision.MAX_CUSTOM_INPUT_LENGTH);
 
         issueDecisionService.decide(
                 issue.getId(),
                 owner.getId(),
-                new IssueDecisionRequest(null, "대학생 팀을 우선한다."));
+                new IssueDecisionRequest(null, customInput));
 
         IssueDecision decision = issueDecisionRepository
                 .findAllWithIssueBySynthesisSetId(set.getId()).getFirst();
         assertThat(decision.getSelectedOption()).isNull();
-        assertThat(decision.getCustomInput()).isEqualTo("대학생 팀을 우선한다.");
+        assertThat(decision.getCustomInput()).isEqualTo(customInput);
         assertThat(issueRepository.findById(issue.getId()).orElseThrow().getStatus())
                 .isEqualTo(IssueStatus.RESOLVED);
     }

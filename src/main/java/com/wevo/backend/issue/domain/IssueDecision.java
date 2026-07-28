@@ -1,6 +1,7 @@
 package com.wevo.backend.issue.domain;
 
 import com.wevo.backend.global.common.BaseTimeEntity;
+import com.wevo.backend.global.validation.TextLengthPolicy;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -43,7 +44,7 @@ public class IssueDecision extends BaseTimeEntity {
     @JoinColumn(name = "selected_option_id", updatable = false)
     private IssueOption selectedOption;
 
-    @Column(name = "custom_input", length = MAX_CUSTOM_INPUT_LENGTH, updatable = false)
+    @Column(name = "custom_input", columnDefinition = "TEXT", updatable = false)
     private String customInput;
 
     @Column(name = "decided_at", nullable = false, updatable = false)
@@ -87,8 +88,11 @@ public class IssueDecision extends BaseTimeEntity {
         if (hasSelectedOption && !belongsTo(selectedOption, issue)) {
             throw new IllegalArgumentException("선택지는 결정 대상 쟁점에 속해야 합니다.");
         }
-        if (hasCustomInput && customInput.length() > MAX_CUSTOM_INPUT_LENGTH) {
-            throw new IllegalArgumentException("customInput은 200자 이하여야 합니다.");
+        if (hasCustomInput
+                && TextLengthPolicy.exceedsNonWhitespaceLimit(
+                        customInput, MAX_CUSTOM_INPUT_LENGTH)) {
+            throw new IllegalArgumentException(
+                    "customInput은 공백을 제외하고 200자 이하여야 합니다.");
         }
     }
 
