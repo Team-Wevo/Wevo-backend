@@ -95,7 +95,13 @@ public record SynthesisResponse(
     ) {
     }
 
-    public record RelatedOpinionResponse(Long opinionId, String authorName, String excerpt) {
+    /** 관련 의견 작성자 ID는 GAP 추가 근거 요청의 {@code targetUserId}로 사용한다. */
+    public record RelatedOpinionResponse(
+            Long opinionId,
+            Long authorUserId,
+            String authorName,
+            String excerpt
+    ) {
     }
 
     /** 결정 결과 — {@code selectedOption}과 {@code customInput} 중 값이 있는 쪽만 담긴다. */

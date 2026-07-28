@@ -200,6 +200,7 @@ public class SynthesisSetViewService {
     private RelatedOpinionView toRelatedOpinionView(IssueRelatedOpinion related) {
         return new RelatedOpinionView(
                 related.getOpinionId(),
+                related.getAuthorUserId(),
                 related.getAuthorNameSnapshot(),
                 related.getExcerpt());
     }

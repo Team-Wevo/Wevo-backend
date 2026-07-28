@@ -38,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest(properties = {
         "spring.ai.openai.api-key=test-nvidia-api-key",
         "spring.ai.openai.max-retries=0",
+        "wevo.ai.default-options.timeout=5s",
         "wevo.ai.default-options.max-retries=0"
 })
 @ExtendWith(OutputCaptureExtension.class)

@@ -8,17 +8,12 @@ import com.wevo.backend.issue.domain.IssueDecision;
 import com.wevo.backend.issue.domain.IssueOption;
 import com.wevo.backend.issue.domain.IssueStatus;
 import com.wevo.backend.issue.domain.IssueType;
-import com.wevo.backend.issue.domain.SynthesisSet;
 import com.wevo.backend.issue.dto.request.IssueDecisionRequest;
 import com.wevo.backend.issue.dto.response.IssueDecisionResponse;
 import com.wevo.backend.issue.repository.IssueDecisionRepository;
 import com.wevo.backend.issue.repository.IssueOptionRepository;
-import com.wevo.backend.issue.repository.IssueRepository;
-import com.wevo.backend.project.service.SectionAccessGuard;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.Objects;
-import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,24 +27,18 @@ public class IssueDecisionService {
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final String UNIQUE_DECISION_CONSTRAINT = "uk_issue_decisions_issue";
 
-    private final IssueRepository issueRepository;
+    private final IssueCommandAccessGuard issueCommandAccessGuard;
     private final IssueOptionRepository issueOptionRepository;
     private final IssueDecisionRepository issueDecisionRepository;
-    private final CurrentSynthesisSetResolver currentSynthesisSetResolver;
-    private final SectionAccessGuard sectionAccessGuard;
 
     public IssueDecisionService(
-            IssueRepository issueRepository,
+            IssueCommandAccessGuard issueCommandAccessGuard,
             IssueOptionRepository issueOptionRepository,
-            IssueDecisionRepository issueDecisionRepository,
-            CurrentSynthesisSetResolver currentSynthesisSetResolver,
-            SectionAccessGuard sectionAccessGuard
+            IssueDecisionRepository issueDecisionRepository
     ) {
-        this.issueRepository = issueRepository;
+        this.issueCommandAccessGuard = issueCommandAccessGuard;
         this.issueOptionRepository = issueOptionRepository;
         this.issueDecisionRepository = issueDecisionRepository;
-        this.currentSynthesisSetResolver = currentSynthesisSetResolver;
-        this.sectionAccessGuard = sectionAccessGuard;
     }
 
     /**
@@ -69,12 +58,8 @@ public class IssueDecisionService {
     ) {
         validateRequest(request);
 
-        Issue issue = issueRepository.findByIdForUpdate(issueId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.ISSUE_NOT_FOUND));
-        SynthesisSet issueSet = requireSynthesisSet(issue);
-
-        requireOwner(issueSet.getProjectSectionId(), actorUserId);
-        requireCurrentSet(issueSet);
+        Issue issue =
+                issueCommandAccessGuard.requireCurrentIssueForOwner(issueId, actorUserId);
         requirePendingConflict(issue);
 
         IssueDecision decision = createDecision(issue, actorUserId, request);
@@ -82,7 +67,8 @@ public class IssueDecisionService {
             issueDecisionRepository.saveAndFlush(decision);
             issue.resolve(decision);
         } catch (DataIntegrityViolationException exception) {
-            if (violatesConstraint(exception, UNIQUE_DECISION_CONSTRAINT)) {
+            if (IssueConstraintViolationMatcher.matches(
+                    exception, UNIQUE_DECISION_CONSTRAINT)) {
                 throw new BusinessException(ErrorCode.CONFLICT);
             }
             throw new IllegalStateException(
@@ -103,38 +89,6 @@ public class IssueDecisionService {
                 && TextLengthPolicy.exceedsNonWhitespaceLimit(
                         request.customInput(), IssueDecision.MAX_CUSTOM_INPUT_LENGTH)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
-        }
-    }
-
-    private SynthesisSet requireSynthesisSet(Issue issue) {
-        if (issue.getSynthesisSet() == null
-                || issue.getSynthesisSet().getId() == null
-                || issue.getSynthesisSet().getProjectSectionId() == null) {
-            throw new IllegalStateException("쟁점의 정리 세트 참조가 유효하지 않습니다.");
-        }
-        return issue.getSynthesisSet();
-    }
-
-    private void requireOwner(Long sectionId, Long actorUserId) {
-        try {
-            sectionAccessGuard.requireOwnedSectionForUpdate(sectionId, actorUserId);
-        } catch (BusinessException exception) {
-            if (exception.getErrorCode() == ErrorCode.SECTION_NOT_FOUND) {
-                // issue 기반 API는 쟁점 없음과 비멤버 접근을 I001로 통일해 존재를 숨긴다.
-                throw new BusinessException(ErrorCode.ISSUE_NOT_FOUND);
-            }
-            throw exception;
-        }
-    }
-
-    private void requireCurrentSet(SynthesisSet issueSet) {
-        CurrentSynthesisSetReference current = currentSynthesisSetResolver
-                .findCurrent(issueSet.getProjectSectionId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "쟁점이 속한 섹션의 현재 정리 세트가 없습니다."));
-        if (!Objects.equals(current.synthesisSetId(), issueSet.getId())
-                || !Objects.equals(current.requestId(), issueSet.getRequestId())) {
-            throw new BusinessException(ErrorCode.CONFLICT);
         }
     }
 
@@ -163,17 +117,4 @@ public class IssueDecisionService {
         return value != null && !value.isBlank();
     }
 
-    private boolean violatesConstraint(
-            DataIntegrityViolationException exception,
-            String expectedConstraint
-    ) {
-        Throwable current = exception;
-        while (current != null) {
-            if (current instanceof ConstraintViolationException constraintViolation) {
-                return expectedConstraint.equals(constraintViolation.getConstraintName());
-            }
-            current = current.getCause();
-        }
-        return false;
-    }
 }

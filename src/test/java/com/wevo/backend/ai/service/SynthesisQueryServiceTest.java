@@ -178,6 +178,9 @@ class SynthesisQueryServiceTest {
         assertThat(conflict.relatedOpinions())
                 .extracting(SynthesisResponse.RelatedOpinionResponse::authorName)
                 .containsExactly("팀원A");
+        assertThat(conflict.relatedOpinions())
+                .extracting(SynthesisResponse.RelatedOpinionResponse::authorUserId)
+                .containsExactly(21L);
 
         SynthesisResponse.IssueResponse gap = response.currentSet().issues().get(1);
         assertThat(gap.type()).isEqualTo(IssueType.GAP);
@@ -267,7 +270,8 @@ class SynthesisQueryServiceTest {
                 IssueType.CONFLICT,
                 IssueStatus.RESOLVED,
                 "우선 사용자층이 갈립니다.",
-                List.of(new RelatedOpinionView(11L, "팀원A", "대학생이 주 사용자입니다.")),
+                List.of(new RelatedOpinionView(
+                        11L, 21L, "팀원A", "대학생이 주 사용자입니다.")),
                 "어느 사용자층을 우선할까요?",
                 List.of("대학생", "직장인"),
                 new DecisionView("대학생", null, NOW),

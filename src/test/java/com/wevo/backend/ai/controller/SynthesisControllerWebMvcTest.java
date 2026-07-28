@@ -130,7 +130,8 @@ class SynthesisControllerWebMvcTest {
                                 IssueType.CONFLICT,
                                 IssueStatus.RESOLVED,
                                 "우선 사용자층이 갈립니다.",
-                                List.of(new RelatedOpinionResponse(11L, "팀원A", "대학생이 주 사용자입니다.")),
+                                List.of(new RelatedOpinionResponse(
+                                        11L, 21L, "팀원A", "대학생이 주 사용자입니다.")),
                                 "어느 사용자층을 우선할까요?",
                                 List.of("대학생", "직장인"),
                                 new DecisionResponse("대학생", null,
@@ -150,6 +151,9 @@ class SynthesisControllerWebMvcTest {
                 .andExpect(jsonPath("$.data.latestJob.failure").doesNotExist())
                 .andExpect(jsonPath("$.data.currentSet.setId").value(requestId.toString()))
                 .andExpect(jsonPath("$.data.currentSet.issues[0].type").value("CONFLICT"))
+                .andExpect(jsonPath(
+                        "$.data.currentSet.issues[0].relatedOpinions[0].authorUserId")
+                        .value(21))
                 .andExpect(jsonPath("$.data.currentSet.issues[0].options[0]").value("대학생"))
                 .andExpect(jsonPath("$.data.currentSet.issues[0].decision.selectedOption").value("대학생"))
                 // 유형에 해당하지 않는 필드와 null은 직렬화에서 생략된다 (§1.4)
