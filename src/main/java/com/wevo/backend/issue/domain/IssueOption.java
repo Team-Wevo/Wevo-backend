@@ -1,6 +1,7 @@
 package com.wevo.backend.issue.domain;
 
 import com.wevo.backend.global.common.BaseTimeEntity;
+import com.wevo.backend.global.contract.SynthesisIssueContract;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -47,6 +48,9 @@ public class IssueOption extends BaseTimeEntity {
         this.issue = requireConflict(issue);
         if (optionText == null || optionText.isBlank()) {
             throw new IllegalArgumentException("optionText는 필수입니다.");
+        }
+        if (optionText.length() > SynthesisIssueContract.MAX_OPTION_TEXT_LENGTH) {
+            throw new IllegalArgumentException("optionText는 200자 이하여야 합니다.");
         }
         if (sortOrder <= 0) {
             throw new IllegalArgumentException("sortOrder는 1 이상이어야 합니다.");
