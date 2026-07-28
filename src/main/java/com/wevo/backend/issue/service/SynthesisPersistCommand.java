@@ -14,6 +14,7 @@ import java.util.UUID;
  * @param projectSectionId     대상 섹션 ID
  * @param opinionGateGeneration 입력 스냅샷에 묶인 마감 세대
  * @param consensusSummary     합의점 요약 (공백 불가)
+ * @param consensusEvidence    합의점을 직접 뒷받침하는 제출 의견 스냅샷
  * @param issues               쟁점 목록 (목록 순서가 표시 순서)
  * @param inheritedGapAnswers  이 세트가 입력으로 승계한 이전 세트 답변의 원본 참조
  */
@@ -22,6 +23,7 @@ public record SynthesisPersistCommand(
         Long projectSectionId,
         long opinionGateGeneration,
         String consensusSummary,
+        List<RelatedOpinionSpec> consensusEvidence,
         List<IssueSpec> issues,
         List<InheritedGapAnswerRef> inheritedGapAnswers
 ) {

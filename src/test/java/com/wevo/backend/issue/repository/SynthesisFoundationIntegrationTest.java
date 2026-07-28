@@ -35,6 +35,8 @@ import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import com.wevo.backend.issue.service.SynthesisPersistCommand;
+import com.wevo.backend.issue.service.SynthesisResultWriteService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,7 +52,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
         "spring.jpa.hibernate.ddl-auto=validate"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({JpaAuditingConfig.class, PostgresTestContainerConfig.class})
+@Import({
+        JpaAuditingConfig.class,
+        PostgresTestContainerConfig.class,
+        SynthesisResultWriteService.class
+})
 class SynthesisFoundationIntegrationTest {
 
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 7, 22, 14, 0);
@@ -81,6 +87,10 @@ class SynthesisFoundationIntegrationTest {
     private IssueAnswerRepository answerRepository;
     @Autowired
     private SynthesisInheritedGapAnswerRepository inheritedAnswerRepository;
+    @Autowired
+    private SynthesisConsensusEvidenceRepository consensusEvidenceRepository;
+    @Autowired
+    private SynthesisResultWriteService synthesisResultWriteService;
     @Autowired
     private EntityManager entityManager;
     @Autowired
@@ -192,6 +202,47 @@ class SynthesisFoundationIntegrationTest {
 
         assertThat(relatedOpinionRepository.findById(related.getId()).orElseThrow().getExcerpt())
                 .isEqualTo(originalExcerpt);
+    }
+
+    @Test
+    @DisplayName("result writer가 합의점 근거 의견 스냅샷을 세트와 원자적으로 저장한다")
+    void resultWriter_persistsConsensusEvidenceSnapshot() {
+        UUID requestId = UUID.randomUUID();
+        aiJobRepository.saveAndFlush(AiJob.queue(
+                requestId, project, section, owner, AiFeature.OPINION_SYNTHESIS,
+                "a".repeat(64), "source-v2", "prompt-v2", "schema-v2", "test-model",
+                1000, "b".repeat(64), NOW
+        ));
+        String excerpt = submittedOpinion.getSubmittedContentOrLegacy();
+        SynthesisPersistCommand.RelatedOpinionSpec evidence =
+                new SynthesisPersistCommand.RelatedOpinionSpec(
+                        submittedOpinion.getId(),
+                        member.getId(),
+                        member.getName(),
+                        excerpt
+                );
+
+        Long setId = synthesisResultWriteService.persist(new SynthesisPersistCommand(
+                requestId,
+                section.getId(),
+                0,
+                "대학생 팀의 협업 문제를 우선하기로 합의했습니다.",
+                List.of(evidence),
+                List.of(),
+                List.of()
+        ));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(consensusEvidenceRepository
+                .findAllBySynthesisSet_IdOrderBySortOrderAsc(setId))
+                .singleElement()
+                .satisfies(saved -> {
+                    assertThat(saved.getOpinionId()).isEqualTo(submittedOpinion.getId());
+                    assertThat(saved.getAuthorUserId()).isEqualTo(member.getId());
+                    assertThat(saved.getAuthorNameSnapshot()).isEqualTo(member.getName());
+                    assertThat(saved.getExcerpt()).isEqualTo(excerpt);
+                });
     }
 
     @Test

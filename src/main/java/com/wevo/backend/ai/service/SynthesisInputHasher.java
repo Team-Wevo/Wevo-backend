@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class SynthesisInputHasher {
 
-    private static final String CANONICAL_VERSION = "wevo-synthesis-input:v1";
+    private static final String CANONICAL_VERSION = "wevo-synthesis-input:v2";
 
     public String hash(SynthesisInputSnapshot snapshot) {
         if (snapshot == null) {
@@ -40,6 +40,7 @@ public class SynthesisInputHasher {
             update(digest, Long.toString(opinion.opinionId()));
             update(digest, Long.toString(opinion.authorId()));
             update(digest, opinion.submittedContent());
+            update(digest, opinion.submittedAt().toString());
         }
 
         List<GapAnswerInputView> gapAnswers = snapshot.gapAnswers().stream()

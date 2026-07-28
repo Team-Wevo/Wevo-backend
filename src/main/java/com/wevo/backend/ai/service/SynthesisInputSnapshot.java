@@ -21,6 +21,14 @@ public record SynthesisInputSnapshot(
         long opinionGateGeneration
 ) {
 
+    public SynthesisInputSnapshot {
+        if (opinions == null || gapAnswers == null || opinionGateGeneration < 0) {
+            throw new IllegalArgumentException("synthesis 입력과 마감 세대는 필수입니다.");
+        }
+        opinions = List.copyOf(opinions);
+        gapAnswers = List.copyOf(gapAnswers);
+    }
+
     /** 제출 의견이 하나도 없으면 정리를 실행할 수 없다. */
     public boolean hasNoOpinion() {
         return opinions.isEmpty();

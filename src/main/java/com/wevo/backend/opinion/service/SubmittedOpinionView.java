@@ -1,6 +1,7 @@
 package com.wevo.backend.opinion.service;
 
 import com.wevo.backend.opinion.domain.Opinion;
+import java.time.LocalDateTime;
 
 /**
  * AI 의견 정리 입력용으로 다른 도메인에 공개하는 제출 의견의 읽기 전용 투영.
@@ -13,12 +14,14 @@ import com.wevo.backend.opinion.domain.Opinion;
  * @param authorId        작성자 사용자 ID
  * @param authorName      작성자 이름 (스냅샷 저장·발췌 표기용)
  * @param submittedContent 팀에 공개된 제출본
+ * @param submittedAt     최초 제출 시각 (결정적 chunk 순서용)
  */
 public record SubmittedOpinionView(
         Long opinionId,
         Long authorId,
         String authorName,
-        String submittedContent
+        String submittedContent,
+        LocalDateTime submittedAt
 ) {
 
     static SubmittedOpinionView from(Opinion opinion) {
@@ -26,7 +29,8 @@ public record SubmittedOpinionView(
                 opinion.getId(),
                 opinion.getAuthor().getId(),
                 opinion.getAuthor().getName(),
-                opinion.getSubmittedContentOrLegacy()
+                opinion.getSubmittedContentOrLegacy(),
+                opinion.getSubmittedAt()
         );
     }
 }

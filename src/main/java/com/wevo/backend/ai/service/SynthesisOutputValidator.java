@@ -3,106 +3,70 @@ package com.wevo.backend.ai.service;
 import com.wevo.backend.ai.client.StructuredOutputValidationContext;
 import com.wevo.backend.ai.client.StructuredOutputSemanticException;
 import com.wevo.backend.ai.client.StructuredOutputValidator;
-import com.wevo.backend.ai.service.SynthesisAiOutput.IssueOut;
-import com.wevo.backend.global.contract.SynthesisIssueContract;
-import com.wevo.backend.issue.domain.IssueType;
+import com.wevo.backend.ai.dto.model.IssueDetectionOutput;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
- * AI 의견 정리 출력의 <b>의미 검증</b>. (§5.1.7 상한, §5.1.3 CONFLICT 규칙, AI 출력 검증 §7)
+ * AI 의견 정리 출력의 <b>의미 검증</b>.
  *
- * <p>스키마(형식) 검증을 통과한 출력이라도 개수 상한·CONFLICT/GAP 규칙·존재하지 않는 의견 참조는
- * 막아야 한다. 위반 시 {@link StructuredOutputSemanticException}을 던지면 gateway가 교정 재시도
- * 후에도 실패하면 작업을 실패로 종료시킨다(검증 안 된 출력을 저장하지 않는다).
- *
- * <p>참조 의견 검증은 요청별 허용 집합({@link StructuredOutputValidationContext#allowedResourceIds})으로
- * 하므로 이 검증기는 무상태 싱글턴이다.
+ * <p>쟁점 의미 계약은 AI-06 {@link IssueDetectionOutputValidator}에만 두고 재사용한다.
+ * 이 검증기는 합의점 근거와 전체 coverage를 추가 검증한다.
  */
 @Component
 public class SynthesisOutputValidator implements StructuredOutputValidator<SynthesisAiOutput> {
 
     static final int MAX_CONSENSUS_LENGTH = 2_000;
-    static final int MAX_DESCRIPTION_LENGTH = 2_000;
-    static final int MAX_QUESTION_LENGTH = 500;
-    static final int MAX_OPTION_LENGTH = SynthesisIssueContract.MAX_OPTION_TEXT_LENGTH;
-    static final int MIN_CONFLICT_OPTIONS = 2;
-    static final int MAX_CONFLICT_OPTIONS = 5;
+    static final int MAX_CONSENSUS_EVIDENCE = 20;
+
+    private final IssueDetectionOutputValidator issueValidator;
+
+    public SynthesisOutputValidator(IssueDetectionOutputValidator issueValidator) {
+        this.issueValidator = issueValidator;
+    }
 
     @Override
     public void validate(SynthesisAiOutput output, StructuredOutputValidationContext context) {
+        if (output == null || context == null) {
+            throw reject();
+        }
         requireText(output.consensusSummary(), MAX_CONSENSUS_LENGTH);
-
-        List<IssueOut> issues = output.issues();
-        if (issues == null
-                || issues.size() > SynthesisContract.MAX_TOTAL_ISSUES
-                || issues.stream().anyMatch(issue -> issue == null)) {
-            throw reject();
-        }
-
-        long conflictCount = issues.stream().filter(issue -> issue.type() == IssueType.CONFLICT).count();
-        long gapCount = issues.stream().filter(issue -> issue.type() == IssueType.GAP).count();
-        if (conflictCount > SynthesisContract.MAX_CONFLICT_ISSUES
-                || gapCount > SynthesisContract.MAX_GAP_ISSUES) {
-            throw reject();
-        }
-
-        for (IssueOut issue : issues) {
-            validateIssue(issue, context);
-        }
+        validateConsensusEvidence(output.consensusEvidenceOpinionIds(), context);
+        validateExactCoverage(output.coveredOpinionIds(), context);
+        issueValidator.validate(new IssueDetectionOutput(output.issues()), context);
     }
 
-    private void validateIssue(IssueOut issue, StructuredOutputValidationContext context) {
-        if (issue.type() == null) {
+    private void validateConsensusEvidence(
+            List<Long> evidenceOpinionIds,
+            StructuredOutputValidationContext context
+    ) {
+        if (evidenceOpinionIds == null
+                || evidenceOpinionIds.isEmpty()
+                || evidenceOpinionIds.size() > MAX_CONSENSUS_EVIDENCE) {
             throw reject();
         }
-        requireText(issue.description(), MAX_DESCRIPTION_LENGTH);
-        validateRelatedOpinions(issue, context);
-
-        if (issue.type() == IssueType.CONFLICT) {
-            validateConflict(issue);
-        } else {
-            validateGap(issue);
-        }
-    }
-
-    private void validateConflict(IssueOut issue) {
-        requireText(issue.question(), MAX_QUESTION_LENGTH);
-        List<String> options = issue.options();
-        if (options == null
-                || options.size() < MIN_CONFLICT_OPTIONS
-                || options.size() > MAX_CONFLICT_OPTIONS) {
-            throw reject();
-        }
-        for (String option : options) {
-            requireText(option, MAX_OPTION_LENGTH);
-        }
-    }
-
-    private void validateGap(IssueOut issue) {
-        // GAP은 질문·선택지를 갖지 않는다 (§5.1.3 — 결정은 CONFLICT만).
-        // 잘못된 출력(질문·선택지가 있는 GAP)은 저장 단계에서 버리기 전에 여기서 교정 재시도시킨다.
-        //
-        // 빈 문자열·빈 배열은 <b>정상</b>이다 — 구조화 출력 스키마는 record의 모든 필드를 요구하므로
-        // GAP의 question은 ""로, options는 []로 오는 것이 계약이다(SynthesisAiOutput 참고).
-        // 저장 경로(SynthesisJobHandler#toIssueSpec)가 GAP의 question을 null로 정규화하므로
-        // Issue 도메인의 "GAP은 question을 가질 수 없다" 불변식과도 어긋나지 않는다.
-        // 따라서 여기서는 "값이 실제로 들어있는" 경우만 거부한다.
-        if (issue.question() != null && !issue.question().isBlank()) {
-            throw reject();
-        }
-        if (issue.options() != null && !issue.options().isEmpty()) {
-            throw reject();
-        }
-    }
-
-    private void validateRelatedOpinions(IssueOut issue, StructuredOutputValidationContext context) {
-        List<Long> relatedOpinionIds = issue.relatedOpinionIds();
-        if (relatedOpinionIds == null || relatedOpinionIds.isEmpty()) {
-            throw reject();
-        }
-        for (Long opinionId : relatedOpinionIds) {
+        Set<Long> unique = new HashSet<>();
+        for (Long opinionId : evidenceOpinionIds) {
+            if (!unique.add(opinionId)) {
+                throw reject();
+            }
             context.requireAllowedResourceId(opinionId);
+        }
+    }
+
+    private void validateExactCoverage(
+            List<Long> coveredOpinionIds,
+            StructuredOutputValidationContext context
+    ) {
+        if (coveredOpinionIds == null) {
+            throw reject();
+        }
+        Set<Long> covered = new HashSet<>(coveredOpinionIds);
+        if (covered.size() != coveredOpinionIds.size()
+                || !covered.equals(context.allowedResourceIds())) {
+            throw reject();
         }
     }
 

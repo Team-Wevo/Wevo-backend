@@ -10,6 +10,47 @@ import org.springframework.stereotype.Component;
 public class IssueDetectionOutputDefinition {
 
     public static final OutputSchemaId SCHEMA_ID = new OutputSchemaId("issue-detection-output", 1);
+    static final String ISSUE_ARRAY_SCHEMA = """
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "type",
+                  "description",
+                  "evidenceOpinionIds",
+                  "question",
+                  "options"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["CONFLICT", "GAP"]
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "evidenceOpinionIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  },
+                  "question": {
+                    "type": ["string", "null"]
+                  },
+                  "options": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+            """;
+
     private static final String JSON_SCHEMA = """
             {
               "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -17,47 +58,10 @@ public class IssueDetectionOutputDefinition {
               "additionalProperties": false,
               "required": ["issues"],
               "properties": {
-                "issues": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "type",
-                      "description",
-                      "evidenceOpinionIds",
-                      "question",
-                      "options"
-                    ],
-                    "properties": {
-                      "type": {
-                        "type": "string",
-                        "enum": ["CONFLICT", "GAP"]
-                      },
-                      "description": {
-                        "type": "string"
-                      },
-                      "evidenceOpinionIds": {
-                        "type": "array",
-                        "items": {
-                          "type": "integer"
-                        }
-                      },
-                      "question": {
-                        "type": ["string", "null"]
-                      },
-                      "options": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  }
-                }
+                "issues": %s
               }
             }
-            """;
+            """.formatted(ISSUE_ARRAY_SCHEMA);
 
     private final StructuredOutputDefinition<IssueDetectionOutput> definition;
 

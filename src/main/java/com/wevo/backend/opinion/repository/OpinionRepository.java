@@ -26,7 +26,7 @@ public interface OpinionRepository extends JpaRepository<Opinion, Long> {
      */
     @Query("SELECT o FROM Opinion o JOIN FETCH o.author "
             + "WHERE o.projectSection.id = :projectSectionId AND o.status = :status "
-            + "ORDER BY o.submittedAt ASC")
+            + "ORDER BY o.submittedAt ASC, o.id ASC")
     List<Opinion> findAllWithAuthorByProjectSectionIdAndStatus(
             @Param("projectSectionId") Long projectSectionId,
             @Param("status") OpinionStatus status);
