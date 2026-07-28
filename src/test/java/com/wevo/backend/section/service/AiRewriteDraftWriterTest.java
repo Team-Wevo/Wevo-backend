@@ -42,6 +42,7 @@ class AiRewriteDraftWriterTest {
     @Mock private ReviewLinkService reviewLinkService;
     @Mock private TeamReviewService teamReviewService;
     @Mock private UserService userService;
+    @Mock private SectionDriftService sectionDriftService;
     @Mock private ProjectSection section;
     @Mock private User user;
 
@@ -56,7 +57,8 @@ class AiRewriteDraftWriterTest {
                 draftLeaseService,
                 reviewLinkService,
                 teamReviewService,
-                userService
+                userService,
+                sectionDriftService
         );
         latest = SectionDraft.builder()
                 .projectSection(section)
@@ -93,6 +95,7 @@ class AiRewriteDraftWriterTest {
         verify(section).bindCurrentAiCheck();
         verify(reviewLinkService).markSectionLinksOutdated(2L);
         verify(teamReviewService).markSectionTeamReviewsOutdated(2L);
+        verify(sectionDriftService).propagateConfirmedContentChange(section, 3L, 4);
 
         InOrder leaseOrder = inOrder(draftLeaseService, sectionDraftRepository);
         leaseOrder.verify(draftLeaseService).requireActiveHolder(2L, 3L);

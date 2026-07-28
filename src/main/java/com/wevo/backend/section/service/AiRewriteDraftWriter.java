@@ -26,6 +26,7 @@ public class AiRewriteDraftWriter {
     private final ReviewLinkService reviewLinkService;
     private final TeamReviewService teamReviewService;
     private final UserService userService;
+    private final SectionDriftService sectionDriftService;
 
     public AiRewriteDraftWriter(
             ProjectSectionRepository projectSectionRepository,
@@ -33,7 +34,8 @@ public class AiRewriteDraftWriter {
             DraftLeaseService draftLeaseService,
             ReviewLinkService reviewLinkService,
             TeamReviewService teamReviewService,
-            UserService userService
+            UserService userService,
+            SectionDriftService sectionDriftService
     ) {
         this.projectSectionRepository = projectSectionRepository;
         this.sectionDraftRepository = sectionDraftRepository;
@@ -41,6 +43,7 @@ public class AiRewriteDraftWriter {
         this.reviewLinkService = reviewLinkService;
         this.teamReviewService = teamReviewService;
         this.userService = userService;
+        this.sectionDriftService = sectionDriftService;
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -77,9 +80,11 @@ public class AiRewriteDraftWriter {
         section.bindCurrentAiCheck();
         reviewLinkService.markSectionLinksOutdated(command.sectionId());
         teamReviewService.markSectionTeamReviewsOutdated(command.sectionId());
+        var driftedSections = sectionDriftService.propagateConfirmedContentChange(
+                section, command.actorUserId(), draft.getVersion());
         draftLeaseService.releaseHeldBy(command.sectionId(), command.actorUserId());
         return new AiRewriteDraftCreateResult(
-                draft.getId(), draft.getVersion(), section.getStatus());
+                draft.getId(), draft.getVersion(), section.getStatus(), driftedSections);
     }
 
     private void validate(AiRewriteDraftCreateCommand command) {

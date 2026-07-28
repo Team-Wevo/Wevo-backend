@@ -118,7 +118,7 @@ public class PrecheckRewriteService {
         );
         check.bindAppliedRewrite(applied.draftId(), applied.contentVersion());
         return new PrecheckRewriteApplyResult(
-                applied.contentVersion(), applied.sectionStatus(), List.of());
+                applied.contentVersion(), applied.sectionStatus(), applied.driftedSections());
     }
 
     private void requireCurrentSuccessfulResult(Long sectionId, AiSectionCheck check) {

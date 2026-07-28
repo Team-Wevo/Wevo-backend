@@ -26,7 +26,9 @@ import com.wevo.backend.global.security.RestAccessDeniedHandler;
 import com.wevo.backend.global.security.RestAuthenticationEntryPoint;
 import com.wevo.backend.global.security.SecurityConfig;
 import com.wevo.backend.section.domain.AiCheckStatus;
+import com.wevo.backend.section.domain.DriftStatus;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
+import com.wevo.backend.section.service.DriftedSection;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -160,7 +162,13 @@ class PrecheckControllerWebMvcTest {
     void apply_returnsNewContentVersion() throws Exception {
         given(rewriteService.apply(10L, 7L, REQUEST_ID, 3))
                 .willReturn(new PrecheckRewriteApplyResult(
-                        4, ProjectSectionStatus.DRAFTING, List.of()));
+                        4,
+                        ProjectSectionStatus.REVIEWING,
+                        List.of(new DriftedSection(
+                                11L,
+                                "하위 섹션",
+                                ProjectSectionStatus.REVIEWING,
+                                DriftStatus.REVIEW_REQUIRED))));
 
         mockMvc.perform(post(APPLY_URL)
                         .with(authenticatedUser())
@@ -174,8 +182,12 @@ class PrecheckControllerWebMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("PRECHECK_REWRITE_APPLIED"))
                 .andExpect(jsonPath("$.data.contentVersion").value(4))
-                .andExpect(jsonPath("$.data.sectionStatus").value("DRAFTING"))
-                .andExpect(jsonPath("$.data.driftedSections").isEmpty());
+                .andExpect(jsonPath("$.data.sectionStatus").value("REVIEWING"))
+                .andExpect(jsonPath("$.data.driftedSections[0].sectionId").value(11))
+                .andExpect(jsonPath("$.data.driftedSections[0].title").value("하위 섹션"))
+                .andExpect(jsonPath("$.data.driftedSections[0].sectionStatus").value("REVIEWING"))
+                .andExpect(jsonPath("$.data.driftedSections[0].driftStatus")
+                        .value("REVIEW_REQUIRED"));
     }
 
     @Test
