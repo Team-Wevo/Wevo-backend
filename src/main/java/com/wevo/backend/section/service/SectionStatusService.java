@@ -11,6 +11,7 @@ import com.wevo.backend.section.domain.SectionStatusHistory;
 import com.wevo.backend.section.repository.ProjectSectionRepository;
 import com.wevo.backend.section.repository.SectionStatusHistoryRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -89,6 +90,34 @@ public class SectionStatusService {
         ProjectSection section = requireSection(sectionId);
         ProjectMember actor = requireParticipant(section, actorUserId);
         return applyTransition(section, actor, ProjectSectionStatus.REVIEWING, "REVIEW_REQUESTED");
+    }
+
+    /**
+     * AI 초안 저장 성공 전이. {@code SYNTHESIZING → DRAFTING}과 생성 version을 이력에 기록한다.
+     * 호출자의 결과 반영 트랜잭션에 참여해야 한다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public ProjectSection markDraftingAfterAi(
+            Long sectionId,
+            Long actorUserId,
+            int contentVersion
+    ) {
+        if (contentVersion <= 0) {
+            throw new IllegalArgumentException("AI 초안 version은 1 이상이어야 합니다.");
+        }
+        ProjectSection section = requireSection(sectionId);
+        ProjectMember actor = requireOwner(section, actorUserId);
+        ProjectSectionStatus from = section.getStatus();
+        section.changeStatus(ProjectSectionStatus.DRAFTING);
+        sectionStatusHistoryRepository.save(SectionStatusHistory.builder()
+                .projectSection(section)
+                .actor(actor.getUser())
+                .eventType("AI_DRAFT_CREATED")
+                .fromStatus(from)
+                .toStatus(ProjectSectionStatus.DRAFTING)
+                .version(contentVersion)
+                .build());
+        return section;
     }
 
     /**
