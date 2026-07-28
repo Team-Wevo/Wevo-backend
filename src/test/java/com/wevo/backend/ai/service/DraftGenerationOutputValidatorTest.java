@@ -24,7 +24,13 @@ class DraftGenerationOutputValidatorTest {
     @Test
     void acceptsExactEvidenceAndUnresolvedGapCoverage() {
         assertThatCode(() -> validator.validate(
-                output(List.of(2L, 1L), List.of(12L, 11L), List.of(21L), List.of(12L)),
+                output(
+                        "유효한 본문 [미확인:GAP-12]",
+                        List.of(2L, 1L),
+                        List.of(12L, 11L),
+                        List.of(21L),
+                        List.of(12L)
+                ),
                 context
         )).doesNotThrowAnyException();
     }
@@ -37,13 +43,40 @@ class DraftGenerationOutputValidatorTest {
         assertRejected(output(List.of(1L, 2L), List.of(11L, 12L), List.of(21L), List.of()));
     }
 
+    @Test
+    void rejectsUnresolvedGapIdWithoutMatchingContentMarker() {
+        assertRejected(output(
+                "미확인 정보가 있습니다.",
+                List.of(1L, 2L),
+                List.of(11L, 12L),
+                List.of(21L),
+                List.of(12L)
+        ));
+    }
+
     private DraftGenerationOutput output(
             List<Long> opinions,
             List<Long> issues,
             List<Long> answers,
             List<Long> unresolved
     ) {
-        return new DraftGenerationOutput("유효한 본문", opinions, issues, answers, unresolved);
+        return output(
+                "유효한 본문 [미확인:GAP-12]",
+                opinions,
+                issues,
+                answers,
+                unresolved
+        );
+    }
+
+    private DraftGenerationOutput output(
+            String content,
+            List<Long> opinions,
+            List<Long> issues,
+            List<Long> answers,
+            List<Long> unresolved
+    ) {
+        return new DraftGenerationOutput(content, opinions, issues, answers, unresolved);
     }
 
     private void assertRejected(DraftGenerationOutput output) {

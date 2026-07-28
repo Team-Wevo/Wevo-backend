@@ -6,11 +6,13 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.wevo.backend.issue.domain.Issue;
 import com.wevo.backend.issue.domain.IssueAnswer;
 import com.wevo.backend.issue.domain.IssueDecision;
+import com.wevo.backend.issue.domain.IssueRelatedOpinion;
 import com.wevo.backend.issue.domain.IssueStatus;
 import com.wevo.backend.issue.domain.IssueType;
 import com.wevo.backend.issue.domain.SynthesisInheritedGapAnswer;
@@ -134,6 +136,7 @@ class SynthesisSetQueryServiceTest {
         Issue resolved = mock(Issue.class);
         Issue unresolved = mock(Issue.class);
         IssueDecision decision = mock(IssueDecision.class);
+        IssueRelatedOpinion relatedOpinion = mock(IssueRelatedOpinion.class);
         given(access.sectionId()).willReturn(SECTION_ID);
         givenCurrentSet();
         given(currentSet.getOpinionGateGeneration()).willReturn(3L);
@@ -151,8 +154,12 @@ class SynthesisSetQueryServiceTest {
         given(decision.getCustomInput()).willReturn("OWNER 직접 결정");
         given(issueDecisionRepository.findAllWithIssueBySynthesisSetId(SET_ID))
                 .willReturn(List.of(decision));
+        given(relatedOpinion.getIssue()).willReturn(resolved);
+        given(relatedOpinion.getOpinionId()).willReturn(51L);
+        given(relatedOpinion.getAuthorNameSnapshot()).willReturn("팀원");
+        given(relatedOpinion.getExcerpt()).willReturn("결정 근거");
         given(issueRelatedOpinionRepository.findAllWithIssueBySynthesisSetId(SET_ID))
-                .willReturn(List.of());
+                .willReturn(List.of(relatedOpinion, relatedOpinion));
         given(consensusEvidenceRepository.findAllBySynthesisSet_IdOrderBySortOrderAsc(SET_ID))
                 .willReturn(List.of());
 
@@ -164,7 +171,12 @@ class SynthesisSetQueryServiceTest {
                     assertThat(item.issueId()).isEqualTo(31L);
                     assertThat(item.decisionId()).isEqualTo(41L);
                     assertThat(item.decision()).isEqualTo("OWNER 직접 결정");
+                    assertThat(item.evidenceOpinionIds()).containsExactly(51L);
                 });
+        assertThat(result.opinionEvidence()).singleElement()
+                .satisfies(item -> assertThat(item.opinionId()).isEqualTo(51L));
+        verify(issueRelatedOpinionRepository, times(1))
+                .findAllWithIssueBySynthesisSetId(SET_ID);
     }
 
     private void givenCurrentSet() {

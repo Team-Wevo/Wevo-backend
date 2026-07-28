@@ -6,7 +6,6 @@ public record AiDraftGapAnswerContext(
         Long answerId,
         String content,
         String answeredAt,
-        String authorName,
         boolean inherited
 ) {
 }

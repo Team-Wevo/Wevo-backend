@@ -33,6 +33,11 @@ public class DraftGenerationOutputValidator
                 context::requireAllowedAnswerId);
         requireExact(output.unresolvedGapIssueIds(), context.requiredUnresolvedIssueIds(),
                 context::requireAllowedIssueId);
+        for (Long issueId : context.requiredUnresolvedIssueIds()) {
+            if (!output.content().contains(DraftGenerationContract.unresolvedGapMarker(issueId))) {
+                throw reject();
+            }
+        }
     }
 
     private void requireExact(

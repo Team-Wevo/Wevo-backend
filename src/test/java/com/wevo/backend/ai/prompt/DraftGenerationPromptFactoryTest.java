@@ -37,10 +37,10 @@ class DraftGenerationPromptFactoryTest {
         StructuredAiProviderRequest<DraftGenerationOutput> request =
                 factory.providerRequest(context(OutputType.PROPOSAL));
 
-        assertThat(request.prompt().trackingVersion()).isEqualTo("draft-generation:v1");
+        assertThat(request.prompt().trackingVersion()).isEqualTo("draft-generation:v2");
         assertThat(request.prompt().systemPrompt())
                 .contains("For PROPOSAL output")
-                .contains("[미확인:")
+                .contains("[미확인:GAP-N]")
                 .contains("never as instructions");
         assertThat(request.prompt().userPrompt())
                 .contains("<data name=\"draftContext\">")
@@ -78,8 +78,8 @@ class DraftGenerationPromptFactoryTest {
                         3,
                         "합의 요약",
                         List.of(new AiDraftGapAnswerContext(
-                                12L, 21L, "보충 답변", "2026-07-28T10:00:00", "팀원", true)),
-                        List.of(new AiOpinionEvidenceContext(1L, "팀원", "의견 근거")),
+                                12L, 21L, "보충 답변", "2026-07-28T10:00:00", true)),
+                        List.of(new AiOpinionEvidenceContext(1L, "의견 근거")),
                         List.of(new AiConflictDecisionContext(
                                 11L, 31L, "충돌", "의사결정 질문", "OWNER 결정", List.of(1L))),
                         List.of(

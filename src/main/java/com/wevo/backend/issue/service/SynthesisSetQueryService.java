@@ -25,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -104,7 +105,9 @@ public class SynthesisSetQueryService {
                         decision -> decision.getIssue().getId(),
                         decision -> decision
                 ));
-        Map<Long, List<Long>> evidenceIdsByIssue = issueEvidenceIds(current.getId());
+        List<IssueRelatedOpinion> relatedOpinions =
+                issueRelatedOpinionRepository.findAllWithIssueBySynthesisSetId(current.getId());
+        Map<Long, List<Long>> evidenceIdsByIssue = issueEvidenceIds(relatedOpinions);
 
         List<ConflictDecisionContext> decisions = new ArrayList<>();
         List<GapIssueContext> gapIssues = new ArrayList<>();
@@ -133,7 +136,7 @@ public class SynthesisSetQueryService {
                 current.getOpinionGateGeneration(),
                 current.getConsensusSummary(),
                 sorted,
-                opinionEvidence(current.getId()),
+                opinionEvidence(current.getId(), relatedOpinions),
                 decisions,
                 gapIssues,
                 hasUnresolvedConflict);
@@ -298,29 +301,33 @@ public class SynthesisSetQueryService {
                 .toList();
     }
 
-    private Map<Long, List<Long>> issueEvidenceIds(Long synthesisSetId) {
-        Map<Long, List<Long>> result = new HashMap<>();
-        for (IssueRelatedOpinion evidence :
-                issueRelatedOpinionRepository.findAllWithIssueBySynthesisSetId(synthesisSetId)) {
+    private Map<Long, List<Long>> issueEvidenceIds(List<IssueRelatedOpinion> relatedOpinions) {
+        Map<Long, Set<Long>> unique = new HashMap<>();
+        for (IssueRelatedOpinion evidence : relatedOpinions) {
             if (evidence == null || evidence.getIssue() == null || evidence.getIssue().getId() == null
                     || evidence.getOpinionId() == null) {
                 throw new IllegalStateException("쟁점 의견 근거의 무결성이 깨졌습니다.");
             }
-            result.computeIfAbsent(evidence.getIssue().getId(), ignored -> new ArrayList<>())
+            unique.computeIfAbsent(evidence.getIssue().getId(), ignored -> new TreeSet<>())
                     .add(evidence.getOpinionId());
         }
+        Map<Long, List<Long>> result = new HashMap<>();
+        unique.forEach((issueId, opinionIds) ->
+                result.put(issueId, List.copyOf(opinionIds)));
         return result;
     }
 
-    private List<SynthesisOpinionEvidenceContext> opinionEvidence(Long synthesisSetId) {
+    private List<SynthesisOpinionEvidenceContext> opinionEvidence(
+            Long synthesisSetId,
+            List<IssueRelatedOpinion> relatedOpinions
+    ) {
         Map<Long, SynthesisOpinionEvidenceContext> unique = new LinkedHashMap<>();
         for (SynthesisConsensusEvidence evidence :
                 consensusEvidenceRepository.findAllBySynthesisSet_IdOrderBySortOrderAsc(synthesisSetId)) {
             addOpinionEvidence(unique, evidence.getOpinionId(),
                     evidence.getAuthorNameSnapshot(), evidence.getExcerpt());
         }
-        for (IssueRelatedOpinion evidence :
-                issueRelatedOpinionRepository.findAllWithIssueBySynthesisSetId(synthesisSetId)) {
+        for (IssueRelatedOpinion evidence : relatedOpinions) {
             addOpinionEvidence(unique, evidence.getOpinionId(),
                     evidence.getAuthorNameSnapshot(), evidence.getExcerpt());
         }

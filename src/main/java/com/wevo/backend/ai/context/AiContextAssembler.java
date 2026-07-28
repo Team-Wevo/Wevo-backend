@@ -266,7 +266,6 @@ public class AiContextAssembler {
                         .sorted(Comparator.comparing(SynthesisOpinionEvidenceContext::opinionId))
                         .map(evidence -> new AiOpinionEvidenceContext(
                                 requirePositive(evidence.opinionId(), "opinionId"),
-                                normalizeRequired(evidence.authorNameSnapshot()),
                                 normalizeRequired(evidence.content())
                         ))
                         .toList();
@@ -349,7 +348,6 @@ public class AiContextAssembler {
                     answer.answerId(),
                     normalizeRequired(answer.content()),
                     DATE_TIME_FORMAT.format(answer.answeredAt()),
-                    normalizeRequired(answer.authorNameSnapshot()),
                     answer.inherited()
             ));
         }

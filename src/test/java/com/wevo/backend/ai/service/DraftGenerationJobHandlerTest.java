@@ -10,8 +10,10 @@ import static org.mockito.Mockito.verify;
 import com.wevo.backend.ai.config.AiJobDispatchProperties;
 import com.wevo.backend.ai.context.AiBaseDraftContext;
 import com.wevo.backend.ai.context.AiContextAssembler;
+import com.wevo.backend.ai.context.AiDraftGapAnswerContext;
 import com.wevo.backend.ai.context.AiDraftSynthesisContext;
 import com.wevo.backend.ai.context.AiInputSnapshot;
+import com.wevo.backend.ai.context.AiOpinionEvidenceContext;
 import com.wevo.backend.ai.context.AiProjectBrief;
 import com.wevo.backend.ai.context.AiProjectIdentity;
 import com.wevo.backend.ai.context.AiSectionContext;
@@ -21,10 +23,16 @@ import com.wevo.backend.ai.context.DraftGenerationContext;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiJobStatus;
 import com.wevo.backend.ai.repository.AiJobRepository;
+import com.wevo.backend.issue.service.CurrentSynthesisContext;
+import com.wevo.backend.issue.service.GapAnswerContext;
+import com.wevo.backend.issue.service.SynthesisOpinionEvidenceContext;
+import com.wevo.backend.issue.service.SynthesisSetQueryService;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.service.ProjectAccessGuard;
+import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.project.service.VerifiedProjectAccess;
+import com.wevo.backend.project.service.VerifiedSectionAccess;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.service.AiSectionDraftCreateCommand;
@@ -32,6 +40,7 @@ import com.wevo.backend.section.service.AiSectionDraftWriter;
 import com.wevo.backend.section.service.SectionSynthesisStateService;
 import com.wevo.backend.user.domain.User;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -59,6 +68,8 @@ class DraftGenerationJobHandlerTest {
     @Mock private AiJobService aiJobService;
     @Mock private AiJobRepository aiJobRepository;
     @Mock private ProjectAccessGuard projectAccessGuard;
+    @Mock private SectionAccessGuard sectionAccessGuard;
+    @Mock private SynthesisSetQueryService synthesisSetQueryService;
     @Mock private AiContextAssembler contextAssembler;
     @Mock private ObjectProvider<SectionDraftGenerator> generatorProvider;
     @Mock private SectionDraftGenerator generator;
@@ -70,6 +81,7 @@ class DraftGenerationJobHandlerTest {
     @Mock private ProjectSection section;
     @Mock private User user;
     @Mock private VerifiedProjectAccess access;
+    @Mock private VerifiedSectionAccess sectionAccess;
 
     private ScheduledExecutorService scheduler;
     private DraftGenerationJobHandler handler;
@@ -82,6 +94,8 @@ class DraftGenerationJobHandlerTest {
                 aiJobService,
                 aiJobRepository,
                 projectAccessGuard,
+                sectionAccessGuard,
+                synthesisSetQueryService,
                 contextAssembler,
                 generatorProvider,
                 draftWriter,
@@ -106,6 +120,9 @@ class DraftGenerationJobHandlerTest {
         given(section.getId()).willReturn(2L);
         given(user.getId()).willReturn(3L);
         given(projectAccessGuard.requireParticipantAccess(1L, 3L)).willReturn(access);
+        given(sectionAccessGuard.verifySectionAccess(access, 2L)).willReturn(sectionAccess);
+        given(synthesisSetQueryService.getCurrentForDraftGeneration(sectionAccess))
+                .willReturn(evidenceSnapshot());
         given(contextAssembler.assembleDraftGenerationSnapshot(access, 2L))
                 .willReturn(assembled(HASH));
         given(generatorProvider.getIfAvailable()).willReturn(generator);
@@ -138,6 +155,10 @@ class DraftGenerationJobHandlerTest {
         assertThat(command.getValue().content()).isEqualTo("생성 본문");
         assertThat(command.getValue().baseVersion()).isZero();
         assertThat(command.getValue().synthesisSetId()).isEqualTo(10L);
+        assertThat(command.getValue().opinions()).singleElement()
+                .satisfies(item -> assertThat(item.authorName()).isEqualTo("의견 작성자"));
+        assertThat(command.getValue().gapAnswers()).singleElement()
+                .satisfies(item -> assertThat(item.authorName()).isEqualTo("답변 작성자"));
         verify(sectionStateService).lockForResultCommit(2L);
         verify(usageResultLinkService).linkSuccessfulInvocations(90L, 44L);
         verify(aiJobService, never()).fail(any(), any());
@@ -182,9 +203,38 @@ class DraftGenerationJobHandlerTest {
                         2L, "문제", 1, ProjectSectionStatus.SYNTHESIZING,
                         0, false, new AiTemplateContext("problem", null, null)),
                 new AiDraftSynthesisContext(
-                        10L, 0, "합의", List.of(), List.of(), List.of(), List.of(), false),
+                        10L,
+                        0,
+                        "합의",
+                        List.of(new AiDraftGapAnswerContext(
+                                12L, 21L, "답변", "2026-07-28T10:00:00", false)),
+                        List.of(new AiOpinionEvidenceContext(1L, "근거")),
+                        List.of(),
+                        List.of(),
+                        false
+                ),
                 new AiBaseDraftContext(0, null),
                 List.of()
+        );
+    }
+
+    private CurrentSynthesisContext evidenceSnapshot() {
+        return new CurrentSynthesisContext(
+                10L,
+                0,
+                "합의",
+                List.of(new GapAnswerContext(
+                        12L,
+                        21L,
+                        "답변",
+                        LocalDateTime.of(2026, 7, 28, 10, 0),
+                        "답변 작성자",
+                        false
+                )),
+                List.of(new SynthesisOpinionEvidenceContext(1L, "의견 작성자", "근거")),
+                List.of(),
+                List.of(),
+                false
         );
     }
 }

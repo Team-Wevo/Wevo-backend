@@ -7,7 +7,10 @@ import com.wevo.backend.ai.context.DraftGenerationContext;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.repository.AiJobRepository;
+import com.wevo.backend.issue.service.CurrentSynthesisContext;
+import com.wevo.backend.issue.service.SynthesisSetQueryService;
 import com.wevo.backend.project.service.ProjectAccessGuard;
+import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.project.service.VerifiedProjectAccess;
 import com.wevo.backend.section.service.AiSectionDraftCreateCommand;
 import com.wevo.backend.section.service.AiSectionDraftCreateCommand.DecisionEvidence;
@@ -36,6 +39,8 @@ public class DraftGenerationJobHandler implements AiJobHandler {
     private final AiJobService aiJobService;
     private final AiJobRepository aiJobRepository;
     private final ProjectAccessGuard projectAccessGuard;
+    private final SectionAccessGuard sectionAccessGuard;
+    private final SynthesisSetQueryService synthesisSetQueryService;
     private final AiContextAssembler contextAssembler;
     private final ObjectProvider<SectionDraftGenerator> generatorProvider;
     private final AiSectionDraftWriter draftWriter;
@@ -48,6 +53,8 @@ public class DraftGenerationJobHandler implements AiJobHandler {
             AiJobService aiJobService,
             AiJobRepository aiJobRepository,
             ProjectAccessGuard projectAccessGuard,
+            SectionAccessGuard sectionAccessGuard,
+            SynthesisSetQueryService synthesisSetQueryService,
             AiContextAssembler contextAssembler,
             ObjectProvider<SectionDraftGenerator> generatorProvider,
             AiSectionDraftWriter draftWriter,
@@ -59,6 +66,8 @@ public class DraftGenerationJobHandler implements AiJobHandler {
         this.aiJobService = aiJobService;
         this.aiJobRepository = aiJobRepository;
         this.projectAccessGuard = projectAccessGuard;
+        this.sectionAccessGuard = sectionAccessGuard;
+        this.synthesisSetQueryService = synthesisSetQueryService;
         this.contextAssembler = contextAssembler;
         this.generatorProvider = generatorProvider;
         this.draftWriter = draftWriter;
@@ -112,7 +121,11 @@ public class DraftGenerationJobHandler implements AiJobHandler {
             throw new IllegalStateException("AI provider가 구성되지 않아 초안을 생성할 수 없습니다.");
         }
         DraftGenerationOutput output = generator.generate(job, assembled.context());
-        AiSectionDraftCreateCommand command = toCommand(job, assembled.context(), output);
+        CurrentSynthesisContext evidenceSnapshot =
+                synthesisSetQueryService.getCurrentForDraftGeneration(
+                        sectionAccessGuard.verifySectionAccess(access, sectionId));
+        AiSectionDraftCreateCommand command =
+                toCommand(job, assembled.context(), output, evidenceSnapshot);
 
         aiJobService.succeed(job.getRequestId(), () -> {
             sectionStateService.lockForResultCommit(sectionId);
@@ -128,8 +141,10 @@ public class DraftGenerationJobHandler implements AiJobHandler {
     private AiSectionDraftCreateCommand toCommand(
             AiJob job,
             DraftGenerationContext context,
-            DraftGenerationOutput output
+            DraftGenerationOutput output,
+            CurrentSynthesisContext evidenceSnapshot
     ) {
+        requireSameSynthesis(context, evidenceSnapshot);
         return new AiSectionDraftCreateCommand(
                 job.getProjectSection().getId(),
                 job.getRequestedBy().getId(),
@@ -143,7 +158,9 @@ public class DraftGenerationJobHandler implements AiJobHandler {
                 context.synthesis().consensusSummary(),
                 context.synthesis().opinionEvidence().stream()
                         .map(item -> new OpinionEvidence(
-                                item.opinionId(), item.authorName(), item.content()))
+                                item.opinionId(),
+                                requireOpinionAuthorName(evidenceSnapshot, item.opinionId()),
+                                item.content()))
                         .toList(),
                 context.synthesis().conflictDecisions().stream()
                         .map(item -> new DecisionEvidence(
@@ -153,7 +170,7 @@ public class DraftGenerationJobHandler implements AiJobHandler {
                         .map(item -> new GapAnswerEvidence(
                                 item.sourceIssueId(),
                                 item.answerId(),
-                                item.authorName(),
+                                requireAnswerAuthorName(evidenceSnapshot, item.answerId()),
                                 item.content(),
                                 LocalDateTime.parse(item.answeredAt(), DateTimeFormatter.ISO_LOCAL_DATE_TIME),
                                 item.inherited()))
@@ -163,6 +180,44 @@ public class DraftGenerationJobHandler implements AiJobHandler {
                                 item.sectionId(), item.contentVersion()))
                         .toList()
         );
+    }
+
+    private void requireSameSynthesis(
+            DraftGenerationContext context,
+            CurrentSynthesisContext evidenceSnapshot
+    ) {
+        if (evidenceSnapshot == null
+                || !context.synthesis().synthesisSetId().equals(evidenceSnapshot.synthesisSetId())
+                || context.synthesis().opinionGateGeneration()
+                != evidenceSnapshot.opinionGateGeneration()) {
+            throw new IllegalStateException("초안 생성 근거 snapshot이 AI 입력과 일치하지 않습니다.");
+        }
+    }
+
+    private String requireOpinionAuthorName(
+            CurrentSynthesisContext evidenceSnapshot,
+            Long opinionId
+    ) {
+        return evidenceSnapshot.opinionEvidence().stream()
+                .filter(item -> opinionId.equals(item.opinionId()))
+                .map(item -> item.authorNameSnapshot())
+                .filter(name -> name != null && !name.isBlank())
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "초안 생성 의견 근거의 작성자 snapshot이 누락되었습니다."));
+    }
+
+    private String requireAnswerAuthorName(
+            CurrentSynthesisContext evidenceSnapshot,
+            Long answerId
+    ) {
+        return evidenceSnapshot.gapAnswers().stream()
+                .filter(item -> answerId.equals(item.answerId()))
+                .map(item -> item.authorNameSnapshot())
+                .filter(name -> name != null && !name.isBlank())
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "초안 생성 GAP 답변의 작성자 snapshot이 누락되었습니다."));
     }
 
     private VerifiedProjectAccess access(AiJob job) {

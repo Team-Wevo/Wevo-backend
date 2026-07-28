@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 public class DraftGenerationPromptFactory {
 
     public static final PromptTemplateId PROMPT_ID =
-            new PromptTemplateId("draft-generation", 1);
+            new PromptTemplateId("draft-generation", 2);
 
     private final PromptRegistry promptRegistry;
     private final PromptRenderer promptRenderer;

@@ -199,8 +199,13 @@ class AiContextAssemblerTest {
                 sectionAccessGuard.verifySectionAccess(access, SECTION_ID);
         when(synthesisQueryService.getCurrentForDraftGeneration(sectionAccess))
                 .thenReturn(draftSynthesis("OWNER 결정 A"));
-        String baseline = assembler.assembleDraftGeneration(access, SECTION_ID)
-                .snapshot().inputSnapshotHash();
+        AssembledAiContext<DraftGenerationContext> baselineAssembly =
+                assembler.assembleDraftGeneration(access, SECTION_ID);
+        String baseline = baselineAssembly.snapshot().inputSnapshotHash();
+        String canonical = new String(
+                baselineAssembly.snapshot().canonicalBytes(),
+                StandardCharsets.UTF_8
+        );
 
         when(synthesisQueryService.getCurrentForDraftGeneration(sectionAccess))
                 .thenReturn(draftSynthesis("OWNER 결정 B"));
@@ -216,6 +221,7 @@ class AiContextAssemblerTest {
 
         assertThat(decisionChanged).isNotEqualTo(baseline);
         assertThat(baseDraftChanged).isNotEqualTo(baseline);
+        assertThat(canonical).doesNotContain("팀원");
     }
 
     private List<SubmittedOpinionContext> opinionsInRepositoryOrder() {
