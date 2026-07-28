@@ -113,6 +113,40 @@ class PrecheckRequestServiceTest {
     }
 
     @Test
+    void reusesQueuedAndRunningSameSnapshot() {
+        given(contextAssembler.assembleDraftReview(access, SECTION_ID))
+                .willReturn(assembled(context(ProjectSectionStatus.DRAFTING)));
+
+        for (AiJobStatus status : List.of(AiJobStatus.QUEUED, AiJobStatus.RUNNING)) {
+            UUID requestId = UUID.randomUUID();
+            given(aiJobService.findLatest(any()))
+                    .willReturn(Optional.of(result(requestId, status)));
+
+            assertThat(service.requestPrecheck(SECTION_ID, USER_ID))
+                    .isEqualTo(requestId);
+        }
+        verify(aiJobService, never()).createOrGet(any());
+        verify(aiJobService, never()).retry(any(), any());
+    }
+
+    @Test
+    void retriesFailedSameSnapshotWithNewRequestId() {
+        UUID failedRequestId = UUID.randomUUID();
+        UUID retryRequestId = UUID.randomUUID();
+        given(contextAssembler.assembleDraftReview(access, SECTION_ID))
+                .willReturn(assembled(context(ProjectSectionStatus.DRAFTING)));
+        given(aiJobService.findLatest(any()))
+                .willReturn(Optional.of(result(failedRequestId, AiJobStatus.FAILED)));
+        given(aiJobService.retry(failedRequestId, user))
+                .willReturn(result(retryRequestId, AiJobStatus.QUEUED));
+
+        assertThat(service.requestPrecheck(SECTION_ID, USER_ID))
+                .isEqualTo(retryRequestId);
+        verify(aiJobService).retry(failedRequestId, user);
+        verify(aiJobService, never()).createOrGet(any());
+    }
+
+    @Test
     void rejectsConfirmedAndMissingDraftBeforeQueue() {
         given(contextAssembler.assembleDraftReview(access, SECTION_ID))
                 .willReturn(assembled(context(ProjectSectionStatus.CONFIRMED)));
