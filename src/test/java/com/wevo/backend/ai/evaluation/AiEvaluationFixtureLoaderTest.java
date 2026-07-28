@@ -53,6 +53,21 @@ class AiEvaluationFixtureLoaderTest {
     }
 
     @Test
+    void loadsDraftGenerationUnansweredGapQualityFixture() {
+        List<AiEvaluationFixture> fixtures = loader.loadDataset(
+                "ai/evaluation/draft-generation/dataset-v1.index.json"
+        );
+
+        assertThat(fixtures).singleElement().satisfies(fixture -> {
+            assertThat(fixture.metadata().feature())
+                    .isEqualTo(com.wevo.backend.ai.domain.AiFeature.DRAFT_GENERATION);
+            assertThat(fixture.metadata().synthetic()).isTrue();
+            assertThat(fixture.expected().forbiddenClaims())
+                    .contains("운영 예산은 500만원으로 확정", "예산이 승인되었다");
+        });
+    }
+
+    @Test
     void rejectsMissingRequiredValueAndUnknownEnumBeforeRecordConversion() {
         assertThatThrownBy(() -> loader.load("ai/evaluation/invalid/missing-language.json"))
                 .isInstanceOf(AiEvaluationFixtureException.class)
