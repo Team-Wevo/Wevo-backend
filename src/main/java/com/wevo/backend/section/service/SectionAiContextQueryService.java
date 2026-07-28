@@ -1,5 +1,7 @@
 package com.wevo.backend.section.service;
 
+import com.wevo.backend.global.exception.BusinessException;
+import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.project.service.VerifiedProjectAccess;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
@@ -49,7 +51,7 @@ public class SectionAiContextQueryService {
         dependencyQueryService.requireTarget(access, sectionId);
         SectionDraft draft = sectionDraftRepository
                 .findTopByProjectSection_IdOrderByVersionDesc(sectionId)
-                .orElseThrow(() -> new IllegalStateException("AI context에 필요한 최신 draft가 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_DRAFT_NOT_FOUND));
         return toVersionedContent(draft, sectionId);
     }
 

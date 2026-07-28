@@ -41,6 +41,14 @@ raw-length limit of 200.
 behind each synthesis consensus. It preserves author/name/excerpt snapshots with deterministic
 ordering so later opinion edits cannot rewrite the evidence history.
 
+`V7__add_ai_section_draft_evidence.sql` adds the draft source discriminator and immutable
+AI-generation evidence aggregate. It links each generated draft to its source job, synthesis set,
+input snapshot, and ordered opinion/decision/GAP/prerequisite evidence.
+
+`V8__add_ai_section_checks.sql` stores successful section precheck results. A result is linked to
+its source job and checked draft, keeps ordered findings and direct-prerequisite version snapshots,
+and records one-time full-rewrite application/rebinding metadata.
+
 ## Existing local databases
 
 V1 is an initial migration for an **empty PostgreSQL database**. A database previously
