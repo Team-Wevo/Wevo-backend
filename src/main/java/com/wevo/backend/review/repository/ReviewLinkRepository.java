@@ -31,4 +31,12 @@ public interface ReviewLinkRepository extends JpaRepository<ReviewLink, Long> {
      * 특정 섹션에 걸린 특정 상태의 링크들을 조회한다. (본문 수정 시 ACTIVE 링크 만료 처리용)
      */
     List<ReviewLink> findByProjectSection_IdAndStatus(Long projectSectionId, ReviewLinkStatus status);
+
+    /**
+     * 특정 섹션의 특정 상태 링크 한 건을 조회한다. (상태 복구 조회용)
+     *
+     * <p>섹션당 {@code ACTIVE} 링크는 부분 유니크 인덱스로 최대 1개가 보장되므로,
+     * {@code ACTIVE} 조회는 곧 현재 활성 링크 단건 조회다.
+     */
+    Optional<ReviewLink> findFirstByProjectSection_IdAndStatus(Long projectSectionId, ReviewLinkStatus status);
 }

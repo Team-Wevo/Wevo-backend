@@ -37,6 +37,14 @@ no table, column, or constraint changes — so JPA mapping validation is unaffec
 characters while preserving the submitted whitespace, so the database column cannot retain a
 raw-length limit of 200.
 
+`V6__review_links_single_active.sql` adds a partial unique index
+(`uk_review_links_active_per_section`) enforcing at most one `ACTIVE` external review link per
+section. Link termination is server-driven (content edits mark the link `OUTDATED`; re-issue
+closes the previous `ACTIVE` link), so the "at most one live link" invariant that the status
+recovery lookup (`GET .../review-links/current`) relies on is now guaranteed at the database
+level rather than by application logic alone. It adds a partial index only — no table, column, or
+constraint changes — so JPA mapping validation is unaffected.
+
 ## Existing local databases
 
 V1 is an initial migration for an **empty PostgreSQL database**. A database previously

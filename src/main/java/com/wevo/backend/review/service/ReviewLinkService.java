@@ -9,6 +9,7 @@ import com.wevo.backend.review.domain.ReviewLinkStatus;
 import com.wevo.backend.review.domain.ReviewSubmission;
 import com.wevo.backend.review.dto.request.ExternalReviewSubmitRequest;
 import com.wevo.backend.review.dto.response.ExternalReviewViewResponse;
+import com.wevo.backend.review.dto.response.ReviewLinkCurrentResponse;
 import com.wevo.backend.review.dto.response.ReviewLinkResponse;
 import com.wevo.backend.review.dto.response.ReviewSubmissionResponse;
 import com.wevo.backend.review.repository.ReviewLinkRepository;
@@ -19,6 +20,7 @@ import com.wevo.backend.section.repository.SectionDraftRepository;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.repository.UserRepository;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,8 +94,15 @@ public class ReviewLinkService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.REVIEW_LINK_DRAFT_REQUIRED));
 
         // 대체 발급 — 기존 ACTIVE 링크를 닫는다 (섹션 행 잠금을 잡고 있어 발급·만료와 직렬화됨)
-        reviewLinkRepository.findByProjectSection_IdAndStatus(sectionId, ReviewLinkStatus.ACTIVE)
-                .forEach(ReviewLink::close);
+        List<ReviewLink> previousActive = reviewLinkRepository
+                .findByProjectSection_IdAndStatus(sectionId, ReviewLinkStatus.ACTIVE);
+        previousActive.forEach(ReviewLink::close);
+        // 기존 ACTIVE→CLOSED UPDATE 를 새 ACTIVE INSERT 전에 DB 에 반영한다.
+        // IDENTITY 전략은 save() 시점에 즉시 INSERT 하므로, 이 flush 가 없으면 새 행이 먼저 들어가
+        // 부분 유니크 인덱스(uk_review_links_active_per_section)를 위반한다.
+        if (!previousActive.isEmpty()) {
+            reviewLinkRepository.flush();
+        }
 
         String rawToken = tokenHasher.generateRawToken();
         ReviewLink link = ReviewLink.builder()
@@ -122,6 +131,24 @@ public class ReviewLinkService {
                 && reviewSubmissionRepository
                 .existsByReviewLink_IdAndAnonymousReviewerId(link.getId(), anonymousReviewerId);
         return ExternalReviewViewResponse.of(link, alreadySubmitted);
+    }
+
+    /**
+     * 섹션의 현재 활성({@code ACTIVE}) 외부 검토 링크를 상태 복구용으로 조회한다. (팀장 전용)
+     *
+     * <p>팀장이 링크 발급 후 새로고침하면 활성 링크 존재 여부를 알 수 없어 무심코 재발급 →
+     * 이미 공유한 링크가 죽는 사고가 난다. 이 조회로 현재 링크의 존재·메타데이터를 복구한다.
+     * 섹션당 {@code ACTIVE} 링크는 최대 1개가 보장되므로 결과는 단건이다.
+     *
+     * <p>원문 토큰은 재노출하지 않으며(해시만 저장), 활성 링크가 없으면 {@link Optional#empty()}
+     * 를 반환한다(컨트롤러가 {@code 204} 로 변환). 권한 검증은 발급과 동일하게 OWNER 로 제한한다.
+     */
+    public Optional<ReviewLinkCurrentResponse> getCurrentActiveLink(Long sectionId, Long userId) {
+        sectionAccessGuard.requireOwnedSection(sectionId, userId);
+        return reviewLinkRepository
+                .findFirstByProjectSection_IdAndStatus(sectionId, ReviewLinkStatus.ACTIVE)
+                .map(link -> ReviewLinkCurrentResponse.of(
+                        link, reviewSubmissionRepository.countByReviewLink_Id(link.getId())));
     }
 
     /**
@@ -161,7 +188,13 @@ public class ReviewLinkService {
     }
 
     /**
-     * 외부 검토 링크 상태를 변경한다. (팀장 전용)
+     * 외부 검토 링크를 수동으로 비활성화({@code CLOSED})한다. (내부용 — HTTP 엔드포인트 없음)
+     *
+     * <p>검토 링크 종료의 <b>기본 경로는 서버 자동 만료</b>다 — 본문 수정 시
+     * {@link #markSectionLinksOutdated}로 {@code OUTDATED} 되고, 재발급 시 기존 {@code ACTIVE}
+     * 링크가 {@link #issueExternalLink}에서 {@code CLOSED} 된다. FE 는 수동 비활성화를 호출하지
+     * 않으므로 이 메서드는 엔드포인트로 노출하지 않고, 운영·내부 로직이 필요할 때 쓰도록 남겨 둔다.
+     * ({@code CLOSED} 로만 전이 가능하며 OWNER 권한을 검증한다.)
      */
     @Transactional
     public void updateStatus(Long reviewLinkId, Long userId, ReviewLinkStatus targetStatus) {

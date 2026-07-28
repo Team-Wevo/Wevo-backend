@@ -16,6 +16,7 @@ import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.domain.ProjectStatus;
+import com.wevo.backend.review.domain.ReviewLinkStatus;
 import com.wevo.backend.review.domain.ReviewSubmission;
 import com.wevo.backend.review.domain.UnderstandingSignal;
 import com.wevo.backend.review.repository.ReviewSubmissionRepository;
@@ -370,7 +371,7 @@ class ExternalReviewIntegrationTest {
     }
 
     @Test
-    @DisplayName("팀장이 비활성화(CLOSED)한 링크에 제출하면 409(R005) 를 반환한다")
+    @DisplayName("내부 수동 비활성화(CLOSED)한 링크에 제출하면 409(R005) 를 반환한다")
     void closedLinkRejectsSubmission() throws Exception {
         User owner = persistUser("owner-closed@wevo.com", "팀장");
         ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
@@ -379,17 +380,58 @@ class ExternalReviewIntegrationTest {
         String token = issueLink(section.getId(), owner);
         Long linkId = linkId(token);
 
-        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                        .patch("/api/review-links/{id}", linkId)
-                        .with(authentication(authOf(owner)))
-                        .contentType("application/json")
-                        .content("{ \"status\": \"CLOSED\" }"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value("REVIEW_LINK_CLOSED"));
+        // 수동 비활성화는 HTTP 엔드포인트 없이 내부 로직으로만 남는다.
+        reviewLinkService.updateStatus(linkId, owner.getId(), ReviewLinkStatus.CLOSED);
 
         submitAsReviewer(token, "CLEAR", "browser-A")
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("R005"));
+    }
+
+    @Test
+    @DisplayName("현재 활성 링크 조회는 토큰 없이 메타데이터를 복구하고, 제출 수는 링크당으로 센다")
+    void currentActiveLinkIsRecoverableWithoutToken() throws Exception {
+        User owner = persistUser("owner-current@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+        Long linkId = linkId(token);
+
+        submitAsReviewer(token, "CLEAR", "browser-A").andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/project-sections/{id}/review-links/current", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data.reviewLinkId").value(linkId))
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.contentVersion").value(1))
+                .andExpect(jsonPath("$.data.submissionCount").value(1))
+                .andExpect(jsonPath("$.data.issuedAt").exists())
+                .andExpect(jsonPath("$.data.token").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("활성 링크가 없으면 현재 링크 조회는 204 를 반환한다")
+    void currentReturns204WhenNoActiveLink() throws Exception {
+        User owner = persistUser("owner-nocurrent@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        // 발급한 적 없음 → 활성 링크 없음
+        mockMvc.perform(get("/api/project-sections/{id}/review-links/current", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isNoContent());
+
+        // 발급 후 내부 비활성화 → 다시 활성 링크 없음
+        String token = issueLink(section.getId(), owner);
+        reviewLinkService.updateStatus(linkId(token), owner.getId(), ReviewLinkStatus.CLOSED);
+
+        mockMvc.perform(get("/api/project-sections/{id}/review-links/current", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isNoContent());
     }
 
     @Test
