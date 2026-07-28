@@ -1,10 +1,8 @@
 package com.wevo.backend.ai.service;
 
-import com.wevo.backend.ai.domain.AiErrorType;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiJobStatus;
-import com.wevo.backend.ai.domain.AiRequestStatus;
 import com.wevo.backend.ai.domain.AiSectionCheck;
 import com.wevo.backend.ai.dto.response.PrecheckResponse;
 import com.wevo.backend.ai.dto.response.PrecheckResponse.CurrentResultResponse;
@@ -15,7 +13,6 @@ import com.wevo.backend.ai.dto.response.PrecheckResponse.RewriteResponse;
 import com.wevo.backend.ai.repository.AiJobRepository;
 import com.wevo.backend.ai.repository.AiSectionCheckFindingRepository;
 import com.wevo.backend.ai.repository.AiSectionCheckRepository;
-import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.section.domain.ProjectSection;
 import java.util.Optional;
@@ -33,17 +30,20 @@ public class PrecheckQueryService {
     private final AiJobRepository jobRepository;
     private final AiSectionCheckRepository checkRepository;
     private final AiSectionCheckFindingRepository findingRepository;
+    private final AiJobStatusMapper statusMapper;
 
     public PrecheckQueryService(
             SectionAccessGuard sectionAccessGuard,
             AiJobRepository jobRepository,
             AiSectionCheckRepository checkRepository,
-            AiSectionCheckFindingRepository findingRepository
+            AiSectionCheckFindingRepository findingRepository,
+            AiJobStatusMapper statusMapper
     ) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.jobRepository = jobRepository;
         this.checkRepository = checkRepository;
         this.findingRepository = findingRepository;
+        this.statusMapper = statusMapper;
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -96,23 +96,13 @@ public class PrecheckQueryService {
     }
 
     private LatestJobResponse latestJob(AiJob job) {
-        AiRequestStatus status = AiRequestStatus.from(job.getStatus());
+        AiJobStatusMapper.MappedStatus mapped = statusMapper.map(job);
         return new LatestJobResponse(
                 job.getRequestId(),
-                status,
-                status == AiRequestStatus.FAILED ? failure(job) : null
+                mapped.status(),
+                mapped.failed()
+                        ? new FailureResponse(mapped.failureCode(), mapped.failureMessage())
+                        : null
         );
-    }
-
-    private FailureResponse failure(AiJob job) {
-        AiErrorType errorType = job.getFinalErrorType();
-        ErrorCode errorCode = errorType == null
-                ? ErrorCode.AI_PROVIDER_ERROR
-                : errorType.toErrorCode();
-        String message = job.getSafeErrorMessage() == null
-                || job.getSafeErrorMessage().isBlank()
-                ? errorCode.getMessage()
-                : job.getSafeErrorMessage();
-        return new FailureResponse(errorCode.getCode(), message);
     }
 }
