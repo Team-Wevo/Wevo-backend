@@ -6,7 +6,9 @@ public record StructuredOutputValidationContext(
         Set<Long> allowedResourceIds,
         Set<Long> allowedIssueIds,
         Set<Long> allowedAnswerIds,
-        Set<Long> requiredUnresolvedIssueIds
+        Set<Long> requiredUnresolvedIssueIds,
+        Set<String> allowedSourceContents,
+        String primarySourceContent
 ) {
 
     public StructuredOutputValidationContext {
@@ -16,14 +18,36 @@ public record StructuredOutputValidationContext(
         requiredUnresolvedIssueIds = requiredUnresolvedIssueIds == null
                 ? Set.of()
                 : Set.copyOf(requiredUnresolvedIssueIds);
+        allowedSourceContents = allowedSourceContents == null
+                ? Set.of()
+                : Set.copyOf(allowedSourceContents);
+    }
+
+    public StructuredOutputValidationContext(
+            Set<Long> allowedResourceIds,
+            Set<Long> allowedIssueIds,
+            Set<Long> allowedAnswerIds,
+            Set<Long> requiredUnresolvedIssueIds
+    ) {
+        this(allowedResourceIds, allowedIssueIds, allowedAnswerIds,
+                requiredUnresolvedIssueIds, Set.of(), null);
     }
 
     public StructuredOutputValidationContext(Set<Long> allowedResourceIds) {
-        this(allowedResourceIds, Set.of(), Set.of(), Set.of());
+        this(allowedResourceIds, Set.of(), Set.of(), Set.of(), Set.of(), null);
     }
 
     public static StructuredOutputValidationContext empty() {
-        return new StructuredOutputValidationContext(Set.of(), Set.of(), Set.of(), Set.of());
+        return new StructuredOutputValidationContext(
+                Set.of(), Set.of(), Set.of(), Set.of(), Set.of(), null);
+    }
+
+    public static StructuredOutputValidationContext forSourceContents(
+            String primarySourceContent,
+            Set<String> sourceContents
+    ) {
+        return new StructuredOutputValidationContext(
+                Set.of(), Set.of(), Set.of(), Set.of(), sourceContents, primarySourceContent);
     }
 
     public void requireAllowedResourceId(Long resourceId) {

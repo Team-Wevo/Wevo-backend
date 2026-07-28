@@ -74,9 +74,9 @@ class AiContextAssemblerTest {
         when(sectionQueryService.findDirectLatestPrerequisites(access, SECTION_ID))
                 .thenReturn(List.of(prerequisite(20L, 1, 3)));
         when(sectionQueryService.getLatestDraft(access, SECTION_ID))
-                .thenReturn(new SectionVersionedContent(SECTION_ID, 4, "현재\r\n초안"));
+                .thenReturn(new SectionVersionedContent(SECTION_ID, 40L, 4, "현재\r\n초안"));
         when(sectionQueryService.getLatestDraftOrEmpty(access, SECTION_ID))
-                .thenReturn(new SectionVersionedContent(SECTION_ID, 0, null));
+                .thenReturn(new SectionVersionedContent(SECTION_ID, null, 0, null));
         when(synthesisQueryService.getCurrentForAiContext(sectionAccess))
                 .thenReturn(synthesis(100L, 3L, "GAP 답변"));
         when(synthesisQueryService.getCurrentForDraftGeneration(sectionAccess))
@@ -166,12 +166,12 @@ class AiContextAssemblerTest {
         String canonical = new String(baseline.snapshot().canonicalBytes(), StandardCharsets.UTF_8);
 
         when(sectionQueryService.getLatestDraft(access, SECTION_ID))
-                .thenReturn(new SectionVersionedContent(SECTION_ID, 5, "현재 초안"));
+                .thenReturn(new SectionVersionedContent(SECTION_ID, 50L, 5, "현재 초안"));
         String ownVersionChanged = assembler.assembleDraftReview(access, SECTION_ID)
                 .snapshot().inputSnapshotHash();
 
         when(sectionQueryService.getLatestDraft(access, SECTION_ID))
-                .thenReturn(new SectionVersionedContent(SECTION_ID, 4, "현재\r\n초안"));
+                .thenReturn(new SectionVersionedContent(SECTION_ID, 40L, 4, "현재\r\n초안"));
         when(sectionQueryService.findDirectLatestPrerequisites(access, SECTION_ID))
                 .thenReturn(List.of(prerequisite(20L, 1, 4)));
         String prerequisiteChanged = assembler.assembleDraftReview(access, SECTION_ID)
@@ -215,7 +215,7 @@ class AiContextAssemblerTest {
         when(synthesisQueryService.getCurrentForDraftGeneration(sectionAccess))
                 .thenReturn(draftSynthesis("OWNER 결정 A"));
         when(sectionQueryService.getLatestDraftOrEmpty(access, SECTION_ID))
-                .thenReturn(new SectionVersionedContent(SECTION_ID, 2, "기존 팀 편집본"));
+                .thenReturn(new SectionVersionedContent(SECTION_ID, 20L, 2, "기존 팀 편집본"));
         String baseDraftChanged = assembler.assembleDraftGeneration(access, SECTION_ID)
                 .snapshot().inputSnapshotHash();
 

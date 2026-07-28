@@ -61,7 +61,7 @@ public class SectionAiContextQueryService {
         dependencyQueryService.requireTarget(access, sectionId);
         return sectionDraftRepository.findTopByProjectSection_IdOrderByVersionDesc(sectionId)
                 .map(draft -> toVersionedContent(draft, sectionId))
-                .orElseGet(() -> new SectionVersionedContent(sectionId, 0, null));
+                .orElseGet(() -> new SectionVersionedContent(sectionId, null, 0, null));
     }
 
     public SectionVersionedContent getConfirmedDraft(VerifiedProjectAccess access, Long sectionId) {
@@ -129,7 +129,8 @@ public class SectionAiContextQueryService {
                 || !StringUtils.hasText(draft.getContent())) {
             throw new IllegalStateException("AI context draft 데이터가 유효하지 않습니다.");
         }
-        return new SectionVersionedContent(expectedSectionId, draft.getVersion(), draft.getContent());
+        return new SectionVersionedContent(
+                expectedSectionId, draft.getId(), draft.getVersion(), draft.getContent());
     }
 
     private PrerequisiteSectionContent prerequisite(
