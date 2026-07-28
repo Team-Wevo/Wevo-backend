@@ -61,13 +61,22 @@ public final class StructuredOutputDefinition<T> {
         return of(schemaId, outputType, StructuredOutputValidator.noOp());
     }
 
-    static <T> StructuredOutputDefinition<T> withSchema(
+    public static <T> StructuredOutputDefinition<T> of(
             OutputSchemaId schemaId,
             Class<T> outputType,
             String jsonSchema,
             StructuredOutputValidator<T> validator
     ) {
         return new StructuredOutputDefinition<>(schemaId, outputType, jsonSchema, validator);
+    }
+
+    static <T> StructuredOutputDefinition<T> withSchema(
+            OutputSchemaId schemaId,
+            Class<T> outputType,
+            String jsonSchema,
+            StructuredOutputValidator<T> validator
+    ) {
+        return of(schemaId, outputType, jsonSchema, validator);
     }
 
     public OutputSchemaId schemaId() {

@@ -100,7 +100,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
         int maxCorrectionRetries = properties.structuredOutput().maxCorrectionRetries();
 
         for (int correctionAttempt = 0; correctionAttempt <= maxCorrectionRetries; correctionAttempt++) {
-            String userPrompt = structuredUserPrompt(request, previousFailure);
+            String userPrompt = StructuredPromptFormatter.userPrompt(request, previousFailure);
             ProviderStructuredResponse<T> providerResponse = invokeStructuredWithProviderRetry(
                     request,
                     userPrompt,
@@ -309,29 +309,6 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
             case SCHEMA_VALIDATION -> ErrorCode.AI_STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED;
             case TYPE_CONVERSION -> ErrorCode.AI_STRUCTURED_OUTPUT_CONVERSION_FAILED;
         };
-    }
-
-    private <T> String structuredUserPrompt(
-            StructuredAiProviderRequest<T> request,
-            StructuredConversionFailure previousFailure
-    ) {
-        StringBuilder prompt = new StringBuilder(request.prompt().userPrompt())
-                .append("\n\n<output_contract>\n")
-                .append("Return only one complete JSON object matching this JSON Schema:\n")
-                .append(request.outputDefinition().jsonSchema())
-                .append("\n</output_contract>");
-        if (previousFailure != null) {
-            String reason = switch (previousFailure) {
-                case JSON_PARSE -> "The previous output was not valid JSON.";
-                case SCHEMA_VALIDATION -> "The previous output did not match the required JSON schema.";
-                case TYPE_CONVERSION -> "The previous output could not be converted to the required result type.";
-            };
-            prompt.append("\n\n<output_correction>\n")
-                    .append(reason)
-                    .append(" Return a corrected JSON object only.")
-                    .append("\n</output_correction>");
-        }
-        return prompt.toString();
     }
 
     private AiProviderException structuredException(
