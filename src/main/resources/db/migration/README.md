@@ -45,7 +45,7 @@ ordering so later opinion edits cannot rewrite the evidence history.
 AI-generation evidence aggregate. It links each generated draft to its source job, synthesis set,
 input snapshot, and ordered opinion/decision/GAP/prerequisite evidence.
 
-`V8__add_ai_section_checks.sql` stores successful section precheck results. A result is linked to
+`V9__add_ai_section_checks.sql` stores successful section precheck results. A result is linked to
 its source job and checked draft, keeps ordered findings and direct-prerequisite version snapshots,
 and records one-time full-rewrite application/rebinding metadata.
 
