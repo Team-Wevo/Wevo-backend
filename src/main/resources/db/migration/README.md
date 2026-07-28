@@ -42,8 +42,11 @@ raw-length limit of 200.
 section. Link termination is server-driven (content edits mark the link `OUTDATED`; re-issue
 closes the previous `ACTIVE` link), so the "at most one live link" invariant that the status
 recovery lookup (`GET .../review-links/current`) relies on is now guaranteed at the database
-level rather than by application logic alone. It adds a partial index only — no table, column, or
-constraint changes — so JPA mapping validation is unaffected.
+level rather than by application logic alone. Before creating the index it first closes any
+pre-existing duplicate `ACTIVE` rows per section (keeping the newest by `id`); without that
+cleanup the unique index build would fail and abort the whole migration on any database that
+already holds duplicates. It adds a partial index (plus a bounded data cleanup) only — no table,
+column, or constraint changes — so JPA mapping validation is unaffected.
 
 ## Existing local databases
 

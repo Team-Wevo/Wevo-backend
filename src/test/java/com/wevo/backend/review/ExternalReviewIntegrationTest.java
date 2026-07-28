@@ -435,6 +435,37 @@ class ExternalReviewIntegrationTest {
     }
 
     @Test
+    @DisplayName("팀원(MEMBER)이 현재 링크를 조회하면 403(A002) — 링크 관리 권한은 OWNER 전용")
+    void currentLinkForbiddenForMember() throws Exception {
+        User owner = persistUser("owner-cur-member@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        User member = persistUser("member-cur@wevo.com", "팀원");
+        persistMember(section.getProject(), member, ProjectMemberRole.MEMBER);
+        em.flush();
+
+        mockMvc.perform(get("/api/project-sections/{id}/review-links/current", section.getId())
+                        .with(authentication(authOf(member))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A002"));
+    }
+
+    @Test
+    @DisplayName("비멤버가 현재 링크를 조회하면 404(S001) 로 존재를 숨긴다")
+    void currentLinkHiddenForNonMember() throws Exception {
+        User owner = persistUser("owner-cur-nonmember@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        User stranger = persistUser("stranger-cur@wevo.com", "외부인");
+        em.flush();
+
+        mockMvc.perform(get("/api/project-sections/{id}/review-links/current", section.getId())
+                        .with(authentication(authOf(stranger))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("S001"));
+    }
+
+    @Test
     @DisplayName("이미 제출한 브라우저가 다시 열람하면 alreadySubmitted=true 로 안내한다")
     void alreadySubmittedFlagIsExposedOnView() throws Exception {
         User owner = persistUser("owner-flag@wevo.com", "팀장");
