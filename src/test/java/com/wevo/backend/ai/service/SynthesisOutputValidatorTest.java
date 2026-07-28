@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.wevo.backend.ai.client.StructuredOutputSemanticException;
 import com.wevo.backend.ai.client.StructuredOutputValidationContext;
 import com.wevo.backend.ai.service.SynthesisAiOutput.IssueOut;
+import com.wevo.backend.global.contract.SynthesisIssueContract;
 import com.wevo.backend.issue.domain.IssueType;
 import java.util.Collections;
 import java.util.List;
@@ -101,6 +102,23 @@ class SynthesisOutputValidatorTest {
                 new IssueOut(IssueType.CONFLICT, "설명", "질문", List.of("하나뿐"), List.of(1L))));
 
         assertThatThrownBy(() -> validate(output))
+                .isInstanceOf(StructuredOutputSemanticException.class);
+    }
+
+    @Test
+    @DisplayName("CONFLICT 선택지는 공통 계약의 최대 길이까지만 허용한다")
+    void validate_conflictOptionUsesSharedLengthContract() {
+        String atLimit = "가".repeat(SynthesisIssueContract.MAX_OPTION_TEXT_LENGTH);
+        String overLimit = "가".repeat(SynthesisIssueContract.MAX_OPTION_TEXT_LENGTH + 1);
+        SynthesisAiOutput validOutput = new SynthesisAiOutput("합의점", List.of(
+                new IssueOut(IssueType.CONFLICT, "설명", "질문",
+                        List.of(atLimit, "다른 선택지"), List.of(1L))));
+        SynthesisAiOutput invalidOutput = new SynthesisAiOutput("합의점", List.of(
+                new IssueOut(IssueType.CONFLICT, "설명", "질문",
+                        List.of(overLimit, "다른 선택지"), List.of(1L))));
+
+        assertThatCode(() -> validate(validOutput)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> validate(invalidOutput))
                 .isInstanceOf(StructuredOutputSemanticException.class);
     }
 

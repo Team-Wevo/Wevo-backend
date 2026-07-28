@@ -17,6 +17,7 @@ import com.wevo.backend.global.security.JwtProvider;
 import com.wevo.backend.global.security.RestAccessDeniedHandler;
 import com.wevo.backend.global.security.RestAuthenticationEntryPoint;
 import com.wevo.backend.global.security.SecurityConfig;
+import com.wevo.backend.issue.domain.IssueDecision;
 import com.wevo.backend.issue.domain.IssueStatus;
 import com.wevo.backend.issue.dto.request.IssueDecisionRequest;
 import com.wevo.backend.issue.dto.response.IssueDecisionResponse;
@@ -98,13 +99,14 @@ class IssueControllerWebMvcTest {
     @Test
     @DisplayName("직접 입력 결정도 200 ISSUE_DECIDED를 반환한다")
     void customInput_returnsSuccess() throws Exception {
+        String atLimitWithWhitespace = "가 ".repeat(IssueDecision.MAX_CUSTOM_INPUT_LENGTH);
         given(issueDecisionService.decide(eq(10L), eq(7L), any(IssueDecisionRequest.class)))
                 .willReturn(IssueDecisionResponse.resolved(10L));
 
         mockMvc.perform(post(URL)
                         .with(authenticatedUser())
                         .contentType("application/json")
-                        .content("{\"customInput\":\"대학생 팀을 우선한다.\"}"))
+                        .content("{\"customInput\":\"" + atLimitWithWhitespace + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("ISSUE_DECIDED"));
     }
@@ -151,9 +153,9 @@ class IssueControllerWebMvcTest {
     }
 
     @Test
-    @DisplayName("직접 입력이 200자를 초과하면 400 C001이다")
+    @DisplayName("직접 입력의 비공백 문자가 200자를 초과하면 400 C001이다")
     void tooLongCustomInput_returnsC001() throws Exception {
-        String tooLong = "가".repeat(201);
+        String tooLong = "가 ".repeat(IssueDecision.MAX_CUSTOM_INPUT_LENGTH + 1);
 
         mockMvc.perform(post(URL)
                         .with(authenticatedUser())

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
+import com.wevo.backend.global.contract.SynthesisIssueContract;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -40,7 +41,7 @@ class IssueDomainTest {
     void option_rejectsTextOverMaxLength() {
         assertThatIllegalArgumentException().isThrownBy(() -> IssueOption.builder()
                 .issue(conflict())
-                .optionText("가".repeat(IssueOption.MAX_OPTION_TEXT_LENGTH + 1))
+                .optionText("가".repeat(SynthesisIssueContract.MAX_OPTION_TEXT_LENGTH + 1))
                 .sortOrder(1)
                 .build());
     }
@@ -62,6 +63,23 @@ class IssueDomainTest {
         assertThat(custom.getCustomInput()).isEqualTo("두 안을 절충");
         assertThatIllegalArgumentException().isThrownBy(() ->
                 IssueDecision.custom(conflict, 1L, "가".repeat(201), now));
+    }
+
+    @Test
+    @DisplayName("직접 입력은 공백을 제외한 200자까지 저장할 수 있다")
+    void decision_countsCustomInputWithoutWhitespace() {
+        Issue conflict = conflict();
+        LocalDateTime now = LocalDateTime.of(2026, 7, 22, 12, 0);
+        String atLimitWithWhitespace = "가 ".repeat(IssueDecision.MAX_CUSTOM_INPUT_LENGTH);
+        String overLimitWithWhitespace =
+                "가 ".repeat(IssueDecision.MAX_CUSTOM_INPUT_LENGTH + 1);
+
+        IssueDecision decision =
+                IssueDecision.custom(conflict, 1L, atLimitWithWhitespace, now);
+
+        assertThat(decision.getCustomInput()).isEqualTo(atLimitWithWhitespace);
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                IssueDecision.custom(conflict, 1L, overLimitWithWhitespace, now));
     }
 
     @Test

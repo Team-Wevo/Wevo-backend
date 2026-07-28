@@ -1,6 +1,7 @@
 package com.wevo.backend.issue.domain;
 
 import com.wevo.backend.global.common.BaseTimeEntity;
+import com.wevo.backend.global.contract.SynthesisIssueContract;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -28,8 +29,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class IssueOption extends BaseTimeEntity {
 
-    public static final int MAX_OPTION_TEXT_LENGTH = 200;
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -50,7 +49,7 @@ public class IssueOption extends BaseTimeEntity {
         if (optionText == null || optionText.isBlank()) {
             throw new IllegalArgumentException("optionText는 필수입니다.");
         }
-        if (optionText.length() > MAX_OPTION_TEXT_LENGTH) {
+        if (optionText.length() > SynthesisIssueContract.MAX_OPTION_TEXT_LENGTH) {
             throw new IllegalArgumentException("optionText는 200자 이하여야 합니다.");
         }
         if (sortOrder <= 0) {
