@@ -21,11 +21,14 @@ import com.wevo.backend.review.repository.ReviewLinkRepository;
 import com.wevo.backend.review.repository.TeamReviewRepository;
 import com.wevo.backend.section.domain.AiCheckStatus;
 import com.wevo.backend.section.domain.DraftLease;
+import com.wevo.backend.section.domain.DriftStatus;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionDraft;
+import com.wevo.backend.section.domain.SectionTemplate;
 import com.wevo.backend.section.repository.DraftLeaseRepository;
 import com.wevo.backend.section.repository.SectionDraftRepository;
+import com.wevo.backend.section.repository.SectionTemplateRepository;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
 import jakarta.persistence.EntityManager;
@@ -72,6 +75,8 @@ class SectionDraftIntegrationTest {
     private ReviewLinkRepository reviewLinkRepository;
     @Autowired
     private DraftLeaseRepository draftLeaseRepository;
+    @Autowired
+    private SectionTemplateRepository sectionTemplateRepository;
 
     @PersistenceContext
     private EntityManager em;
@@ -155,15 +160,19 @@ class SectionDraftIntegrationTest {
     void nonMemberHiddenAsNotFound() throws Exception {
         User owner = persistUser("owner-d5@wevo.com");
         Project project = persistProject(owner);
-        ProjectSection section = persistSection(project, ProjectSectionStatus.DRAFTING);
+        ProjectSection section = persistSection(
+                project, template("target-user"), ProjectSectionStatus.CONFIRMED);
+        section.recordConfirmedVersion(1);
         persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistDraft(section, "외부에 숨길 확정 본문", 1, owner);
         User outsider = persistUser("outsider-d5@wevo.com");
         em.flush();
 
         // 비멤버는 "섹션 없음"과 구분되지 않아야 한다 (CLAUDE.md §5.6 · API_SPEC §3.7)
         save(section.getId(), outsider, "본문", 0)
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("S001"));
+                .andExpect(jsonPath("$.code").value("S001"))
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
@@ -432,6 +441,92 @@ class SectionDraftIntegrationTest {
                 .isAfter(LocalDateTime.now(KST));
     }
 
+    @Test
+    @DisplayName("확정 본문 변경은 자기 섹션과 직접 하위만 REVIEWING·drift 규칙으로 변경한다")
+    void confirmedContentChangePropagatesOnlyToDirectDependents() throws Exception {
+        User owner = persistUser("owner-d19@wevo.com");
+        User reviewer = persistUser("reviewer-d19@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistMember(project, reviewer, ProjectMemberRole.MEMBER);
+
+        SectionTemplate target = template("target-user");
+        SectionTemplate solution = template("solution-direction");
+        SectionTemplate core = template("core-features");
+        ProjectSection source = persistSection(project, target, ProjectSectionStatus.CONFIRMED);
+        ProjectSection direct = persistSection(project, solution, ProjectSectionStatus.CONFIRMED);
+        ProjectSection indirect = persistSection(project, core, ProjectSectionStatus.CONFIRMED);
+        source.recordConfirmedVersion(1);
+        direct.recordConfirmedVersion(1);
+        indirect.recordConfirmedVersion(1);
+        direct.bindCurrentAiCheck();
+        direct.markSynthesisStale();
+        persistDraft(source, "확정된 타겟", 1, owner);
+        persistActiveLease(source, owner);
+        TeamReview directReview = persistTeamReview(direct, reviewer);
+
+        Project otherProject = persistProject(owner);
+        persistMember(otherProject, owner, ProjectMemberRole.OWNER);
+        ProjectSection otherProjectDirect =
+                persistSection(otherProject, solution, ProjectSectionStatus.CONFIRMED);
+        otherProjectDirect.recordConfirmedVersion(1);
+        em.flush();
+
+        save(source.getId(), owner, "수정된 타겟", 1)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contentVersion").value(2))
+                .andExpect(jsonPath("$.data.sectionStatus").value("REVIEWING"))
+                .andExpect(jsonPath("$.data.driftedSections.length()").value(1))
+                .andExpect(jsonPath("$.data.driftedSections[0].sectionId").value(direct.getId()))
+                .andExpect(jsonPath("$.data.driftedSections[0].title").value(solution.getTitle()))
+                .andExpect(jsonPath("$.data.driftedSections[0].sectionStatus").value("REVIEWING"))
+                .andExpect(jsonPath("$.data.driftedSections[0].driftStatus")
+                        .value("REVIEW_REQUIRED"));
+
+        em.flush();
+        em.clear();
+        ProjectSection savedSource = em.find(ProjectSection.class, source.getId());
+        ProjectSection savedDirect = em.find(ProjectSection.class, direct.getId());
+        ProjectSection savedIndirect = em.find(ProjectSection.class, indirect.getId());
+        ProjectSection savedOther = em.find(ProjectSection.class, otherProjectDirect.getId());
+        assertThat(savedSource.getStatus()).isEqualTo(ProjectSectionStatus.REVIEWING);
+        assertThat(savedDirect.getStatus()).isEqualTo(ProjectSectionStatus.REVIEWING);
+        assertThat(savedDirect.getDriftStatus()).isEqualTo(DriftStatus.REVIEW_REQUIRED);
+        assertThat(savedDirect.getAiCheckStatus()).isEqualTo(AiCheckStatus.CURRENT);
+        assertThat(savedDirect.isSynthesisStale()).isTrue();
+        assertThat(teamReviewRepository.findById(directReview.getId()).orElseThrow().isOutdated())
+                .isTrue();
+        assertThat(savedIndirect.getStatus()).isEqualTo(ProjectSectionStatus.CONFIRMED);
+        assertThat(savedIndirect.getDriftStatus()).isEqualTo(DriftStatus.NONE);
+        assertThat(savedOther.getStatus()).isEqualTo(ProjectSectionStatus.CONFIRMED);
+        assertThat(savedOther.getDriftStatus()).isEqualTo(DriftStatus.NONE);
+    }
+
+    @Test
+    @DisplayName("확정 섹션의 동일 본문 저장은 상태·버전·드리프트 부수효과가 없는 멱등 성공이다")
+    void identicalConfirmedContentIsNoOp() throws Exception {
+        User owner = persistUser("owner-d20@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        ProjectSection source = persistSection(
+                project, template("target-user"), ProjectSectionStatus.CONFIRMED);
+        source.recordConfirmedVersion(1);
+        persistDraft(source, "그대로인 확정 본문", 1, owner);
+        persistActiveLease(source, owner);
+        em.flush();
+
+        save(source.getId(), owner, "그대로인 확정 본문", 1)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contentVersion").value(1))
+                .andExpect(jsonPath("$.data.sectionStatus").value("CONFIRMED"))
+                .andExpect(jsonPath("$.data.driftedSections").isEmpty());
+
+        assertThat(sectionDraftRepository.findAll().stream()
+                .filter(draft -> draft.getProjectSection().getId().equals(source.getId())))
+                .hasSize(1);
+        assertThat(source.getStatus()).isEqualTo(ProjectSectionStatus.CONFIRMED);
+    }
+
     // --- 헬퍼 ---
 
     private ResultActions save(Long sectionId, User user, String content, int baseVersion) throws Exception {
@@ -482,6 +577,30 @@ class SectionDraftIntegrationTest {
                 .build();
         em.persist(section);
         return section;
+    }
+
+    private ProjectSection persistSection(
+            Project project,
+            SectionTemplate template,
+            ProjectSectionStatus status
+    ) {
+        ProjectSection section = ProjectSection.builder()
+                .project(project)
+                .template(template)
+                .title(template.getTitle())
+                .sectionOrder(template.getOrderNo())
+                .status(status)
+                .build();
+        em.persist(section);
+        return section;
+    }
+
+    private SectionTemplate template(String sectionKey) {
+        return sectionTemplateRepository.findByResultTypeOrderByOrderNo(OutputType.PRESENTATION)
+                .stream()
+                .filter(template -> template.getSectionKey().equals(sectionKey))
+                .findFirst()
+                .orElseThrow();
     }
 
     private void persistDraft(ProjectSection section, String content, int version, User editor) {
