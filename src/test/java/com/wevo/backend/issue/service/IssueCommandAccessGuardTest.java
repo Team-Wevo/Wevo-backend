@@ -32,6 +32,7 @@ class IssueCommandAccessGuardTest {
     private static final Long SET_ID = 20L;
     private static final Long SECTION_ID = 30L;
     private static final Long OWNER_ID = 40L;
+    private static final Long MEMBER_ID = 50L;
     private static final UUID SET_REQUEST_ID =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
 
@@ -67,6 +68,27 @@ class IssueCommandAccessGuardTest {
     }
 
     @Test
+    @DisplayName("쟁점과 섹션을 순서대로 잠그고 참여자의 현재 세트 쟁점을 반환한다")
+    void requireCurrentIssueForParticipant_validAccess_returnsLockedIssue() {
+        givenIssueAndSet();
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, MEMBER_ID))
+                .willReturn(section);
+        given(issueSet.getRequestId()).willReturn(SET_REQUEST_ID);
+        given(currentSynthesisSetResolver.findCurrent(SECTION_ID))
+                .willReturn(Optional.of(
+                        new CurrentSynthesisSetReference(SET_REQUEST_ID, SET_ID)));
+
+        Issue result = guard.requireCurrentIssueForParticipant(ISSUE_ID, MEMBER_ID);
+
+        assertThat(result).isSameAs(issue);
+        InOrder order = inOrder(issueRepository, sectionAccessGuard, currentSynthesisSetResolver);
+        order.verify(issueRepository).findByIdForUpdate(ISSUE_ID);
+        order.verify(sectionAccessGuard)
+                .requireParticipantSectionForUpdate(SECTION_ID, MEMBER_ID);
+        order.verify(currentSynthesisSetResolver).findCurrent(SECTION_ID);
+    }
+
+    @Test
     @DisplayName("쟁점이 없으면 404 I001이다")
     void requireCurrentIssueForOwner_missingIssue_returnsI001() {
         given(issueRepository.findByIdForUpdate(ISSUE_ID)).willReturn(Optional.empty());
@@ -98,6 +120,18 @@ class IssueCommandAccessGuardTest {
 
         assertError(
                 () -> guard.requireCurrentIssueForOwner(ISSUE_ID, OWNER_ID),
+                ErrorCode.ISSUE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("비멤버의 참여자 접근 실패도 쟁점 존재를 숨기는 404 I001로 변환한다")
+    void requireCurrentIssueForParticipant_nonMember_returnsI001() {
+        givenIssueAndSet();
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, MEMBER_ID))
+                .willThrow(new BusinessException(ErrorCode.SECTION_NOT_FOUND));
+
+        assertError(
+                () -> guard.requireCurrentIssueForParticipant(ISSUE_ID, MEMBER_ID),
                 ErrorCode.ISSUE_NOT_FOUND);
     }
 

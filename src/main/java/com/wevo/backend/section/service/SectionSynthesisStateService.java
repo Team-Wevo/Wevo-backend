@@ -4,21 +4,27 @@ import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.repository.ProjectSectionRepository;
+import com.wevo.backend.section.repository.SectionDraftRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * AI 정리 결과 반영에 필요한 섹션 상태 변경을 section 도메인 안에서 제공하는 경계. (CLAUDE.md §6 —
- * ai 도메인이 {@link ProjectSection}을 직접 쓰지 않고 이 서비스를 통해서만 상태를 바꾼다.)
+ * AI 정리 결과와 GAP 보충 답변에 따른 정리 상태 변경을 section 도메인 안에서 제공하는 경계.
+ * (CLAUDE.md §6 — 타 도메인이 {@link ProjectSection}을 직접 쓰지 않고 이 서비스를 통해 상태를 바꾼다.)
  */
 @Service
 public class SectionSynthesisStateService {
 
     private final ProjectSectionRepository projectSectionRepository;
+    private final SectionDraftRepository sectionDraftRepository;
 
-    public SectionSynthesisStateService(ProjectSectionRepository projectSectionRepository) {
+    public SectionSynthesisStateService(
+            ProjectSectionRepository projectSectionRepository,
+            SectionDraftRepository sectionDraftRepository
+    ) {
         this.projectSectionRepository = projectSectionRepository;
+        this.sectionDraftRepository = sectionDraftRepository;
     }
 
     /**
@@ -33,6 +39,21 @@ public class SectionSynthesisStateService {
         ProjectSection section = projectSectionRepository.findByIdForUpdate(projectSectionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_NOT_FOUND));
         section.clearSynthesisStale();
+    }
+
+    /**
+     * 늦은 GAP 답변이 도착했을 때 이미 초안이 존재하면 재정리 필요 상태로 표시한다.
+     *
+     * <p>초안 생성 전 답변은 이후 초안 생성 입력에 직접 포함되므로 stale로 만들지 않는다.
+     * 호출측의 쓰기 작업과 같은 트랜잭션에서 답변 저장과 원자적으로 반영한다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void markSynthesisStaleIfDraftExists(Long projectSectionId) {
+        ProjectSection section = projectSectionRepository.findByIdForUpdate(projectSectionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_NOT_FOUND));
+        if (sectionDraftRepository.existsByProjectSection_Id(projectSectionId)) {
+            section.markSynthesisStale();
+        }
     }
 
     /**
