@@ -32,8 +32,10 @@ import lombok.NoArgsConstructor;
  *       제목·본문·{@code contentVersion} 스냅샷은 발급 이후 <b>불변</b>이다. 외부 검토자는 <b>항상 스냅샷</b>을
  *       읽으며, 이후 본문이 수정돼도 링크가 가리키던 버전을 그대로 본다. 초안이 없으면 발급을 거부한다(R009).
  *       새 본문에 대한 외부 검토는 링크 <b>재발급</b>으로만 가능하다.</li>
- *   <li><b>버전 만료</b> — 본문이 수정되면 링크는 {@link ReviewLinkStatus#OUTDATED} 로 만료되고,
- *       팀장은 {@link ReviewLinkStatus#CLOSED} 로 직접 비활성화할 수 있다. 만료·비활성 링크는 제출을 받지 않는다.</li>
+ *   <li><b>서버 자동 만료</b> — 링크 종료는 서버가 처리한다. 본문이 수정되면 링크는
+ *       {@link ReviewLinkStatus#OUTDATED} 로 만료되고, 재발급 시 기존 {@code ACTIVE} 링크는
+ *       {@link ReviewLinkStatus#CLOSED} 로 닫힌다. 수동 비활성화({@code CLOSED})는 내부 로직으로만
+ *       남아 있고 HTTP 엔드포인트로 노출하지 않는다. 만료·비활성 링크는 제출을 받지 않는다.</li>
  * </ul>
  */
 @Entity
@@ -110,7 +112,7 @@ public class ReviewLink extends BaseTimeEntity {
         }
     }
 
-    /** 팀장이 링크를 직접 비활성화한다. */
+    /** 링크를 비활성화한다. (재발급 시 기존 ACTIVE 링크 종료 · 내부 수동 비활성화) */
     public void close() {
         this.status = ReviewLinkStatus.CLOSED;
     }
