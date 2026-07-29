@@ -314,6 +314,80 @@ class PostgresSchemaIntegrationTest {
         )).isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    /**
+     * 섹션당 ACTIVE 외부 검토 링크 1개 불변식이 애플리케이션 로직이 아니라 DB 부분 유니크 인덱스
+     * ({@code uk_review_links_active_per_section})로 강제되는지 raw insert 로 직접 검증한다.
+     * 이 불변식이 깨지면 상태 복구 조회가 어느 링크를 현재 링크로 볼지 모호해진다.
+     */
+    @Test
+    @Transactional
+    void reviewLinkPartialUniqueIndexAllowsOnlyOneActiveLinkPerSection() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        Long ownerId = insertUser(jdbcTemplate, "link-owner");
+        Long projectId = insertProject(jdbcTemplate, ownerId, "review-link-unique");
+        Long sectionId = jdbcTemplate.queryForObject(
+                """
+                INSERT INTO project_sections (project_id, title, section_order, status)
+                VALUES (?, 'link-section', 1, 'REVIEWING')
+                RETURNING id
+                """,
+                Long.class,
+                projectId
+        );
+
+        insertReviewLink(jdbcTemplate, sectionId, "active-token-1", "ACTIVE");
+
+        // 같은 섹션의 두 번째 ACTIVE 링크는 거부된다
+        assertThatThrownBy(() -> insertReviewLink(jdbcTemplate, sectionId, "active-token-2", "ACTIVE"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /**
+     * 부분 인덱스이므로 종료·만료된 링크는 이력으로 섹션당 여러 개 남을 수 있어야 한다.
+     * (인덱스를 전체 유니크로 잘못 바꾸면 재발급 이력이 저장되지 않는다.)
+     */
+    @Test
+    @Transactional
+    void reviewLinkPartialUniqueIndexKeepsClosedAndOutdatedHistory() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        Long ownerId = insertUser(jdbcTemplate, "link-history-owner");
+        Long projectId = insertProject(jdbcTemplate, ownerId, "review-link-history");
+        Long sectionId = jdbcTemplate.queryForObject(
+                """
+                INSERT INTO project_sections (project_id, title, section_order, status)
+                VALUES (?, 'link-history-section', 1, 'REVIEWING')
+                RETURNING id
+                """,
+                Long.class,
+                projectId
+        );
+
+        insertReviewLink(jdbcTemplate, sectionId, "closed-token-1", "CLOSED");
+        insertReviewLink(jdbcTemplate, sectionId, "closed-token-2", "CLOSED");
+        insertReviewLink(jdbcTemplate, sectionId, "outdated-token-1", "OUTDATED");
+        insertReviewLink(jdbcTemplate, sectionId, "outdated-token-2", "OUTDATED");
+        insertReviewLink(jdbcTemplate, sectionId, "active-token", "ACTIVE");
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM review_links WHERE project_section_id = ?",
+                Integer.class,
+                sectionId
+        )).isEqualTo(5);
+    }
+
+    private void insertReviewLink(JdbcTemplate jdbcTemplate, Long sectionId, String tokenHash, String status) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO review_links (
+                    project_section_id, token_hash, content_snapshot, content_version, status
+                ) VALUES (?, ?, 'draft', 1, ?)
+                """,
+                sectionId,
+                tokenHash,
+                status
+        );
+    }
+
     private Long insertUser(JdbcTemplate jdbcTemplate, String name) {
         return jdbcTemplate.queryForObject(
                 "INSERT INTO users (name, status) VALUES (?, 'ACTIVE') RETURNING id",
