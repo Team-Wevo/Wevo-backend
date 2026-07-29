@@ -61,11 +61,14 @@ CREATE TABLE ai_section_check_findings (
             'READER_QUESTION'
         )),
     CONSTRAINT chk_ai_section_check_findings_excerpt
-        CHECK (char_length(btrim(target_excerpt)) > 0),
+        CHECK (char_length(btrim(target_excerpt)) > 0
+            AND char_length(target_excerpt) <= 1000),
     CONSTRAINT chk_ai_section_check_findings_comment
-        CHECK (char_length(btrim(comment_text)) > 0),
+        CHECK (char_length(btrim(comment_text)) > 0
+            AND char_length(comment_text) <= 1000),
     CONSTRAINT chk_ai_section_check_findings_suggestion
-        CHECK (char_length(btrim(suggestion)) > 0),
+        CHECK (char_length(btrim(suggestion)) > 0
+            AND char_length(suggestion) <= 1000),
     CONSTRAINT chk_ai_section_check_findings_order CHECK (sort_order > 0)
 );
 

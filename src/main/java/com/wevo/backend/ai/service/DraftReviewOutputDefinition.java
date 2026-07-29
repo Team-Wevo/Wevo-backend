@@ -2,6 +2,7 @@ package com.wevo.backend.ai.service;
 
 import com.wevo.backend.ai.client.OutputSchemaId;
 import com.wevo.backend.ai.client.StructuredOutputDefinition;
+import com.wevo.backend.ai.domain.AiSectionCheckFinding;
 import com.wevo.backend.ai.dto.model.DraftReviewOutput;
 import com.wevo.backend.section.dto.request.SectionDraftSaveRequest;
 import org.springframework.stereotype.Component;
@@ -17,6 +18,7 @@ public class DraftReviewOutputDefinition {
             {
               "type": "string",
               "minLength": 1,
+              "maxLength": %d,
               "pattern": "^[\\\\s\\\\S]*\\\\S[\\\\s\\\\S]*$"
             }
             """;
@@ -70,9 +72,9 @@ public class DraftReviewOutputDefinition {
               }
             }
             """.formatted(
-            NON_BLANK_TEXT,
-            NON_BLANK_TEXT,
-            NON_BLANK_TEXT,
+            NON_BLANK_TEXT.formatted(AiSectionCheckFinding.MAX_TARGET_EXCERPT_LENGTH),
+            NON_BLANK_TEXT.formatted(AiSectionCheckFinding.MAX_COMMENT_LENGTH),
+            NON_BLANK_TEXT.formatted(AiSectionCheckFinding.MAX_SUGGESTION_LENGTH),
             SectionDraftSaveRequest.MAX_CONTENT_LENGTH
     );
 

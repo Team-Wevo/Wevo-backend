@@ -2,6 +2,7 @@ package com.wevo.backend.ai.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.wevo.backend.ai.domain.AiSectionCheckFinding;
 import com.wevo.backend.ai.dto.model.DraftReviewOutput;
 import com.wevo.backend.ai.service.DraftReviewOutputDefinition;
 import com.wevo.backend.ai.service.DraftReviewOutputValidator;
@@ -55,6 +56,32 @@ class DraftReviewOutputDefinitionTest {
         assertSchemaFailure("""
                 {"findings": [], "rewrite": {"content": "%s", "changedCount": 0}}
                 """.formatted("a".repeat(10_001)));
+        assertFindingTextSchemaFailure(
+                "targetExcerpt",
+                "a".repeat(AiSectionCheckFinding.MAX_TARGET_EXCERPT_LENGTH + 1));
+        assertFindingTextSchemaFailure(
+                "comment",
+                "a".repeat(AiSectionCheckFinding.MAX_COMMENT_LENGTH + 1));
+        assertFindingTextSchemaFailure(
+                "suggestion",
+                "a".repeat(AiSectionCheckFinding.MAX_SUGGESTION_LENGTH + 1));
+    }
+
+    private void assertFindingTextSchemaFailure(String field, String value) {
+        String targetExcerpt = field.equals("targetExcerpt") ? value : "문장";
+        String comment = field.equals("comment") ? value : "의견";
+        String suggestion = field.equals("suggestion") ? value : "제안";
+        assertSchemaFailure("""
+                {
+                  "findings": [{
+                    "type": "UNCLEAR_SENTENCE",
+                    "targetExcerpt": "%s",
+                    "comment": "%s",
+                    "suggestion": "%s"
+                  }],
+                  "rewrite": {"content": "본문", "changedCount": 1}
+                }
+                """.formatted(targetExcerpt, comment, suggestion));
     }
 
     private void assertSchemaFailure(String json) {

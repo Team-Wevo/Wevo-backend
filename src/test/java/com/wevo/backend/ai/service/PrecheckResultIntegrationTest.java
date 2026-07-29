@@ -1,6 +1,7 @@
 package com.wevo.backend.ai.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.wevo.backend.ai.context.AiProjectIdentity;
 import com.wevo.backend.ai.context.AiContextAssembler;
@@ -12,6 +13,7 @@ import com.wevo.backend.ai.domain.AiErrorType;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiRequestStatus;
+import com.wevo.backend.ai.domain.AiSectionCheckFinding;
 import com.wevo.backend.ai.dto.model.DraftReviewOutput;
 import com.wevo.backend.ai.dto.model.DraftReviewFindingOutput;
 import com.wevo.backend.ai.dto.model.DraftReviewRewriteOutput;
@@ -37,12 +39,15 @@ import com.wevo.backend.section.service.DraftLeaseService;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceException;
 import jakarta.persistence.PersistenceContext;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -116,6 +121,42 @@ class PrecheckResultIntegrationTest {
         assertThat(response.currentResult().rewrite().content())
                 .isEqualTo("검토할 현재 본문");
         assertThat(response.currentResult().rewriteApplied()).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"target_excerpt", "comment_text", "suggestion"})
+    void databaseRejectsOverlongFindingText(String column) {
+        int maxLength = switch (column) {
+            case "target_excerpt" -> AiSectionCheckFinding.MAX_TARGET_EXCERPT_LENGTH;
+            case "comment_text" -> AiSectionCheckFinding.MAX_COMMENT_LENGTH;
+            case "suggestion" -> AiSectionCheckFinding.MAX_SUGGESTION_LENGTH;
+            default -> throw new IllegalArgumentException("지원하지 않는 finding 컬럼입니다.");
+        };
+        Fixture fixture = fixture();
+        Long resultId = resultWriter.persist(
+                fixture.successJob().getRequestId(),
+                context(fixture),
+                new DraftReviewOutput(
+                        List.of(new DraftReviewFindingOutput(
+                                AiSectionFindingType.UNCLEAR_SENTENCE,
+                                fixture.draft().getContent(),
+                                "점검 의견",
+                                "구체적으로 수정하세요.")),
+                        new DraftReviewRewriteOutput("더 명확한 개선 본문", 1)
+                )
+        );
+        em.flush();
+
+        String sql = """
+                UPDATE ai_section_check_findings
+                SET %s = repeat('가', :length)
+                WHERE ai_section_check_id = :resultId
+                """.formatted(column);
+        assertThatThrownBy(() -> em.createNativeQuery(sql)
+                .setParameter("length", maxLength + 1)
+                .setParameter("resultId", resultId)
+                .executeUpdate())
+                .isInstanceOf(PersistenceException.class);
     }
 
     @Test

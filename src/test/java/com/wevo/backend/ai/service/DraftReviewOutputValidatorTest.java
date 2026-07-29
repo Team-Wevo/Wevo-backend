@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.wevo.backend.ai.client.StructuredOutputSemanticException;
 import com.wevo.backend.ai.client.StructuredOutputValidationContext;
+import com.wevo.backend.ai.domain.AiSectionCheckFinding;
 import com.wevo.backend.ai.domain.AiSectionFindingType;
 import com.wevo.backend.ai.dto.model.DraftReviewFindingOutput;
 import com.wevo.backend.ai.dto.model.DraftReviewOutput;
@@ -88,12 +89,52 @@ class DraftReviewOutputValidatorTest {
                 new DraftReviewRewriteOutput(CURRENT, 0)));
     }
 
+    @Test
+    void rejectsOverlongFindingText() {
+        String overlongExcerpt =
+                "가".repeat(AiSectionCheckFinding.MAX_TARGET_EXCERPT_LENGTH + 1);
+        StructuredOutputValidationContext overlongExcerptContext =
+                StructuredOutputValidationContext.forSourceContents(
+                        overlongExcerpt, Set.of(overlongExcerpt));
+        assertThatThrownBy(() -> validator.validate(
+                new DraftReviewOutput(
+                        List.of(finding(
+                                AiSectionFindingType.UNCLEAR_SENTENCE,
+                                overlongExcerpt)),
+                        new DraftReviewRewriteOutput("개선된 본문", 1)),
+                overlongExcerptContext
+        )).isInstanceOf(StructuredOutputSemanticException.class);
+        assertRejected(new DraftReviewOutput(
+                List.of(finding(
+                        AiSectionFindingType.UNCLEAR_SENTENCE,
+                        "독자에게 모호",
+                        "가".repeat(AiSectionCheckFinding.MAX_COMMENT_LENGTH + 1),
+                        "구체적으로 수정하세요.")),
+                new DraftReviewRewriteOutput("개선된 본문", 1)));
+        assertRejected(new DraftReviewOutput(
+                List.of(finding(
+                        AiSectionFindingType.UNCLEAR_SENTENCE,
+                        "독자에게 모호",
+                        "점검 의견",
+                        "가".repeat(AiSectionCheckFinding.MAX_SUGGESTION_LENGTH + 1))),
+                new DraftReviewRewriteOutput("개선된 본문", 1)));
+    }
+
     private DraftReviewFindingOutput finding(
             AiSectionFindingType type,
             String excerpt
     ) {
+        return finding(type, excerpt, "점검 의견", "구체적으로 수정하세요.");
+    }
+
+    private DraftReviewFindingOutput finding(
+            AiSectionFindingType type,
+            String excerpt,
+            String comment,
+            String suggestion
+    ) {
         return new DraftReviewFindingOutput(
-                type, excerpt, "점검 의견", "구체적으로 수정하세요.");
+                type, excerpt, comment, suggestion);
     }
 
     private void assertRejected(DraftReviewOutput output) {

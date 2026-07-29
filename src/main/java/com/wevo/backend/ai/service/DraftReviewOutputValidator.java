@@ -3,6 +3,7 @@ package com.wevo.backend.ai.service;
 import com.wevo.backend.ai.client.StructuredOutputSemanticException;
 import com.wevo.backend.ai.client.StructuredOutputValidationContext;
 import com.wevo.backend.ai.client.StructuredOutputValidator;
+import com.wevo.backend.ai.domain.AiSectionCheckFinding;
 import com.wevo.backend.ai.dto.model.DraftReviewFindingOutput;
 import com.wevo.backend.ai.dto.model.DraftReviewOutput;
 import com.wevo.backend.ai.dto.model.DraftReviewRewriteOutput;
@@ -49,9 +50,15 @@ public class DraftReviewOutputValidator implements StructuredOutputValidator<Dra
     ) {
         if (finding == null
                 || finding.type() == null
-                || isBlank(finding.targetExcerpt())
-                || isBlank(finding.comment())
-                || isBlank(finding.suggestion())) {
+                || !isValidText(
+                        finding.targetExcerpt(),
+                        AiSectionCheckFinding.MAX_TARGET_EXCERPT_LENGTH)
+                || !isValidText(
+                        finding.comment(),
+                        AiSectionCheckFinding.MAX_COMMENT_LENGTH)
+                || !isValidText(
+                        finding.suggestion(),
+                        AiSectionCheckFinding.MAX_SUGGESTION_LENGTH)) {
             throw reject();
         }
         boolean excerptExists = context.allowedSourceContents().stream()
@@ -72,6 +79,10 @@ public class DraftReviewOutputValidator implements StructuredOutputValidator<Dra
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private boolean isValidText(String value, int maxLength) {
+        return !isBlank(value) && value.length() <= maxLength;
     }
 
     private StructuredOutputSemanticException reject() {

@@ -25,6 +25,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AiSectionCheckFinding extends BaseTimeEntity {
 
+    public static final int MAX_TARGET_EXCERPT_LENGTH = 1_000;
+    public static final int MAX_COMMENT_LENGTH = 1_000;
+    public static final int MAX_SUGGESTION_LENGTH = 1_000;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -37,13 +41,17 @@ public class AiSectionCheckFinding extends BaseTimeEntity {
     @Column(name = "finding_type", nullable = false, length = 40)
     private AiSectionFindingType type;
 
-    @Column(name = "target_excerpt", nullable = false)
+    @Column(
+            name = "target_excerpt",
+            nullable = false,
+            length = MAX_TARGET_EXCERPT_LENGTH
+    )
     private String targetExcerpt;
 
-    @Column(name = "comment_text", nullable = false)
+    @Column(name = "comment_text", nullable = false, length = MAX_COMMENT_LENGTH)
     private String comment;
 
-    @Column(name = "suggestion", nullable = false)
+    @Column(name = "suggestion", nullable = false, length = MAX_SUGGESTION_LENGTH)
     private String suggestion;
 
     @Column(name = "sort_order", nullable = false)
@@ -60,18 +68,20 @@ public class AiSectionCheckFinding extends BaseTimeEntity {
     ) {
         this.sectionCheck = Objects.requireNonNull(sectionCheck, "sectionCheck는 필수입니다.");
         this.type = Objects.requireNonNull(type, "type은 필수입니다.");
-        this.targetExcerpt = requireText(targetExcerpt, "targetExcerpt");
-        this.comment = requireText(comment, "comment");
-        this.suggestion = requireText(suggestion, "suggestion");
+        this.targetExcerpt = requireText(
+                targetExcerpt, "targetExcerpt", MAX_TARGET_EXCERPT_LENGTH);
+        this.comment = requireText(comment, "comment", MAX_COMMENT_LENGTH);
+        this.suggestion = requireText(suggestion, "suggestion", MAX_SUGGESTION_LENGTH);
         if (sortOrder == null || sortOrder <= 0) {
             throw new IllegalArgumentException("sortOrder는 1 이상이어야 합니다.");
         }
         this.sortOrder = sortOrder;
     }
 
-    private static String requireText(String value, String field) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + "는 필수입니다.");
+    private static String requireText(String value, String field, int maxLength) {
+        if (value == null || value.isBlank() || value.length() > maxLength) {
+            throw new IllegalArgumentException(
+                    field + "는 공백이 아니며 " + maxLength + "자 이하여야 합니다.");
         }
         return value;
     }
