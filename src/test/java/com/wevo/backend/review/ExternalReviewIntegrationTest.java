@@ -405,7 +405,7 @@ class ExternalReviewIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("OK"))
                 .andExpect(jsonPath("$.data.reviewLinkId").value(linkId))
-                .andExpect(jsonPath("$.data.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.linkStatus").value("ACTIVE"))
                 .andExpect(jsonPath("$.data.contentVersion").value(1))
                 .andExpect(jsonPath("$.data.submissionCount").value(1))
                 .andExpect(jsonPath("$.data.issuedAt").exists())
@@ -413,17 +413,20 @@ class ExternalReviewIntegrationTest {
     }
 
     @Test
-    @DisplayName("활성 링크가 없으면 현재 링크 조회는 204 를 반환한다")
-    void currentReturns204WhenNoActiveLink() throws Exception {
+    @DisplayName("활성 링크가 없으면 현재 링크 조회는 200 + data 생략으로 응답한다")
+    void currentReturnsOkWithoutDataWhenNoActiveLink() throws Exception {
         User owner = persistUser("owner-nocurrent@wevo.com", "팀장");
         ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
         persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
         em.flush();
 
-        // 발급한 적 없음 → 활성 링크 없음
+        // 발급한 적 없음 → 활성 링크 없음 (조회 자체는 성공이므로 200)
         mockMvc.perform(get("/api/project-sections/{id}/review-links/current", section.getId())
                         .with(authentication(authOf(owner))))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data").doesNotExist());
 
         // 발급 후 내부 비활성화 → 다시 활성 링크 없음
         String token = issueLink(section.getId(), owner);
@@ -431,7 +434,9 @@ class ExternalReviewIntegrationTest {
 
         mockMvc.perform(get("/api/project-sections/{id}/review-links/current", section.getId())
                         .with(authentication(authOf(owner))))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test

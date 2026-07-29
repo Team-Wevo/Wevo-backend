@@ -9,7 +9,6 @@ import com.wevo.backend.review.domain.ReviewLinkStatus;
 import com.wevo.backend.review.domain.ReviewSubmission;
 import com.wevo.backend.review.dto.request.ExternalReviewSubmitRequest;
 import com.wevo.backend.review.dto.response.ExternalReviewViewResponse;
-import com.wevo.backend.review.dto.response.ReviewLinkCurrentResponse;
 import com.wevo.backend.review.dto.response.ReviewLinkResponse;
 import com.wevo.backend.review.dto.response.ReviewSubmissionResponse;
 import com.wevo.backend.review.repository.ReviewLinkRepository;
@@ -20,7 +19,6 @@ import com.wevo.backend.section.repository.SectionDraftRepository;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.repository.UserRepository;
 import java.util.List;
-import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -114,7 +112,14 @@ public class ReviewLinkService {
                 .contentVersion(latestDraft.getVersion())
                 .status(ReviewLinkStatus.ACTIVE)
                 .build();
-        reviewLinkRepository.save(link);
+        try {
+            reviewLinkRepository.saveAndFlush(link);
+        } catch (DataIntegrityViolationException e) {
+            // 부분 유니크 인덱스(uk_review_links_active_per_section) 위반 — 섹션 행 잠금으로 발급을
+            // 직렬화하므로 정상 경로에서는 발생하지 않지만, 무결성 보장을 사전 검사에만 맡기지 않는다.
+            // (CLAUDE.md §5.8) 재시도하면 성공하는 경합이라 원인 분기가 필요 없는 일반 충돌로 변환한다.
+            throw new BusinessException(ErrorCode.CONFLICT);
+        }
 
         return ReviewLinkResponse.of(link, rawToken);
     }
@@ -131,24 +136,6 @@ public class ReviewLinkService {
                 && reviewSubmissionRepository
                 .existsByReviewLink_IdAndAnonymousReviewerId(link.getId(), anonymousReviewerId);
         return ExternalReviewViewResponse.of(link, alreadySubmitted);
-    }
-
-    /**
-     * 섹션의 현재 활성({@code ACTIVE}) 외부 검토 링크를 상태 복구용으로 조회한다. (팀장 전용)
-     *
-     * <p>팀장이 링크 발급 후 새로고침하면 활성 링크 존재 여부를 알 수 없어 무심코 재발급 →
-     * 이미 공유한 링크가 죽는 사고가 난다. 이 조회로 현재 링크의 존재·메타데이터를 복구한다.
-     * 섹션당 {@code ACTIVE} 링크는 최대 1개가 보장되므로 결과는 단건이다.
-     *
-     * <p>원문 토큰은 재노출하지 않으며(해시만 저장), 활성 링크가 없으면 {@link Optional#empty()}
-     * 를 반환한다(컨트롤러가 {@code 204} 로 변환). 권한 검증은 발급과 동일하게 OWNER 로 제한한다.
-     */
-    public Optional<ReviewLinkCurrentResponse> getCurrentActiveLink(Long sectionId, Long userId) {
-        sectionAccessGuard.requireOwnedSection(sectionId, userId);
-        return reviewLinkRepository
-                .findFirstByProjectSection_IdAndStatus(sectionId, ReviewLinkStatus.ACTIVE)
-                .map(link -> ReviewLinkCurrentResponse.of(
-                        link, reviewSubmissionRepository.countByReviewLink_Id(link.getId())));
     }
 
     /**

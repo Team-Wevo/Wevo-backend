@@ -15,14 +15,16 @@ import java.time.LocalDateTime;
  * 한 번 반환되고 DB 에는 해시만 저장되므로, 복구 조회로는 재노출하지 않는다.
  *
  * @param reviewLinkId    활성 링크 ID
- * @param status          링크 상태 (활성 링크만 반환하므로 항상 {@code ACTIVE} — 계약 명시용)
+ * @param linkStatus      링크 상태 (활성 링크만 반환하므로 항상 {@code ACTIVE} — 계약 명시용).
+ *                        공개 열람 응답({@code ExternalReviewViewResponse})과 같은 개념이므로
+ *                        이름을 맞춘다.
  * @param contentVersion  링크가 고정한 발급 시점 본문 버전
  * @param submissionCount 이 <b>링크에</b> 쌓인 외부 검토 제출 수 (링크당 20개 상한)
  * @param issuedAt        링크 발급 시각
  */
 public record ReviewLinkCurrentResponse(
         Long reviewLinkId,
-        ReviewLinkStatus status,
+        ReviewLinkStatus linkStatus,
         Integer contentVersion,
         long submissionCount,
         LocalDateTime issuedAt

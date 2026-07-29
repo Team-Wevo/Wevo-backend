@@ -3,6 +3,7 @@ package com.wevo.backend.review.controller;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.review.dto.response.ExternalReviewResultResponse;
+import com.wevo.backend.review.dto.response.ReviewLinkCurrentResponse;
 import com.wevo.backend.review.service.ExternalReviewQueryService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -12,9 +13,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 외부 검토 결과 조회 API. (팀장 전용 — 인증 필요)
+ * 외부 검토 조회 API. (팀장 전용 — 인증 필요)
  *
- * <p>기존 발급 컨트롤러({@code ReviewLinkController})와 분리해 조회 엔드포인트만 담당한다.
+ * <p>발급 컨트롤러({@code ReviewLinkController})와 분리해 조회 엔드포인트만 담당한다.
+ * 검토 결과 조회와 현재 활성 링크 상태 복구 조회가 여기에 모인다.
  */
 @RestController
 @RequestMapping("/api/project-sections")
@@ -38,5 +40,26 @@ public class ExternalReviewQueryController {
                 externalReviewQueryService.getResults(sectionId, principal.userId());
         return ResponseEntity.ok(
                 ApiResponse.success("OK", "조회에 성공했습니다.", response));
+    }
+
+    /**
+     * 섹션의 현재 활성 외부 검토 링크를 조회한다. (팀장 전용)
+     *
+     * <p>발급 후 새로고침해도 활성 링크 존재 여부를 알 수 있게 해, 불필요한 재발급으로 이미 공유한
+     * 링크가 죽는 사고를 막는다. 토큰은 노출하지 않는다.
+     *
+     * <p>활성 링크가 없어도 조회 자체는 성공이므로 {@code 200 OK} 로 응답하고 {@code data} 만
+     * 생략한다({@code null} 필드는 직렬화 제외).
+     */
+    @GetMapping("/{sectionId}/review-links/current")
+    public ResponseEntity<ApiResponse<ReviewLinkCurrentResponse>> getCurrentLink(
+            @PathVariable Long sectionId,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        return externalReviewQueryService.getCurrentActiveLink(sectionId, principal.userId())
+                .map(current -> ResponseEntity.ok(
+                        ApiResponse.success("OK", "현재 활성 외부 검토 링크를 조회했습니다.", current)))
+                .orElseGet(() -> ResponseEntity.ok(
+                        ApiResponse.success("OK", "활성 외부 검토 링크가 없습니다.", null)));
     }
 }
