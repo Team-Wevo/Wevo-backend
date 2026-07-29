@@ -4,11 +4,13 @@ import com.wevo.backend.issue.domain.Issue;
 import com.wevo.backend.issue.domain.IssueOption;
 import com.wevo.backend.issue.domain.IssueRelatedOpinion;
 import com.wevo.backend.issue.domain.IssueType;
+import com.wevo.backend.issue.domain.SynthesisConsensusEvidence;
 import com.wevo.backend.issue.domain.SynthesisInheritedGapAnswer;
 import com.wevo.backend.issue.domain.SynthesisSet;
 import com.wevo.backend.issue.repository.IssueOptionRepository;
 import com.wevo.backend.issue.repository.IssueRelatedOpinionRepository;
 import com.wevo.backend.issue.repository.IssueRepository;
+import com.wevo.backend.issue.repository.SynthesisConsensusEvidenceRepository;
 import com.wevo.backend.issue.repository.SynthesisInheritedGapAnswerRepository;
 import com.wevo.backend.issue.repository.SynthesisSetRepository;
 import com.wevo.backend.issue.service.SynthesisPersistCommand.InheritedGapAnswerRef;
@@ -31,17 +33,20 @@ public class SynthesisResultWriteService {
     private final IssueRepository issueRepository;
     private final IssueOptionRepository issueOptionRepository;
     private final IssueRelatedOpinionRepository issueRelatedOpinionRepository;
+    private final SynthesisConsensusEvidenceRepository consensusEvidenceRepository;
     private final SynthesisInheritedGapAnswerRepository inheritedGapAnswerRepository;
 
     public SynthesisResultWriteService(SynthesisSetRepository synthesisSetRepository,
                                        IssueRepository issueRepository,
                                        IssueOptionRepository issueOptionRepository,
                                        IssueRelatedOpinionRepository issueRelatedOpinionRepository,
+                                       SynthesisConsensusEvidenceRepository consensusEvidenceRepository,
                                        SynthesisInheritedGapAnswerRepository inheritedGapAnswerRepository) {
         this.synthesisSetRepository = synthesisSetRepository;
         this.issueRepository = issueRepository;
         this.issueOptionRepository = issueOptionRepository;
         this.issueRelatedOpinionRepository = issueRelatedOpinionRepository;
+        this.consensusEvidenceRepository = consensusEvidenceRepository;
         this.inheritedGapAnswerRepository = inheritedGapAnswerRepository;
     }
 
@@ -62,6 +67,8 @@ public class SynthesisResultWriteService {
                 .opinionGateGeneration(command.opinionGateGeneration())
                 .consensusSummary(command.consensusSummary())
                 .build());
+
+        persistConsensusEvidence(set, command);
 
         int issueOrder = 1;
         for (IssueSpec issueSpec : command.issues()) {
@@ -85,6 +92,20 @@ public class SynthesisResultWriteService {
         }
 
         return set.getId();
+    }
+
+    private void persistConsensusEvidence(SynthesisSet set, SynthesisPersistCommand command) {
+        int evidenceOrder = 1;
+        for (RelatedOpinionSpec evidence : command.consensusEvidence()) {
+            consensusEvidenceRepository.save(SynthesisConsensusEvidence.builder()
+                    .synthesisSet(set)
+                    .opinionId(evidence.opinionId())
+                    .authorUserId(evidence.authorUserId())
+                    .authorNameSnapshot(evidence.authorName())
+                    .excerpt(evidence.excerpt())
+                    .sortOrder(evidenceOrder++)
+                    .build());
+        }
     }
 
     private void persistOptions(Issue issue, IssueSpec issueSpec) {

@@ -37,6 +37,10 @@ no table, column, or constraint changes — so JPA mapping validation is unaffec
 characters while preserving the submitted whitespace, so the database column cannot retain a
 raw-length limit of 200.
 
+`V6__add_synthesis_consensus_evidence.sql` stores the minimal submitted-opinion evidence set
+behind each synthesis consensus. It preserves author/name/excerpt snapshots with deterministic
+ordering so later opinion edits cannot rewrite the evidence history.
+
 ## Existing local databases
 
 V1 is an initial migration for an **empty PostgreSQL database**. A database previously

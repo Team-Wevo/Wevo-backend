@@ -87,6 +87,9 @@ public class SynthesisRequestService {
         if (section.getStatus() != ProjectSectionStatus.SYNTHESIZING) {
             throw new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
         }
+        if (snapshot.hasNoOpinion()) {
+            throw new BusinessException(ErrorCode.NO_SUBMITTED_OPINION);
+        }
 
         User requestedBy = userService.getUserReference(userId);
         AiJobCreateResult result = existing

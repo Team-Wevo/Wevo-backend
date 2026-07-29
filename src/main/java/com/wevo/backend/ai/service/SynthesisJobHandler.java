@@ -1,20 +1,11 @@
 package com.wevo.backend.ai.service;
 
-import com.wevo.backend.ai.client.OutputSchemaId;
-import com.wevo.backend.ai.client.StructuredAiProviderRequest;
-import com.wevo.backend.ai.client.StructuredOutputDefinition;
-import com.wevo.backend.ai.client.StructuredOutputValidationContext;
 import com.wevo.backend.ai.config.AiJobDispatchProperties;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
-import com.wevo.backend.ai.prompt.PromptRegistry;
-import com.wevo.backend.ai.prompt.PromptRenderer;
-import com.wevo.backend.ai.prompt.PromptTemplateId;
-import com.wevo.backend.ai.prompt.RenderedPrompt;
+import com.wevo.backend.ai.dto.model.IssueDetectionIssueOutput;
 import com.wevo.backend.ai.repository.AiJobRepository;
-import com.wevo.backend.ai.service.SynthesisAiOutput.IssueOut;
 import com.wevo.backend.issue.domain.IssueType;
-import com.wevo.backend.issue.service.GapAnswerInputView;
 import com.wevo.backend.issue.service.SynthesisPersistCommand;
 import com.wevo.backend.issue.service.SynthesisPersistCommand.InheritedGapAnswerRef;
 import com.wevo.backend.issue.service.SynthesisPersistCommand.IssueSpec;
@@ -24,7 +15,6 @@ import com.wevo.backend.opinion.service.SubmittedOpinionView;
 import com.wevo.backend.section.service.SectionSynthesisStateService;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -47,26 +37,22 @@ import org.springframework.stereotype.Component;
  * ④ AI 호출·출력 검증. ⑤ 완료 처리 트랜잭션에서 섹션 행을 잠그고 입력을 재대조한 뒤, 통과했을 때만
  * 정리 세트 저장·재정리 플래그 해제를 원자적으로 반영.
  *
- * <p>{@code AiInvocationService}는 provider가 구성된 경우에만 존재하므로 {@link ObjectProvider}로
+ * <p>{@code SynthesisGenerator}는 provider가 구성된 경우에만 존재하므로 {@link ObjectProvider}로
  * 지연 조회한다.
  */
 @Component
 public class SynthesisJobHandler implements AiJobHandler {
 
     private static final Logger log = LoggerFactory.getLogger(SynthesisJobHandler.class);
-    private static final PromptTemplateId PROMPT_ID = new PromptTemplateId("opinion-synthesis", 1);
-    private static final OutputSchemaId SCHEMA_ID = new OutputSchemaId("opinion-synthesis", 1);
     private static final int MAX_EXCERPT_LENGTH = 300;
 
     private final AiJobService aiJobService;
     private final AiJobRepository aiJobRepository;
     private final SynthesisSnapshotAssembler snapshotAssembler;
     private final SynthesisInputHasher inputHasher;
-    private final PromptRegistry promptRegistry;
-    private final PromptRenderer promptRenderer;
-    private final SynthesisOutputValidator outputValidator;
-    private final ObjectProvider<AiInvocationService> aiInvocationServiceProvider;
+    private final ObjectProvider<SynthesisGenerator> synthesisGeneratorProvider;
     private final SynthesisResultWriteService synthesisResultWriteService;
+    private final AiUsageResultLinkService usageResultLinkService;
     private final SectionSynthesisStateService sectionSynthesisStateService;
     private final ScheduledExecutorService heartbeatScheduler;
     private final long heartbeatMillis;
@@ -75,11 +61,9 @@ public class SynthesisJobHandler implements AiJobHandler {
                                AiJobRepository aiJobRepository,
                                SynthesisSnapshotAssembler snapshotAssembler,
                                SynthesisInputHasher inputHasher,
-                               PromptRegistry promptRegistry,
-                               PromptRenderer promptRenderer,
-                               SynthesisOutputValidator outputValidator,
-                               ObjectProvider<AiInvocationService> aiInvocationServiceProvider,
+                               ObjectProvider<SynthesisGenerator> synthesisGeneratorProvider,
                                SynthesisResultWriteService synthesisResultWriteService,
+                               AiUsageResultLinkService usageResultLinkService,
                                SectionSynthesisStateService sectionSynthesisStateService,
                                ScheduledExecutorService aiHeartbeatScheduler,
                                AiJobDispatchProperties properties) {
@@ -87,11 +71,9 @@ public class SynthesisJobHandler implements AiJobHandler {
         this.aiJobRepository = aiJobRepository;
         this.snapshotAssembler = snapshotAssembler;
         this.inputHasher = inputHasher;
-        this.promptRegistry = promptRegistry;
-        this.promptRenderer = promptRenderer;
-        this.outputValidator = outputValidator;
-        this.aiInvocationServiceProvider = aiInvocationServiceProvider;
+        this.synthesisGeneratorProvider = synthesisGeneratorProvider;
         this.synthesisResultWriteService = synthesisResultWriteService;
+        this.usageResultLinkService = usageResultLinkService;
         this.sectionSynthesisStateService = sectionSynthesisStateService;
         this.heartbeatScheduler = aiHeartbeatScheduler;
         // 설정 유효성(0 < interval < timeout)은 AiJobDispatchProperties가 시작 시 검증한다.
@@ -152,6 +134,7 @@ public class SynthesisJobHandler implements AiJobHandler {
             return inputHasher.hash(snapshotAssembler.assemble(sectionId));
         }, () -> {
             Long setId = synthesisResultWriteService.persist(command);
+            usageResultLinkService.linkSuccessfulInvocations(job.getId(), setId);
             sectionSynthesisStateService.clearSynthesisStale(sectionId);
             return setId;
         });
@@ -199,63 +182,11 @@ public class SynthesisJobHandler implements AiJobHandler {
     }
 
     private SynthesisAiOutput invokeSynthesis(AiJob job, SynthesisInputSnapshot snapshot) {
-        AiInvocationService invocationService = aiInvocationServiceProvider.getIfAvailable();
-        if (invocationService == null) {
+        SynthesisGenerator generator = synthesisGeneratorProvider.getIfAvailable();
+        if (generator == null) {
             throw new IllegalStateException("AI provider가 구성되지 않아 의견 정리를 실행할 수 없습니다.");
         }
-
-        RenderedPrompt prompt = promptRenderer.render(promptRegistry.get(PROMPT_ID), promptVariables(snapshot));
-        StructuredOutputDefinition<SynthesisAiOutput> outputDefinition =
-                StructuredOutputDefinition.of(SCHEMA_ID, SynthesisAiOutput.class, outputValidator);
-        StructuredOutputValidationContext validationContext =
-                new StructuredOutputValidationContext(allowedOpinionIds(snapshot));
-        StructuredAiProviderRequest<SynthesisAiOutput> request = new StructuredAiProviderRequest<>(
-                AiFeature.OPINION_SYNTHESIS, prompt, outputDefinition, validationContext);
-
-        AiUsageStartCommand startCommand = new AiUsageStartCommand(
-                job,
-                job.getProject(),
-                job.getProjectSection(),
-                job.getRequestedBy(),
-                AiFeature.OPINION_SYNTHESIS,
-                job.getPromptVersion(),
-                job.getInputSnapshotHash());
-
-        return invocationService.invokeStructured(
-                startCommand,
-                request,
-                response -> new AiProcessedResult<>(response.result(), null)
-        ).value();
-    }
-
-    private Map<String, String> promptVariables(SynthesisInputSnapshot snapshot) {
-        return Map.of(
-                "opinions", formatOpinions(snapshot.opinions()),
-                "gapAnswers", formatGapAnswers(snapshot.gapAnswers())
-        );
-    }
-
-    // 작성자 실명은 AI에 보내지 않는다(§7 AI 전송 최소화). AI는 의견 id로만 참조하고, 작성자
-    // 스냅샷은 서버가 id를 근거로 결합한다. 해시도 이름을 포함하지 않으므로 프롬프트-입력이 일치한다.
-    private String formatOpinions(List<SubmittedOpinionView> opinions) {
-        return opinions.stream()
-                .map(opinion -> "[의견 #" + opinion.opinionId() + "] " + opinion.submittedContent())
-                .collect(Collectors.joining("\n"));
-    }
-
-    private String formatGapAnswers(List<GapAnswerInputView> gapAnswers) {
-        if (gapAnswers.isEmpty()) {
-            return "없음";
-        }
-        return gapAnswers.stream()
-                .map(answer -> "- " + answer.content())
-                .collect(Collectors.joining("\n"));
-    }
-
-    private Set<Long> allowedOpinionIds(SynthesisInputSnapshot snapshot) {
-        return snapshot.opinions().stream()
-                .map(SubmittedOpinionView::opinionId)
-                .collect(Collectors.toSet());
+        return generator.generate(job, snapshot);
     }
 
     private SynthesisPersistCommand toPersistCommand(AiJob job, Long sectionId,
@@ -265,6 +196,9 @@ public class SynthesisJobHandler implements AiJobHandler {
 
         List<IssueSpec> issues = output.issues().stream()
                 .map(issue -> toIssueSpec(issue, opinionsById))
+                .toList();
+        List<RelatedOpinionSpec> consensusEvidence = output.consensusEvidenceOpinionIds().stream()
+                .map(opinionId -> toRelatedOpinionSpec(opinionId, opinionsById))
                 .toList();
 
         List<InheritedGapAnswerRef> inherited = snapshot.gapAnswers().stream()
@@ -276,14 +210,18 @@ public class SynthesisJobHandler implements AiJobHandler {
                 sectionId,
                 snapshot.opinionGateGeneration(),
                 output.consensusSummary(),
+                consensusEvidence,
                 issues,
                 inherited
         );
     }
 
-    private IssueSpec toIssueSpec(IssueOut issue, Map<Long, SubmittedOpinionView> opinionsById) {
+    private IssueSpec toIssueSpec(
+            IssueDetectionIssueOutput issue,
+            Map<Long, SubmittedOpinionView> opinionsById
+    ) {
         boolean conflict = issue.type() == IssueType.CONFLICT;
-        List<RelatedOpinionSpec> relatedOpinions = issue.relatedOpinionIds().stream()
+        List<RelatedOpinionSpec> relatedOpinions = issue.evidenceOpinionIds().stream()
                 .map(opinionId -> toRelatedOpinionSpec(opinionId, opinionsById))
                 .toList();
         return new IssueSpec(

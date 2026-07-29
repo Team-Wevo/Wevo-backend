@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.wevo.backend.issue.service.GapAnswerInputView;
 import com.wevo.backend.opinion.service.SubmittedOpinionView;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,7 +14,13 @@ class SynthesisInputHasherTest {
     private final SynthesisInputHasher hasher = new SynthesisInputHasher();
 
     private SubmittedOpinionView opinion(long id, long authorId, String content) {
-        return new SubmittedOpinionView(id, authorId, "작성자" + authorId, content);
+        return new SubmittedOpinionView(
+                id,
+                authorId,
+                "작성자" + authorId,
+                content,
+                LocalDateTime.of(2026, 7, 28, 10, 0).plusMinutes(id)
+        );
     }
 
     private GapAnswerInputView gapAnswer(long answerId, long issueId, String content) {
