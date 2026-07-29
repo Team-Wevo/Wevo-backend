@@ -7,10 +7,35 @@ public record CurrentSynthesisContext(
         Long synthesisSetId,
         long opinionGateGeneration,
         String consensusSummary,
-        List<GapAnswerContext> gapAnswers
+        List<GapAnswerContext> gapAnswers,
+        List<SynthesisOpinionEvidenceContext> opinionEvidence,
+        List<ConflictDecisionContext> conflictDecisions,
+        List<GapIssueContext> gapIssues,
+        boolean hasUnresolvedConflict
 ) {
 
     public CurrentSynthesisContext {
         gapAnswers = List.copyOf(gapAnswers);
+        opinionEvidence = List.copyOf(opinionEvidence);
+        conflictDecisions = List.copyOf(conflictDecisions);
+        gapIssues = List.copyOf(gapIssues);
+    }
+
+    public CurrentSynthesisContext(
+            Long synthesisSetId,
+            long opinionGateGeneration,
+            String consensusSummary,
+            List<GapAnswerContext> gapAnswers
+    ) {
+        this(
+                synthesisSetId,
+                opinionGateGeneration,
+                consensusSummary,
+                gapAnswers,
+                List.of(),
+                List.of(),
+                List.of(),
+                false
+        );
     }
 }

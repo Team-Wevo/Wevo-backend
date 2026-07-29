@@ -2,8 +2,13 @@ package com.wevo.backend.ai.context;
 
 import com.wevo.backend.ai.config.AiProperties;
 import com.wevo.backend.issue.service.CurrentSynthesisContext;
+import com.wevo.backend.issue.service.ConflictDecisionContext;
 import com.wevo.backend.issue.service.GapAnswerContext;
+import com.wevo.backend.issue.service.GapIssueContext;
 import com.wevo.backend.issue.service.SynthesisSetQueryService;
+import com.wevo.backend.issue.service.SynthesisOpinionEvidenceContext;
+import com.wevo.backend.global.exception.BusinessException;
+import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.opinion.service.SubmittedOpinionContext;
 import com.wevo.backend.opinion.service.SubmittedOpinionQueryService;
 import com.wevo.backend.project.domain.OutputType;
@@ -70,7 +75,11 @@ class AiContextAssemblerTest {
                 .thenReturn(List.of(prerequisite(20L, 1, 3)));
         when(sectionQueryService.getLatestDraft(access, SECTION_ID))
                 .thenReturn(new SectionVersionedContent(SECTION_ID, 4, "현재\r\n초안"));
+        when(sectionQueryService.getLatestDraftOrEmpty(access, SECTION_ID))
+                .thenReturn(new SectionVersionedContent(SECTION_ID, 0, null));
         when(synthesisQueryService.getCurrentForAiContext(sectionAccess))
+                .thenReturn(synthesis(100L, 3L, "GAP 답변"));
+        when(synthesisQueryService.getCurrentForDraftGeneration(sectionAccess))
                 .thenReturn(synthesis(100L, 3L, "GAP 답변"));
         when(opinionQueryService.findSubmittedOpinions(access, SECTION_ID))
                 .thenReturn(opinionsInRepositoryOrder());
@@ -179,10 +188,40 @@ class AiContextAssemblerTest {
         when(sectionQueryService.getMetadata(access, SECTION_ID)).thenReturn(metadata(3L, true));
 
         assertThatThrownBy(() -> assembler.assembleDraftGeneration(access, SECTION_ID))
-                .isInstanceOf(AiContextAssemblyException.class)
-                .hasMessage("AI 작업에 필요한 section context를 조립할 수 없습니다.")
-                .hasMessageNotContaining("GAP 답변")
-                .hasMessageNotContaining("프로젝트");
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getErrorCode())
+                        .isEqualTo(ErrorCode.CONFLICT));
+    }
+
+    @Test
+    void draftSnapshotChangesWithConflictDecisionAndBaseDraftVersion() {
+        VerifiedSectionAccess sectionAccess =
+                sectionAccessGuard.verifySectionAccess(access, SECTION_ID);
+        when(synthesisQueryService.getCurrentForDraftGeneration(sectionAccess))
+                .thenReturn(draftSynthesis("OWNER 결정 A"));
+        AssembledAiContext<DraftGenerationContext> baselineAssembly =
+                assembler.assembleDraftGeneration(access, SECTION_ID);
+        String baseline = baselineAssembly.snapshot().inputSnapshotHash();
+        String canonical = new String(
+                baselineAssembly.snapshot().canonicalBytes(),
+                StandardCharsets.UTF_8
+        );
+
+        when(synthesisQueryService.getCurrentForDraftGeneration(sectionAccess))
+                .thenReturn(draftSynthesis("OWNER 결정 B"));
+        String decisionChanged = assembler.assembleDraftGeneration(access, SECTION_ID)
+                .snapshot().inputSnapshotHash();
+
+        when(synthesisQueryService.getCurrentForDraftGeneration(sectionAccess))
+                .thenReturn(draftSynthesis("OWNER 결정 A"));
+        when(sectionQueryService.getLatestDraftOrEmpty(access, SECTION_ID))
+                .thenReturn(new SectionVersionedContent(SECTION_ID, 2, "기존 팀 편집본"));
+        String baseDraftChanged = assembler.assembleDraftGeneration(access, SECTION_ID)
+                .snapshot().inputSnapshotHash();
+
+        assertThat(decisionChanged).isNotEqualTo(baseline);
+        assertThat(baseDraftChanged).isNotEqualTo(baseline);
+        assertThat(canonical).doesNotContain("팀원");
     }
 
     private List<SubmittedOpinionContext> opinionsInRepositoryOrder() {
@@ -237,6 +276,33 @@ class AiContextAssemblerTest {
                         answerContent,
                         LocalDateTime.of(2026, 7, 24, 11, 0)
                 ))
+        );
+    }
+
+    private CurrentSynthesisContext draftSynthesis(String decision) {
+        return new CurrentSynthesisContext(
+                100L,
+                3L,
+                "현재 합의",
+                List.of(new GapAnswerContext(
+                        501L,
+                        601L,
+                        "GAP 답변",
+                        LocalDateTime.of(2026, 7, 24, 11, 0),
+                        "팀원",
+                        false
+                )),
+                List.of(new SynthesisOpinionEvidenceContext(11L, "팀원", "근거 의견")),
+                List.of(new ConflictDecisionContext(
+                        701L,
+                        801L,
+                        "충돌",
+                        "무엇을 선택할까요?",
+                        decision,
+                        List.of(11L)
+                )),
+                List.of(new GapIssueContext(501L, "보충 근거", true, List.of(11L))),
+                false
         );
     }
 
