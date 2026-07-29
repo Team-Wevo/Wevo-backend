@@ -5,6 +5,7 @@ import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiJobStatus;
 import com.wevo.backend.ai.domain.AiUsageLog;
+import com.wevo.backend.ai.client.AiUsageMetadata;
 import com.wevo.backend.ai.exception.AiProviderException;
 import com.wevo.backend.ai.repository.AiJobRepository;
 import com.wevo.backend.ai.repository.AiUsageLogRepository;
@@ -60,6 +61,9 @@ class AiJobServiceIntegrationTest {
 
     @Autowired
     private AiUsageService usageService;
+
+    @Autowired
+    private AiUsageResultLinkService usageResultLinkService;
 
     @Autowired
     private AiUsageLogRepository usageLogRepository;
@@ -332,6 +336,37 @@ class AiJobServiceIntegrationTest {
         List<AiUsageLog> logs = usageLogRepository.findAll();
         assertThat(logs).filteredOn(log -> log.getAiJob() != null).hasSize(2);
         assertThat(logs).filteredOn(log -> log.getAiJob() == null).hasSize(1);
+    }
+
+    @Test
+    void successfulChunkUsageLogsAreLinkedAfterFinalResultIsPersisted() {
+        UUID requestId = jobService.createOrGet(command()).requestId();
+        AiJob job = jobRepository.findByRequestId(requestId).orElseThrow();
+        jobService.start(requestId, SNAPSHOT);
+
+        for (int index = 0; index < 3; index++) {
+            AiUsageHandle handle = usageService.startRequest(new AiUsageStartCommand(
+                    job, project, section, user, AiFeature.OPINION_SYNTHESIS,
+                    "opinion-synthesis:v1", SNAPSHOT
+            ));
+            usageService.completeSuccess(
+                    handle,
+                    new AiUsageMetadata(
+                            "provider-" + index, "test-model", 10L, 5L, null, null),
+                    1,
+                    null
+            );
+        }
+
+        jobService.succeed(requestId, () -> SNAPSHOT, () -> {
+            assertThat(usageResultLinkService.linkSuccessfulInvocations(job.getId(), 91L))
+                    .isEqualTo(3);
+            return 91L;
+        });
+
+        assertThat(usageLogRepository.findAll())
+                .hasSize(3)
+                .allSatisfy(log -> assertThat(log.getResultId()).isEqualTo(91L));
     }
 
     @Test

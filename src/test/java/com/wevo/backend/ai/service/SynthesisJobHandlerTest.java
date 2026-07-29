@@ -15,13 +15,8 @@ import com.wevo.backend.ai.config.AiJobDispatchProperties;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiJobStatus;
-import com.wevo.backend.ai.prompt.PromptDefinition;
-import com.wevo.backend.ai.prompt.PromptRegistry;
-import com.wevo.backend.ai.prompt.PromptRenderer;
-import com.wevo.backend.ai.prompt.PromptTemplateId;
-import com.wevo.backend.ai.prompt.RenderedPrompt;
+import com.wevo.backend.ai.dto.model.IssueDetectionIssueOutput;
 import com.wevo.backend.ai.repository.AiJobRepository;
-import com.wevo.backend.ai.service.SynthesisAiOutput.IssueOut;
 import com.wevo.backend.issue.domain.IssueType;
 import com.wevo.backend.issue.service.GapAnswerInputView;
 import com.wevo.backend.issue.service.SynthesisPersistCommand;
@@ -32,6 +27,7 @@ import com.wevo.backend.section.service.SectionSynthesisStateService;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.user.domain.User;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -66,11 +62,10 @@ class SynthesisJobHandlerTest {
     @Mock private AiJobRepository aiJobRepository;
     @Mock private SynthesisSnapshotAssembler snapshotAssembler;
     @Mock private SynthesisInputHasher inputHasher;
-    @Mock private PromptRegistry promptRegistry;
-    @Mock private PromptRenderer promptRenderer;
-    @Mock private ObjectProvider<AiInvocationService> aiInvocationServiceProvider;
-    @Mock private AiInvocationService aiInvocationService;
+    @Mock private ObjectProvider<SynthesisGenerator> synthesisGeneratorProvider;
+    @Mock private SynthesisGenerator synthesisGenerator;
     @Mock private SynthesisResultWriteService synthesisResultWriteService;
+    @Mock private AiUsageResultLinkService usageResultLinkService;
     @Mock private SectionSynthesisStateService sectionSynthesisStateService;
     @Mock private AiJob job;
     @Mock private ProjectSection section;
@@ -84,13 +79,14 @@ class SynthesisJobHandlerTest {
     void setUp() {
         heartbeatScheduler = Executors.newScheduledThreadPool(1);
         handler = new SynthesisJobHandler(aiJobService, aiJobRepository, snapshotAssembler, inputHasher,
-                promptRegistry, promptRenderer, new SynthesisOutputValidator(),
-                aiInvocationServiceProvider, synthesisResultWriteService, sectionSynthesisStateService,
+                synthesisGeneratorProvider, synthesisResultWriteService, usageResultLinkService,
+                sectionSynthesisStateService,
                 heartbeatScheduler, new AiJobDispatchProperties(true, Duration.ofSeconds(2), 20, 8,
                         Duration.ofSeconds(15), Duration.ofSeconds(60), Duration.ofSeconds(60)));
 
         given(aiJobRepository.findByRequestId(REQUEST_ID)).willReturn(Optional.of(job));
         given(job.getRequestId()).willReturn(REQUEST_ID);
+        given(job.getId()).willReturn(77L);
         given(job.getProjectSection()).willReturn(section);
         given(section.getId()).willReturn(SECTION_ID);
         given(job.getProject()).willReturn(project);
@@ -101,15 +97,14 @@ class SynthesisJobHandlerTest {
         given(job.getInputSnapshotHash()).willReturn(HASH);
 
         given(snapshotAssembler.assemble(SECTION_ID)).willReturn(new SynthesisInputSnapshot(
-                List.of(new SubmittedOpinionView(1L, 7L, "김민준", "타겟을 대학생 팀으로 좁히자.")),
+                List.of(new SubmittedOpinionView(
+                        1L, 7L, "김민준", "타겟을 대학생 팀으로 좁히자.",
+                        LocalDateTime.of(2026, 7, 28, 10, 0))),
                 List.of(new GapAnswerInputView(9L, 3L, "이서연", "지난 근거")),
                 2));
         given(inputHasher.hash(any())).willReturn(HASH);
 
-        given(promptRegistry.get(any())).willReturn(org.mockito.Mockito.mock(PromptDefinition.class));
-        given(promptRenderer.render(any(), any())).willReturn(new RenderedPrompt(
-                new PromptTemplateId("opinion-synthesis", 1), "system", "user"));
-        given(aiInvocationServiceProvider.getIfAvailable()).willReturn(aiInvocationService);
+        given(synthesisGeneratorProvider.getIfAvailable()).willReturn(synthesisGenerator);
     }
 
     @AfterEach
@@ -123,17 +118,25 @@ class SynthesisJobHandlerTest {
     }
 
     private SynthesisAiOutput validOutput() {
-        return new SynthesisAiOutput("타겟을 좁히는 데 동의합니다.", List.of(
-                new IssueOut(IssueType.CONFLICT, "무료 범위가 갈립니다.", "무료 범위를 어디까지?",
-                        List.of("3개 프로젝트", "1개 프로젝트"), List.of(1L))));
+        return new SynthesisAiOutput(
+                "타겟을 좁히는 데 동의합니다.",
+                List.of(1L),
+                List.of(1L),
+                List.of(new IssueDetectionIssueOutput(
+                        IssueType.CONFLICT,
+                        "무료 범위가 갈립니다.",
+                        List.of(1L),
+                        "무료 범위를 어디까지?",
+                        List.of("3개 프로젝트", "1개 프로젝트")
+                )));
     }
 
     @Test
     @DisplayName("저장된 스냅샷 해시로 작업을 claim한다")
     void claimsWithStoredHash() {
         givenClaimed();
-        given(aiInvocationService.invokeStructured(any(), any(), any()))
-                .willReturn(new AiInvocationResult<>(validOutput(), 1L, REQUEST_ID));
+        given(synthesisGenerator.generate(job, snapshotAssembler.assemble(SECTION_ID)))
+                .willReturn(validOutput());
         given(aiJobService.succeed(eq(REQUEST_ID), any(), any()))
                 .willReturn(new AiJobCompletionResult(REQUEST_ID, AiJobStatus.SUCCEEDED, 55L, true));
         given(synthesisResultWriteService.persist(any())).willReturn(55L);
@@ -151,7 +154,7 @@ class SynthesisJobHandlerTest {
 
         handler.run(REQUEST_ID);
 
-        verify(aiInvocationService, never()).invokeStructured(any(), any(), any());
+        verify(synthesisGenerator, never()).generate(any(), any());
         verify(aiJobService, never()).succeed(any(), any(), any());
         verify(aiJobService, never()).fail(any(), any());
     }
@@ -160,8 +163,7 @@ class SynthesisJobHandlerTest {
     @DisplayName("정상 실행이면 정리 세트를 저장하고 재정리 플래그를 해제한다")
     void happyPath_persistsAndClearsStale() {
         givenClaimed();
-        given(aiInvocationService.invokeStructured(any(), any(), any()))
-                .willReturn(new AiInvocationResult<>(validOutput(), 1L, REQUEST_ID));
+        given(synthesisGenerator.generate(any(), any())).willReturn(validOutput());
         given(synthesisResultWriteService.persist(any())).willReturn(55L);
         given(aiJobService.succeed(eq(REQUEST_ID), any(), any())).willAnswer(invocation -> {
             AiJobResultWriter writer = invocation.getArgument(2);
@@ -176,12 +178,15 @@ class SynthesisJobHandlerTest {
         SynthesisPersistCommand command = captor.getValue();
         assertThat(command.requestId()).isEqualTo(REQUEST_ID);
         assertThat(command.consensusSummary()).isEqualTo("타겟을 좁히는 데 동의합니다.");
+        assertThat(command.consensusEvidence()).singleElement()
+                .satisfies(evidence -> assertThat(evidence.opinionId()).isEqualTo(1L));
         assertThat(command.issues()).hasSize(1);
         assertThat(command.issues().get(0).relatedOpinions().get(0).opinionId()).isEqualTo(1L);
         assertThat(command.inheritedGapAnswers()).hasSize(1);
         assertThat(command.inheritedGapAnswers().get(0).sourceAnswerId()).isEqualTo(9L);
 
         verify(sectionSynthesisStateService).clearSynthesisStale(SECTION_ID);
+        verify(usageResultLinkService).linkSuccessfulInvocations(77L, 55L);
         verify(aiJobService, never()).fail(any(), any());
     }
 
@@ -189,8 +194,7 @@ class SynthesisJobHandlerTest {
     @DisplayName("완료 재대조는 저장 트랜잭션 안에서 섹션을 잠근 뒤 현재 입력을 다시 읽어 계산한다")
     void completionProbe_locksSectionThenRereadsInput() {
         givenClaimed();
-        given(aiInvocationService.invokeStructured(any(), any(), any()))
-                .willReturn(new AiInvocationResult<>(validOutput(), 1L, REQUEST_ID));
+        given(synthesisGenerator.generate(any(), any())).willReturn(validOutput());
         given(synthesisResultWriteService.persist(any())).willReturn(55L);
         given(aiJobService.succeed(eq(REQUEST_ID), any(), any())).willAnswer(invocation -> {
             AiJobSnapshotProbe probe = invocation.getArgument(1);
@@ -222,7 +226,7 @@ class SynthesisJobHandlerTest {
         handler.run(REQUEST_ID);
 
         verify(aiJobService).markStale(REQUEST_ID);
-        verify(aiInvocationService, never()).invokeStructured(any(), any(), any());
+        verify(synthesisGenerator, never()).generate(any(), any());
         verify(aiJobService, never()).succeed(any(), any(), any());
     }
 
@@ -235,14 +239,14 @@ class SynthesisJobHandlerTest {
         handler.run(REQUEST_ID);
 
         verify(aiJobService).fail(eq(REQUEST_ID), any(RuntimeException.class));
-        verify(aiInvocationService, never()).invokeStructured(any(), any(), any());
+        verify(synthesisGenerator, never()).generate(any(), any());
     }
 
     @Test
     @DisplayName("AI 호출 중 예외가 나면 작업을 실패로 종료한다")
     void aiFailure_failsJob() {
         givenClaimed();
-        given(aiInvocationService.invokeStructured(any(), any(), any()))
+        given(synthesisGenerator.generate(any(), any()))
                 .willThrow(new RuntimeException("provider 오류"));
 
         handler.run(REQUEST_ID);
@@ -256,7 +260,7 @@ class SynthesisJobHandlerTest {
     @DisplayName("AI provider가 없으면 작업을 실패로 종료한다")
     void providerMissing_failsJob() {
         givenClaimed();
-        given(aiInvocationServiceProvider.getIfAvailable()).willReturn(null);
+        given(synthesisGeneratorProvider.getIfAvailable()).willReturn(null);
 
         handler.run(REQUEST_ID);
 
@@ -274,9 +278,9 @@ class SynthesisJobHandlerTest {
             heartbeatSeen.countDown();
             return null;
         }).given(aiJobService).heartbeat(REQUEST_ID);
-        given(aiInvocationService.invokeStructured(any(), any(), any())).willAnswer(invocation -> {
+        given(synthesisGenerator.generate(any(), any())).willAnswer(invocation -> {
             heartbeatSeen.await(2, TimeUnit.SECONDS); // 실행 중 heartbeat가 최소 1회 발생할 때까지 대기
-            return new AiInvocationResult<>(validOutput(), 1L, REQUEST_ID);
+            return validOutput();
         });
         given(aiJobService.succeed(eq(REQUEST_ID), any(), any()))
                 .willReturn(new AiJobCompletionResult(REQUEST_ID, AiJobStatus.SUCCEEDED, 55L, true));
@@ -297,14 +301,14 @@ class SynthesisJobHandlerTest {
         handlerWithDeadScheduler.run(REQUEST_ID);
 
         verify(aiJobService).fail(eq(REQUEST_ID), any(RejectedExecutionException.class));
-        verify(aiInvocationService, never()).invokeStructured(any(), any(), any());
+        verify(synthesisGenerator, never()).generate(any(), any());
         deadScheduler.shutdownNow();
     }
 
     private SynthesisJobHandler handlerWith(ScheduledExecutorService scheduler, Duration heartbeatInterval) {
         return new SynthesisJobHandler(aiJobService, aiJobRepository, snapshotAssembler, inputHasher,
-                promptRegistry, promptRenderer, new SynthesisOutputValidator(),
-                aiInvocationServiceProvider, synthesisResultWriteService, sectionSynthesisStateService,
+                synthesisGeneratorProvider, synthesisResultWriteService, usageResultLinkService,
+                sectionSynthesisStateService,
                 scheduler, new AiJobDispatchProperties(true, Duration.ofSeconds(2), 20, 8,
                         heartbeatInterval, Duration.ofSeconds(60), Duration.ofSeconds(60)));
     }

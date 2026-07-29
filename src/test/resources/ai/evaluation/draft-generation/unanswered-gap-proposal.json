@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "draft-generation/unanswered-gap-proposal",
+    "feature": "DRAFT_GENERATION",
+    "description": "답변 없는 예산 GAP을 임의 수치로 채우지 않고 미확인으로 남기는 합성 시나리오",
+    "language": "ko",
+    "tags": ["gap", "unverified-fact", "proposal"],
+    "datasetVersion": "draft-generation-v1",
+    "kind": "QUALITY",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PROPOSAL",
+    "projectContext": "가상의 교내 공유 공간 운영 제안",
+    "sectionContext": "시범 운영에는 합의했지만 운영 예산 GAP에는 답변이 없다.",
+    "labels": ["운영안", "예산"],
+    "opinions": [
+      {
+        "id": "opinion-pilot",
+        "content": "한 달간 시범 운영한 뒤 확대 여부를 검토하자.",
+        "submitted": true,
+        "deleted": false
+      }
+    ],
+    "parentConfirmedContent": "대상은 교내 구성원으로 확정했다."
+  },
+  "expected": {
+    "requiredFacts": ["한 달", "미확인"],
+    "expectedIssues": [
+      {
+        "type": "GAP",
+        "evidenceIds": ["opinion-pilot"]
+      }
+    ],
+    "expectedEvidenceIds": ["opinion-pilot"],
+    "forbiddenClaims": [
+      "운영 예산은 500만원으로 확정",
+      "예산이 승인되었다"
+    ],
+    "goldReviewIssueIds": []
+  }
+}

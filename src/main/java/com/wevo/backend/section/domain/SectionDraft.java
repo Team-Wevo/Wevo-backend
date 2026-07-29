@@ -4,6 +4,8 @@ import com.wevo.backend.global.common.BaseTimeEntity;
 import com.wevo.backend.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -50,11 +52,17 @@ public class SectionDraft extends BaseTimeEntity {
     @JoinColumn(name = "last_editor_user_id")
     private User lastEditor;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private SectionDraftSource source;
+
     @Builder
-    private SectionDraft(ProjectSection projectSection, String content, Integer version, User lastEditor) {
+    private SectionDraft(ProjectSection projectSection, String content, Integer version, User lastEditor,
+                         SectionDraftSource source) {
         this.projectSection = projectSection;
         this.content = content;
         this.version = version;
         this.lastEditor = lastEditor;
+        this.source = source == null ? SectionDraftSource.USER_EDITED : source;
     }
 }

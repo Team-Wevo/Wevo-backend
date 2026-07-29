@@ -37,7 +37,11 @@ no table, column, or constraint changes — so JPA mapping validation is unaffec
 characters while preserving the submitted whitespace, so the database column cannot retain a
 raw-length limit of 200.
 
-`V6__review_links_single_active.sql` adds a partial unique index
+`V6__add_synthesis_consensus_evidence.sql` stores the minimal submitted-opinion evidence set
+behind each synthesis consensus. It preserves author/name/excerpt snapshots with deterministic
+ordering so later opinion edits cannot rewrite the evidence history.
+
+`V8__review_links_single_active.sql` adds a partial unique index
 (`uk_review_links_active_per_section`) enforcing at most one `ACTIVE` external review link per
 section. Link termination is server-driven (content edits mark the link `OUTDATED`; re-issue
 closes the previous `ACTIVE` link), so the "at most one live link" invariant that the status

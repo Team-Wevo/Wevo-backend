@@ -53,6 +53,17 @@ public class SectionAiContextQueryService {
         return toVersionedContent(draft, sectionId);
     }
 
+    /** 초안 생성 snapshot용 최신 본문. 최초 생성이면 version 0과 null 본문을 반환한다. */
+    public SectionVersionedContent getLatestDraftOrEmpty(
+            VerifiedProjectAccess access,
+            Long sectionId
+    ) {
+        dependencyQueryService.requireTarget(access, sectionId);
+        return sectionDraftRepository.findTopByProjectSection_IdOrderByVersionDesc(sectionId)
+                .map(draft -> toVersionedContent(draft, sectionId))
+                .orElseGet(() -> new SectionVersionedContent(sectionId, 0, null));
+    }
+
     public SectionVersionedContent getConfirmedDraft(VerifiedProjectAccess access, Long sectionId) {
         ProjectSection section = dependencyQueryService.requireTarget(access, sectionId);
         return confirmedContent(section);

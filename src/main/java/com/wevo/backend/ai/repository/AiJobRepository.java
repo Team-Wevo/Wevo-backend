@@ -19,6 +19,15 @@ public interface AiJobRepository extends JpaRepository<AiJob, Long> {
 
     Optional<AiJob> findByRequestId(UUID requestId);
 
+    @Query("""
+            select job from AiJob job
+            join fetch job.project
+            join fetch job.projectSection
+            join fetch job.requestedBy
+            where job.requestId = :requestId
+            """)
+    Optional<AiJob> findByRequestIdWithExecutionContext(@Param("requestId") UUID requestId);
+
     Optional<AiJob> findTopByIdempotencyKeyOrderByExecutionSequenceDesc(String idempotencyKey);
 
     /**

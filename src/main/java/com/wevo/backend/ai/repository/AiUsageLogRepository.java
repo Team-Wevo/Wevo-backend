@@ -6,6 +6,7 @@ import com.wevo.backend.ai.domain.AiUsageLog;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -33,5 +34,18 @@ public interface AiUsageLogRepository extends JpaRepository<AiUsageLog, Long> {
             @Param("status") AiRequestStatus status,
             @Param("feature") AiFeature feature,
             @Param("threshold") LocalDateTime threshold
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update AiUsageLog log
+            set log.resultId = :resultId
+            where log.aiJob.id = :aiJobId
+              and log.requestStatus = com.wevo.backend.ai.domain.AiRequestStatus.SUCCEEDED
+              and log.resultId is null
+            """)
+    int linkSuccessfulInvocationsToResult(
+            @Param("aiJobId") Long aiJobId,
+            @Param("resultId") Long resultId
     );
 }

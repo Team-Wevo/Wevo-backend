@@ -12,7 +12,8 @@ public record DraftGenerationContext(
         AiProjectIdentity project,
         AiProjectBrief projectBrief,
         AiSectionContext section,
-        AiSynthesisContext synthesis,
+        AiDraftSynthesisContext synthesis,
+        AiBaseDraftContext baseDraft,
         List<AiPrerequisiteContext> prerequisites
 ) implements AiFeatureContext {
 
@@ -27,7 +28,7 @@ public record DraftGenerationContext(
 
     @Override
     public String sourceVersion() {
-        return "synthesis-s" + synthesis.synthesisSetId()
+        return "draft-v1-s" + synthesis.synthesisSetId()
                 + "-g" + synthesis.opinionGateGeneration();
     }
 }

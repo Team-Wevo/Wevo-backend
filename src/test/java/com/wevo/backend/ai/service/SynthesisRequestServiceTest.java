@@ -20,6 +20,7 @@ import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.service.UserService;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -74,7 +75,17 @@ class SynthesisRequestServiceTest {
 
         given(sectionAccessGuard.requireOwnedSection(SECTION_ID, USER_ID)).willReturn(section);
         given(snapshotAssembler.assemble(SECTION_ID))
-                .willReturn(new SynthesisInputSnapshot(List.of(), List.of(), 0));
+                .willReturn(new SynthesisInputSnapshot(
+                        List.of(new com.wevo.backend.opinion.service.SubmittedOpinionView(
+                                1L,
+                                USER_ID,
+                                "팀원",
+                                "대학생 팀의 협업 문제를 우선 해결해야 합니다.",
+                                LocalDateTime.of(2026, 7, 28, 10, 0)
+                        )),
+                        List.of(),
+                        0
+                ));
         given(inputHasher.hash(any())).willReturn(HASH);
         given(section.getId()).willReturn(SECTION_ID);
         given(section.getProject()).willReturn(project);
@@ -137,6 +148,23 @@ class SynthesisRequestServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.INVALID_SECTION_STATUS_TRANSITION));
+
+        verify(aiJobService, never()).createOrGet(any());
+        verify(aiJobService, never()).retry(any(), any());
+    }
+
+    @Test
+    @DisplayName("새 작업에 제출 의견이 없으면 O004로 거부한다")
+    void noSubmittedOpinion_throwsO004() {
+        given(section.getStatus()).willReturn(ProjectSectionStatus.SYNTHESIZING);
+        given(aiJobService.findLatest(any())).willReturn(Optional.empty());
+        given(snapshotAssembler.assemble(SECTION_ID))
+                .willReturn(new SynthesisInputSnapshot(List.of(), List.of(), 0));
+
+        assertThatThrownBy(() -> service.requestSynthesis(SECTION_ID, USER_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.NO_SUBMITTED_OPINION));
 
         verify(aiJobService, never()).createOrGet(any());
         verify(aiJobService, never()).retry(any(), any());
