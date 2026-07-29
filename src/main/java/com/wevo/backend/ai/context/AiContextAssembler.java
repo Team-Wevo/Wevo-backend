@@ -164,6 +164,7 @@ public class AiContextAssembler {
             DraftReviewContext context = new DraftReviewContext(
                     common.projectIdentity(),
                     common.section(),
+                    draft.draftId(),
                     draft.contentVersion(),
                     normalizeRequired(draft.content()),
                     prerequisites,
@@ -401,6 +402,8 @@ public class AiContextAssembler {
     private void requireVersionedContent(SectionVersionedContent content, Long sectionId) {
         if (content == null
                 || !sectionId.equals(content.sectionId())
+                || content.draftId() == null
+                || content.draftId() <= 0
                 || content.contentVersion() <= 0
                 || !StringUtils.hasText(content.content())) {
             throw new IllegalStateException("AI context draft 데이터가 유효하지 않습니다.");

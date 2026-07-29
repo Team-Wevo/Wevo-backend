@@ -64,7 +64,7 @@ class PostgresSchemaIntegrationTest {
                 Integer.class
         );
 
-        assertThat(entityTableCount).isEqualTo(32);
+        assertThat(entityTableCount).isEqualTo(35);
     }
 
     @Test
