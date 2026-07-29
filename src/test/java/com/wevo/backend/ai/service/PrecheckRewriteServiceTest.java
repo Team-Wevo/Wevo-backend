@@ -21,10 +21,12 @@ import com.wevo.backend.project.service.ProjectAccessGuard;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.project.service.VerifiedProjectAccess;
 import com.wevo.backend.section.domain.AiCheckStatus;
+import com.wevo.backend.section.domain.DriftStatus;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.service.AiRewriteDraftCreateResult;
 import com.wevo.backend.section.service.AiRewriteDraftWriter;
+import com.wevo.backend.section.service.DriftedSection;
 import com.wevo.backend.section.service.SectionAiContextQueryService;
 import com.wevo.backend.section.service.SectionPrecheckStateService;
 import com.wevo.backend.section.service.SectionVersionedContent;
@@ -114,15 +116,21 @@ class PrecheckRewriteServiceTest {
 
     @Test
     void appliesCurrentRewriteOnceAndRebindsCheck() {
+        DriftedSection drifted = new DriftedSection(
+                7L,
+                "하위 섹션",
+                ProjectSectionStatus.REVIEWING,
+                DriftStatus.REVIEW_REQUIRED
+        );
         given(draftWriter.append(org.mockito.ArgumentMatchers.any()))
                 .willReturn(new AiRewriteDraftCreateResult(
-                        6L, 4, ProjectSectionStatus.DRAFTING));
+                        6L, 4, ProjectSectionStatus.DRAFTING, java.util.List.of(drifted)));
 
         PrecheckRewriteApplyResult result =
                 service.apply(SECTION_ID, USER_ID, REQUEST_ID, 3);
 
         assertThat(result.contentVersion()).isEqualTo(4);
-        assertThat(result.driftedSections()).isEmpty();
+        assertThat(result.driftedSections()).containsExactly(drifted);
         verify(check).bindAppliedRewrite(6L, 4);
         verify(draftWriter).append(org.mockito.ArgumentMatchers.argThat(command ->
                 command.expectedBaseVersion() == 3

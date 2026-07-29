@@ -28,6 +28,7 @@ import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.service.ProjectAccessGuard;
 import com.wevo.backend.project.service.VerifiedProjectAccess;
 import com.wevo.backend.section.domain.AiCheckStatus;
+import com.wevo.backend.section.domain.DriftStatus;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionDraft;
@@ -80,6 +81,7 @@ class PrecheckResultIntegrationTest {
     @Test
     void successBindsExactDraftAndFailureRerunPreservesCurrentResult() {
         Fixture fixture = fixture();
+        fixture.section().markDriftReviewRequired();
         DraftReviewContext context = context(fixture);
         Long resultId = resultWriter.persist(
                 fixture.successJob().getRequestId(),
@@ -121,6 +123,8 @@ class PrecheckResultIntegrationTest {
         assertThat(response.currentResult().rewrite().content())
                 .isEqualTo("검토할 현재 본문");
         assertThat(response.currentResult().rewriteApplied()).isFalse();
+        assertThat(em.find(ProjectSection.class, fixture.section().getId()).getDriftStatus())
+                .isEqualTo(DriftStatus.REVIEW_REQUIRED);
     }
 
     @ParameterizedTest

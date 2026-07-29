@@ -151,6 +151,52 @@ public class SectionStatusService {
     }
 
     /**
+     * 확정 본문 변경 또는 상위 드리프트로 {@code CONFIRMED → REVIEWING} 복귀를 기록한다.
+     *
+     * <p>호출자는 같은 프로젝트의 참여자 검증과 섹션 행 잠금을 이미 마친 상태여야 한다.
+     * 드리프트 전파 트랜잭션 밖에서 단독 호출되지 않도록 MANDATORY로 제한한다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void markReviewingAfterConfirmedContentChange(
+            ProjectSection section,
+            ProjectMember actor,
+            int contentVersion
+    ) {
+        markReviewingAfterChange(
+                section, actor, contentVersion, "CONFIRMED_CONTENT_CHANGED");
+    }
+
+    /**
+     * 확정 하위 섹션을 상위 본문 변경에 따른 재검토 상태로 복귀시키고 이력을 기록한다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void markReviewingAfterPrerequisiteChange(
+            ProjectSection section,
+            ProjectMember actor,
+            int contentVersion
+    ) {
+        markReviewingAfterChange(
+                section, actor, contentVersion, "PREREQUISITE_CHANGED");
+    }
+
+    private void markReviewingAfterChange(
+            ProjectSection section,
+            ProjectMember actor,
+            int contentVersion,
+            String eventType
+    ) {
+        if (section == null || actor == null
+                || !section.getProject().getId().equals(actor.getProject().getId())
+                || contentVersion <= 0) {
+            throw new IllegalArgumentException("확정 본문 변경 전이 정보가 유효하지 않습니다.");
+        }
+        if (section.getStatus() != ProjectSectionStatus.CONFIRMED) {
+            throw new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
+        }
+        applyTransition(section, actor, ProjectSectionStatus.REVIEWING, eventType, contentVersion);
+    }
+
+    /**
      * 공통 전이 처리: 섹션 조회 → 팀장 권한 검증 → 상태 전이(규칙 검증) → 이력 기록.
      */
     private ProjectSection transition(Long sectionId, Long actorUserId,
@@ -165,6 +211,12 @@ public class SectionStatusService {
      */
     private ProjectSection applyTransition(ProjectSection section, ProjectMember actor,
                                            ProjectSectionStatus target, String eventType) {
+        return applyTransition(section, actor, target, eventType, null);
+    }
+
+    private ProjectSection applyTransition(ProjectSection section, ProjectMember actor,
+                                           ProjectSectionStatus target, String eventType,
+                                           Integer contentVersion) {
         ProjectSectionStatus from = section.getStatus();
         section.changeStatus(target); // 허용되지 않은 전이면 INVALID_SECTION_STATUS_TRANSITION
 
@@ -176,6 +228,7 @@ public class SectionStatusService {
                 .eventType(eventType)
                 .fromStatus(from)
                 .toStatus(target)
+                .version(contentVersion)
                 .build());
         return section;
     }
