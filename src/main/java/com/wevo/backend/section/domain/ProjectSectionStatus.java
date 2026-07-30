@@ -29,6 +29,7 @@ public enum ProjectSectionStatus {
      *   <li>SYNTHESIZING → DRAFTING   : 쟁점 결정 반영</li>
      *   <li>DRAFTING → REVIEWING      : 검토 요청</li>
      *   <li>REVIEWING → CONFIRMED     : 확정</li>
+     *   <li>CONFIRMED → REVIEWING     : 확정 본문 또는 직접 상위 본문 변경</li>
      * </ul>
      */
     private static final Map<ProjectSectionStatus, Set<ProjectSectionStatus>> ALLOWED_TRANSITIONS =
@@ -39,7 +40,7 @@ public enum ProjectSectionStatus {
         ALLOWED_TRANSITIONS.put(SYNTHESIZING, EnumSet.of(COLLECTING, DRAFTING));
         ALLOWED_TRANSITIONS.put(DRAFTING, EnumSet.of(COLLECTING, REVIEWING));
         ALLOWED_TRANSITIONS.put(REVIEWING, EnumSet.of(COLLECTING, CONFIRMED));
-        ALLOWED_TRANSITIONS.put(CONFIRMED, EnumSet.noneOf(ProjectSectionStatus.class));
+        ALLOWED_TRANSITIONS.put(CONFIRMED, EnumSet.of(REVIEWING));
     }
 
     /**
@@ -55,12 +56,14 @@ public enum ProjectSectionStatus {
      * <ul>
      *   <li>{@code DRAFTING} — 초안 작성 단계</li>
      *   <li>{@code REVIEWING} — 검토 중 수정 반영(기존 검토는 만료 처리된다, §6.1)</li>
+     *   <li>{@code CONFIRMED} — 확정 본문 수정. 실제 저장 뒤 {@code REVIEWING}으로 복귀한다 (§6.4)</li>
      * </ul>
      *
      * <p>수집/정리 단계({@code COLLECTING}·{@code SYNTHESIZING})는 아직 초안 단계가 아니고,
-     * 확정({@code CONFIRMED})은 잠긴 상태라 저장을 허용하지 않는다. (확정 후 변경은 드리프트 §6.4)
+     * 확정({@code CONFIRMED}) 본문은 편집권을 획득한 뒤 수정할 수 있으며, 실제 변경이 저장되면
+     * 직접 하위 드리프트 전파와 함께 {@code REVIEWING}으로 복귀한다.
      */
     public boolean allowsDraftEditing() {
-        return this == DRAFTING || this == REVIEWING;
+        return this == DRAFTING || this == REVIEWING || this == CONFIRMED;
     }
 }

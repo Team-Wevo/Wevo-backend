@@ -23,10 +23,27 @@ public interface ProjectSectionRepository extends JpaRepository<ProjectSection, 
     @Query("SELECT s FROM ProjectSection s WHERE s.id = :id")
     Optional<ProjectSection> findByIdForUpdate(@Param("id") Long id);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM ProjectSection s WHERE s.id IN :ids ORDER BY s.id")
+    List<ProjectSection> findAllByIdInOrderByIdForUpdate(@Param("ids") List<Long> ids);
+
     List<ProjectSection> findByProjectIdOrderBySectionOrder(Long projectId);
 
     List<ProjectSection> findByProject_IdAndTemplate_IdInOrderBySectionOrderAscIdAsc(
             Long projectId, List<Long> templateIds);
+
+    /**
+     * 직접 하위 드리프트 전파 대상을 안정된 섹션 순서로 잠근다.
+     *
+     * <p>팀 검토 제출도 섹션 행 잠금을 사용하므로, 전파와 검토 무효화 사이의 경합을 막는다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM ProjectSection s JOIN FETCH s.template t "
+            + "WHERE s.project.id = :projectId AND t.id IN :templateIds "
+            + "ORDER BY s.sectionOrder ASC, s.id ASC")
+    List<ProjectSection> findDependentsForUpdate(
+            @Param("projectId") Long projectId,
+            @Param("templateIds") List<Long> templateIds);
 
     long countByProjectId(Long projectId);
 

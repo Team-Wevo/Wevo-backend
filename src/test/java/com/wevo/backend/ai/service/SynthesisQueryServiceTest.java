@@ -69,7 +69,8 @@ class SynthesisQueryServiceTest {
                 sectionAccessGuard,
                 aiJobRepository,
                 currentSynthesisSetResolver,
-                synthesisSetViewService);
+                synthesisSetViewService,
+                new AiJobStatusMapper());
         given(sectionAccessGuard.requireParticipantSection(SECTION_ID, USER_ID)).willReturn(section);
         given(section.isSynthesisStale()).willReturn(false);
     }

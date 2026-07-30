@@ -13,6 +13,7 @@ import com.wevo.backend.section.dto.response.SectionDraftReadResponse.ActiveEdit
 import com.wevo.backend.section.dto.response.SectionDraftSaveResponse;
 import com.wevo.backend.section.repository.SectionDraftRepository;
 import com.wevo.backend.user.service.UserService;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -48,19 +49,22 @@ public class SectionDraftService {
     private final ReviewLinkService reviewLinkService;
     private final TeamReviewService teamReviewService;
     private final DraftLeaseService draftLeaseService;
+    private final SectionDriftService sectionDriftService;
 
     public SectionDraftService(SectionAccessGuard sectionAccessGuard,
                                SectionDraftRepository sectionDraftRepository,
                                UserService userService,
                                ReviewLinkService reviewLinkService,
                                TeamReviewService teamReviewService,
-                               DraftLeaseService draftLeaseService) {
+                               DraftLeaseService draftLeaseService,
+                               SectionDriftService sectionDriftService) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.sectionDraftRepository = sectionDraftRepository;
         this.userService = userService;
         this.reviewLinkService = reviewLinkService;
         this.teamReviewService = teamReviewService;
         this.draftLeaseService = draftLeaseService;
+        this.sectionDriftService = sectionDriftService;
     }
 
     /**
@@ -135,7 +139,7 @@ public class SectionDraftService {
 
         // 본문이 그대로면 새 버전을 만들지 않고 현재 버전을 그대로 돌려준다(멱등).
         if (latest.isPresent() && Objects.equals(latest.get().getContent(), request.content())) {
-            return SectionDraftSaveResponse.from(latest.get(), section.getStatus());
+            return SectionDraftSaveResponse.from(latest.get(), section.getStatus(), List.of());
         }
 
         SectionDraft draft = SectionDraft.builder()
@@ -157,6 +161,8 @@ public class SectionDraftService {
         section.markAiCheckOutdated();
         reviewLinkService.markSectionLinksOutdated(sectionId);
         teamReviewService.markSectionTeamReviewsOutdated(sectionId);
+        var driftedSections = sectionDriftService.propagateConfirmedContentChange(
+                section, userId, draft.getVersion());
 
         // 저장으로 편집 라운드가 끝났으므로 편집권을 해제한다 (§5.2.1) — 다른 멤버가 즉시 편집할 수 있다.
         // 멱등(본문 동일) 저장은 위에서 이미 반환해 여기 오지 않으므로, 실제 새 버전 저장 시에만 해제된다.
@@ -165,6 +171,6 @@ public class SectionDraftService {
             draftLeaseService.releaseHeldBy(sectionId, userId);
         }
 
-        return SectionDraftSaveResponse.from(draft, section.getStatus());
+        return SectionDraftSaveResponse.from(draft, section.getStatus(), driftedSections);
     }
 }

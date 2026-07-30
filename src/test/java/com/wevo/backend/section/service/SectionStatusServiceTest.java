@@ -280,6 +280,41 @@ class SectionStatusServiceTest {
         verify(sectionStatusHistoryRepository, never()).save(any());
     }
 
+    @Test
+    @DisplayName("확정 본문 직접 변경은 REVIEWING 복귀와 변경 version 이력을 기록한다")
+    void confirmedContentChangeReturnsToReviewingWithHistory() {
+        User actorUser = user(OWNER_ID);
+        ProjectSection section = section(ProjectSectionStatus.CONFIRMED);
+        ProjectMember actor = member(actorUser, ProjectMemberRole.OWNER, section.getProject());
+
+        sectionStatusService.markReviewingAfterConfirmedContentChange(section, actor, 4);
+
+        assertThat(section.getStatus()).isEqualTo(ProjectSectionStatus.REVIEWING);
+        ArgumentCaptor<SectionStatusHistory> captor =
+                ArgumentCaptor.forClass(SectionStatusHistory.class);
+        verify(sectionStatusHistoryRepository).save(captor.capture());
+        assertThat(captor.getValue().getEventType()).isEqualTo("CONFIRMED_CONTENT_CHANGED");
+        assertThat(captor.getValue().getVersion()).isEqualTo(4);
+        assertThat(captor.getValue().getActor()).isEqualTo(actorUser);
+    }
+
+    @Test
+    @DisplayName("상위 변경으로 확정 하위가 복귀하면 prerequisite 이벤트를 구분해 기록한다")
+    void prerequisiteChangeReturnsConfirmedDependentToReviewingWithHistory() {
+        User actorUser = user(OWNER_ID);
+        ProjectSection section = section(ProjectSectionStatus.CONFIRMED);
+        ProjectMember actor = member(actorUser, ProjectMemberRole.OWNER, section.getProject());
+
+        sectionStatusService.markReviewingAfterPrerequisiteChange(section, actor, 3);
+
+        assertThat(section.getStatus()).isEqualTo(ProjectSectionStatus.REVIEWING);
+        ArgumentCaptor<SectionStatusHistory> captor =
+                ArgumentCaptor.forClass(SectionStatusHistory.class);
+        verify(sectionStatusHistoryRepository).save(captor.capture());
+        assertThat(captor.getValue().getEventType()).isEqualTo("PREREQUISITE_CHANGED");
+        assertThat(captor.getValue().getVersion()).isEqualTo(3);
+    }
+
     // ── 픽스처 ──
 
     private User user(Long id) {

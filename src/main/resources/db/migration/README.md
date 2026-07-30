@@ -52,6 +52,14 @@ cleanup the unique index build would fail and abort the whole migration on any d
 already holds duplicates. It adds a partial index (plus a bounded data cleanup) only — no table,
 column, or constraint changes — so JPA mapping validation is unaffected.
 
+`V7__add_ai_section_draft_evidence.sql` adds the draft source discriminator and immutable
+AI-generation evidence aggregate. It links each generated draft to its source job, synthesis set,
+input snapshot, and ordered opinion/decision/GAP/prerequisite evidence.
+
+`V9__add_ai_section_checks.sql` stores successful section precheck results. A result is linked to
+its source job and checked draft, keeps ordered findings and direct-prerequisite version snapshots,
+and records one-time full-rewrite application/rebinding metadata.
+
 ## Existing local databases
 
 V1 is an initial migration for an **empty PostgreSQL database**. A database previously

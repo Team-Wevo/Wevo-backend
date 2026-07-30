@@ -7,6 +7,7 @@ import java.util.List;
 public record DraftReviewContext(
         AiProjectIdentity project,
         AiSectionContext section,
+        Long draftId,
         int contentVersion,
         String content,
         List<AiPrerequisiteContext> prerequisites,

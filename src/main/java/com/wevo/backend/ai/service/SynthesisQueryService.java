@@ -1,9 +1,7 @@
 package com.wevo.backend.ai.service;
 
-import com.wevo.backend.ai.domain.AiErrorType;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
-import com.wevo.backend.ai.domain.AiRequestStatus;
 import com.wevo.backend.ai.dto.response.SynthesisResponse;
 import com.wevo.backend.ai.dto.response.SynthesisResponse.AnswerResponse;
 import com.wevo.backend.ai.dto.response.SynthesisResponse.CurrentSetResponse;
@@ -14,7 +12,6 @@ import com.wevo.backend.ai.dto.response.SynthesisResponse.IssueResponse;
 import com.wevo.backend.ai.dto.response.SynthesisResponse.LatestJobResponse;
 import com.wevo.backend.ai.dto.response.SynthesisResponse.RelatedOpinionResponse;
 import com.wevo.backend.ai.repository.AiJobRepository;
-import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.issue.service.CurrentSynthesisSetReference;
 import com.wevo.backend.issue.service.CurrentSynthesisSetResolver;
 import com.wevo.backend.issue.service.SynthesisSetView;
@@ -46,15 +43,18 @@ public class SynthesisQueryService {
     private final AiJobRepository aiJobRepository;
     private final CurrentSynthesisSetResolver currentSynthesisSetResolver;
     private final SynthesisSetViewService synthesisSetViewService;
+    private final AiJobStatusMapper statusMapper;
 
     public SynthesisQueryService(SectionAccessGuard sectionAccessGuard,
                                  AiJobRepository aiJobRepository,
                                  CurrentSynthesisSetResolver currentSynthesisSetResolver,
-                                 SynthesisSetViewService synthesisSetViewService) {
+                                 SynthesisSetViewService synthesisSetViewService,
+                                 AiJobStatusMapper statusMapper) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.aiJobRepository = aiJobRepository;
         this.currentSynthesisSetResolver = currentSynthesisSetResolver;
         this.synthesisSetViewService = synthesisSetViewService;
+        this.statusMapper = statusMapper;
     }
 
     /**
@@ -126,28 +126,13 @@ public class SynthesisQueryService {
     }
 
     private LatestJobResponse toLatestJobResponse(AiJob job) {
-        AiRequestStatus status = AiRequestStatus.from(job.getStatus());
+        AiJobStatusMapper.MappedStatus mapped = statusMapper.map(job);
         return new LatestJobResponse(
                 job.getRequestId(),
-                status,
-                status == AiRequestStatus.FAILED ? toFailureResponse(job) : null);
-    }
-
-    /**
-     * 실패 사유를 외부 코드와 안전한 메시지로 옮긴다.
-     *
-     * <p>제공자 원문이 아니라 작업에 저장된 정제 메시지({@code safeErrorMessage})만 노출한다
-     * (CLAUDE.md §7). 취소처럼 오류 유형이 남지 않는 종료는 일반 코드로 접는다.
-     */
-    private FailureResponse toFailureResponse(AiJob job) {
-        AiErrorType errorType = job.getFinalErrorType();
-        ErrorCode errorCode = errorType == null
-                ? ErrorCode.AI_PROVIDER_ERROR
-                : errorType.toErrorCode();
-        String message = job.getSafeErrorMessage() == null || job.getSafeErrorMessage().isBlank()
-                ? errorCode.getMessage()
-                : job.getSafeErrorMessage();
-        return new FailureResponse(errorCode.getCode(), message);
+                mapped.status(),
+                mapped.failed()
+                        ? new FailureResponse(mapped.failureCode(), mapped.failureMessage())
+                        : null);
     }
 
     private CurrentSetResponse toCurrentSetResponse(SynthesisSetView view) {
