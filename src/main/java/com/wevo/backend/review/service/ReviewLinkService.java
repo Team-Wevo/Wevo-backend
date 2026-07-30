@@ -175,13 +175,24 @@ public class ReviewLinkService {
     }
 
     /**
-     * 외부 검토 링크를 수동으로 비활성화({@code CLOSED})한다. (내부용 — HTTP 엔드포인트 없음)
+     * 외부 검토 링크를 팀장이 수동으로 종료({@code CLOSED})한다. (API_SPEC §3.5.9)
      *
-     * <p>검토 링크 종료의 <b>기본 경로는 서버 자동 만료</b>다 — 본문 수정 시
+     * <p>검토 링크 종료의 <b>기본 경로는 서버 자동 처리</b>다 — 본문 수정 시
      * {@link #markSectionLinksOutdated}로 {@code OUTDATED} 되고, 재발급 시 기존 {@code ACTIVE}
-     * 링크가 {@link #issueExternalLink}에서 {@code CLOSED} 된다. FE 는 수동 비활성화를 호출하지
-     * 않으므로 이 메서드는 엔드포인트로 노출하지 않고, 운영·내부 로직이 필요할 때 쓰도록 남겨 둔다.
-     * ({@code CLOSED} 로만 전이 가능하며 OWNER 권한을 검증한다.)
+     * 링크가 {@link #issueExternalLink}에서 {@code CLOSED} 된다. 이 경로는 자동 처리로 덮이지 않는
+     * 상황(링크 오발송·유출 등 지금 당장 수집을 끊어야 하는 경우)을 위한 보조 수단이며,
+     * {@code CLOSED} 로만 전이할 수 있고 OWNER 권한을 검증한다.
+     *
+     * <p><b>멱등</b> — 상태를 바꾸는 건 {@code ACTIVE} 링크뿐이다({@link ReviewLink#close()}).
+     * 이미 종료된 링크({@code CLOSED})나 본문 수정으로 만료된 링크({@code OUTDATED})에 다시
+     * 호출해도 오류가 아니라 성공이며, 상태는 그대로 둔다 — 외부 검토자에게 안내되는 종료 사유
+     * (R004 "이전 본문 기준이라 만료" / R005 "종료됨")를 나중 호출이 덮어쓰지 않게 하기 위함이다.
+     *
+     * <p><b>잠금</b> — 링크 행을 배타 잠금으로 읽어 같은 행을 잠그는 제출
+     * ({@link #submitExternalReview})과 직렬화한다. 종료 커밋 전에 잠금을 잡은 제출은 그대로
+     * 성공하고, 그 뒤의 제출은 {@code CLOSED} 를 보고 거부되므로 "닫는 도중에 한 건 더 들어오는"
+     * 경합이 없다. 잠금을 먼저 잡고 권한을 검사하는 순서인데, 권한 검사는 잠금을 잡지 않는
+     * 조회라 발급 경로(섹션 행 잠금 → 링크 행 갱신)와 교착 사이클을 만들지 않는다.
      */
     @Transactional
     public void updateStatus(Long reviewLinkId, Long userId, ReviewLinkStatus targetStatus) {
@@ -189,7 +200,7 @@ public class ReviewLinkService {
             throw new BusinessException(ErrorCode.INVALID_INPUT,
                     List.of(new FieldError("status", "CLOSED 로만 변경할 수 있습니다.")));
         }
-        ReviewLink link = reviewLinkRepository.findById(reviewLinkId)
+        ReviewLink link = reviewLinkRepository.findByIdForUpdate(reviewLinkId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.REVIEW_LINK_NOT_FOUND));
         sectionAccessGuard.requireOwnedSection(link.getProjectSection().getId(), userId);
         link.close();

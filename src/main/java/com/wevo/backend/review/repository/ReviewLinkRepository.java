@@ -28,6 +28,16 @@ public interface ReviewLinkRepository extends JpaRepository<ReviewLink, Long> {
     Optional<ReviewLink> findByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
 
     /**
+     * 외부 검토 링크를 ID 로 조회하되 <b>행에 쓰기 락</b>을 건다. (팀장의 수동 종료용)
+     *
+     * <p>{@link #findByTokenHashForUpdate}(제출)와 같은 행을 잠그므로, 링크를 닫는 도중에 제출이
+     * 한 건 더 들어와 종료 시점이 흐려지는 경합을 막는다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from ReviewLink l where l.id = :id")
+    Optional<ReviewLink> findByIdForUpdate(@Param("id") Long id);
+
+    /**
      * 특정 섹션에 걸린 특정 상태의 링크들을 조회한다.
      *
      * <p>본문 수정 시 {@code ACTIVE} 링크 만료 처리와, 상태 복구 조회에서 함께 쓴다.

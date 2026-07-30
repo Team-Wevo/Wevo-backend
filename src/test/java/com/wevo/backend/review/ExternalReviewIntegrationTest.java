@@ -3,6 +3,7 @@ package com.wevo.backend.review;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -371,7 +372,7 @@ class ExternalReviewIntegrationTest {
     }
 
     @Test
-    @DisplayName("내부 수동 비활성화(CLOSED)한 링크에 제출하면 409(R005) 를 반환한다")
+    @DisplayName("팀장이 수동 종료(CLOSED)한 링크에 제출하면 409(R005) 를 반환한다")
     void closedLinkRejectsSubmission() throws Exception {
         User owner = persistUser("owner-closed@wevo.com", "팀장");
         ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
@@ -380,12 +381,119 @@ class ExternalReviewIntegrationTest {
         String token = issueLink(section.getId(), owner);
         Long linkId = linkId(token);
 
-        // 수동 비활성화는 HTTP 엔드포인트 없이 내부 로직으로만 남는다.
-        reviewLinkService.updateStatus(linkId, owner.getId(), ReviewLinkStatus.CLOSED);
+        closeLink(linkId, owner, "CLOSED")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("REVIEW_LINK_CLOSED"));
+        assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.CLOSED);
 
         submitAsReviewer(token, "CLEAR", "browser-A")
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("R005"));
+    }
+
+    @Test
+    @DisplayName("이미 종료된 링크를 다시 종료해도 멱등 성공이다 (상태 유지)")
+    void closingAlreadyClosedLinkIsIdempotent() throws Exception {
+        User owner = persistUser("owner-idem@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        Long linkId = linkId(issueLink(section.getId(), owner));
+
+        closeLink(linkId, owner, "CLOSED").andExpect(status().isOk());
+        closeLink(linkId, owner, "CLOSED")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("REVIEW_LINK_CLOSED"));
+
+        assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.CLOSED);
+    }
+
+    @Test
+    @DisplayName("본문 수정으로 만료(OUTDATED)된 링크는 수동 종료해도 만료 사유를 유지한다")
+    void closingOutdatedLinkKeepsOutdatedReason() throws Exception {
+        User owner = persistUser("owner-keep-outdated@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+        Long linkId = linkId(token);
+
+        // 본문 저장 시점에 호출되는 만료 처리
+        reviewLinkService.markSectionLinksOutdated(section.getId());
+
+        // 종료 요청은 성공하지만(멱등) OUTDATED 를 CLOSED 로 덮지 않는다
+        closeLink(linkId, owner, "CLOSED").andExpect(status().isOk());
+        assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.OUTDATED);
+
+        // 외부 검토자에게 안내되는 사유도 그대로 "본문이 수정돼 만료"(R004)
+        submitAsReviewer(token, "CLEAR", "browser-A")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R004"));
+    }
+
+    @Test
+    @DisplayName("CLOSED 외의 상태로 변경 요청하면 400(C001) 을 반환한다")
+    void onlyClosedTransitionIsAllowed() throws Exception {
+        User owner = persistUser("owner-transition@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        Long linkId = linkId(issueLink(section.getId(), owner));
+
+        closeLink(linkId, owner, "OUTDATED")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+
+        assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("팀원(MEMBER)이 링크를 종료하면 403(A002) — 링크 관리 권한은 OWNER 전용")
+    void memberCannotCloseLink() throws Exception {
+        User owner = persistUser("owner-close-member@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        User member = persistUser("member-close@wevo.com", "팀원");
+        persistMember(section.getProject(), member, ProjectMemberRole.MEMBER);
+        em.flush();
+        Long linkId = linkId(issueLink(section.getId(), owner));
+
+        closeLink(linkId, member, "CLOSED")
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A002"));
+
+        assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("비멤버가 링크를 종료하면 404(S001) 로 섹션 존재를 숨긴다")
+    void nonMemberCannotCloseLink() throws Exception {
+        User owner = persistUser("owner-close-stranger@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        User stranger = persistUser("stranger-close@wevo.com", "외부인");
+        em.flush();
+        Long linkId = linkId(issueLink(section.getId(), owner));
+
+        closeLink(linkId, stranger, "CLOSED")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("S001"));
+
+        assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 링크를 종료하면 404(R001) 을 반환한다")
+    void closingUnknownLinkReturnsNotFound() throws Exception {
+        User owner = persistUser("owner-close-unknown@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        closeLink(999_999L, owner, "CLOSED")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("R001"));
     }
 
     @Test
@@ -428,9 +536,9 @@ class ExternalReviewIntegrationTest {
                 .andExpect(jsonPath("$.code").value("OK"))
                 .andExpect(jsonPath("$.data").doesNotExist());
 
-        // 발급 후 내부 비활성화 → 다시 활성 링크 없음
+        // 발급 후 수동 종료 → 다시 활성 링크 없음
         String token = issueLink(section.getId(), owner);
-        reviewLinkService.updateStatus(linkId(token), owner.getId(), ReviewLinkStatus.CLOSED);
+        closeLink(linkId(token), owner, "CLOSED").andExpect(status().isOk());
 
         mockMvc.perform(get("/api/project-sections/{id}/review-links/current", section.getId())
                         .with(authentication(authOf(owner))))
@@ -578,6 +686,19 @@ class ExternalReviewIntegrationTest {
 
     private Long linkId(String token) {
         return reviewLinkRepository.findByTokenHash(tokenHasher.hash(token)).orElseThrow().getId();
+    }
+
+    private ReviewLinkStatus statusOf(Long reviewLinkId) {
+        em.flush();
+        return reviewLinkRepository.findById(reviewLinkId).orElseThrow().getStatus();
+    }
+
+    private org.springframework.test.web.servlet.ResultActions closeLink(
+            Long reviewLinkId, User actor, String status) throws Exception {
+        return mockMvc.perform(patch("/api/review-links/{id}", reviewLinkId)
+                .with(authentication(authOf(actor)))
+                .contentType("application/json")
+                .content("{ \"status\": \"%s\" }".formatted(status)));
     }
 
     private UsernamePasswordAuthenticationToken authOf(User user) {
