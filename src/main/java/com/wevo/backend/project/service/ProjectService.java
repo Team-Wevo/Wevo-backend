@@ -1,5 +1,6 @@
 package com.wevo.backend.project.service;
 
+import com.wevo.backend.project.domain.InviteLink;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectMember;
@@ -11,6 +12,7 @@ import com.wevo.backend.project.dto.response.ProjectDetailResponse;
 import com.wevo.backend.project.dto.response.ProjectMemberListResponse;
 import com.wevo.backend.project.dto.response.ProjectSummaryResponse;
 import com.wevo.backend.project.dto.response.SectionSummaryResponse;
+import com.wevo.backend.project.repository.InviteLinkRepository;
 import com.wevo.backend.project.repository.ProjectMemberRepository;
 import com.wevo.backend.project.repository.ProjectRepository;
 import com.wevo.backend.global.exception.BusinessException;
@@ -51,17 +53,20 @@ public class ProjectService {
     private final ProjectMemberRepository projectMemberRepository;
     private final ProjectSectionRepository projectSectionRepository;
     private final SectionTemplateRepository sectionTemplateRepository;
+    private final InviteLinkRepository inviteLinkRepository;
 
     public ProjectService(UserRepository userRepository,
                           ProjectRepository projectRepository,
                           ProjectMemberRepository projectMemberRepository,
                           ProjectSectionRepository projectSectionRepository,
-                          SectionTemplateRepository sectionTemplateRepository) {
+                          SectionTemplateRepository sectionTemplateRepository,
+                          InviteLinkRepository inviteLinkRepository) {
         this.userRepository = userRepository;
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.projectSectionRepository = projectSectionRepository;
         this.sectionTemplateRepository = sectionTemplateRepository;
+        this.inviteLinkRepository = inviteLinkRepository;
     }
 
     @Transactional
@@ -145,6 +150,39 @@ public class ProjectService {
 
         return ProjectMemberListResponse.from(
                 projectMemberRepository.findAllWithUserByProjectId(projectId));
+    }
+
+    /**
+     * 프로젝트를 보관 처리한다. (OWNER 만 — API_SPEC §3.2.9)
+     *
+     * <p><b>하드 삭제가 아니다.</b> 프로젝트에는 여러 팀원이 작성한 의견·초안·검토가 매달려 있어
+     * 실제 삭제는 남의 결과물까지 되돌릴 수 없게 지운다. 상태만 {@code ARCHIVED} 로 전이시켜
+     * 내 프로젝트 목록에서 제외하고, 데이터는 그대로 보존한다.
+     *
+     * <p>부수 효과로 <b>활성 초대 링크를 모두 비활성화</b>한다 — 보관한 프로젝트에 새 멤버가
+     * 합류하는 것을 막는다. 상태 전이와 링크 비활성화는 같은 트랜잭션에서 처리한다.
+     *
+     * <p>이미 보관된 프로젝트를 다시 삭제하면 아무것도 바꾸지 않고 <b>멱등하게 성공</b>한다
+     * (더블 클릭·네트워크 재시도 안전).
+     *
+     * @throws BusinessException 프로젝트 없음/멤버 아님(존재 숨김, {@code P001}),
+     *                           멤버지만 OWNER 아님({@code A002})
+     */
+    @Transactional
+    public void archiveProject(Long userId, Long projectId) {
+        ProjectMember membership = getMembershipOrThrow(projectId, userId);
+        if (membership.getRole() != ProjectMemberRole.OWNER) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        Project project = membership.getProject();
+        if (project.isArchived()) {
+            return;
+        }
+
+        project.archive();
+        inviteLinkRepository.findAllByProjectIdAndIsActiveTrue(projectId)
+                .forEach(InviteLink::deactivate);
     }
 
     /**
