@@ -1,5 +1,7 @@
 package com.wevo.backend.ai.client;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.wevo.backend.ai.config.AiProperties;
 import com.wevo.backend.ai.context.AiBaseDraftContext;
 import com.wevo.backend.ai.context.AiDraftSynthesisContext;
@@ -11,18 +13,24 @@ import com.wevo.backend.ai.context.AiProjectBrief;
 import com.wevo.backend.ai.context.AiProjectIdentity;
 import com.wevo.backend.ai.context.AiSectionContext;
 import com.wevo.backend.ai.context.AiTemplateContext;
+import com.wevo.backend.ai.context.AuthorIntentContext;
 import com.wevo.backend.ai.context.DraftGenerationContext;
 import com.wevo.backend.ai.context.DraftReviewContext;
 import com.wevo.backend.ai.context.IssueDetectionContext;
+import com.wevo.backend.ai.context.ReviewIntentComparisonContext;
 import com.wevo.backend.ai.domain.AiFeature;
+import com.wevo.backend.ai.dto.model.AuthorIntentExtractionOutput;
 import com.wevo.backend.ai.dto.model.DraftReviewOutput;
 import com.wevo.backend.ai.dto.model.IssueDetectionOutput;
+import com.wevo.backend.ai.dto.model.ReviewIntentComparisonOutput;
+import com.wevo.backend.ai.prompt.AuthorIntentPromptFactory;
 import com.wevo.backend.ai.prompt.DraftGenerationPromptFactory;
 import com.wevo.backend.ai.prompt.DraftReviewPromptFactory;
 import com.wevo.backend.ai.prompt.IssueDetectionPromptFactory;
 import com.wevo.backend.ai.prompt.PromptRegistry;
 import com.wevo.backend.ai.prompt.PromptRenderer;
 import com.wevo.backend.ai.prompt.PromptTemplateId;
+import com.wevo.backend.ai.prompt.ReviewIntentComparisonPromptFactory;
 import com.wevo.backend.ai.prompt.SynthesisPromptFactory;
 import com.wevo.backend.ai.service.DraftGenerationOutput;
 import com.wevo.backend.ai.service.SynthesisAiOutput;
@@ -40,8 +48,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 @Tag("openai-integration")
 @SpringBootTest(properties = {
@@ -61,7 +67,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnabledIfEnvironmentVariable(named = "OPENAI_INTEGRATION_ENABLED", matches = "(?i)true")
 class OpenAiSmokeIntegrationTest {
 
-    private static final int MAX_PROVIDER_CALLS = 6;
+    private static final int MAX_PROVIDER_CALLS = 8;
     private static final long MAX_OUTPUT_TOKENS_PER_RESULT = 1024;
 
     @Autowired
@@ -86,13 +92,19 @@ class OpenAiSmokeIntegrationTest {
     private DraftReviewPromptFactory draftReviewPromptFactory;
 
     @Autowired
+    private AuthorIntentPromptFactory authorIntentPromptFactory;
+
+    @Autowired
+    private ReviewIntentComparisonPromptFactory reviewIntentComparisonPromptFactory;
+
+    @Autowired
     private AiProperties aiProperties;
 
     private final AtomicInteger providerCalls = new AtomicInteger();
 
     @Test
     @Timeout(300)
-    void verifiesConnectivityMetadataAndFourFeatureContractsWithSyntheticData() {
+    void verifiesConnectivityMetadataAndSixFeatureContractsWithSyntheticData() {
         AiProviderResponse text = call(new AiProviderRequest(
                 AiFeature.DRAFT_REVIEW,
                 "This is a bounded connectivity test.",
@@ -134,6 +146,26 @@ class OpenAiSmokeIntegrationTest {
                 draftReviewPromptFactory.providerRequest(reviewContext())
         );
         assertThat(review.result().findings()).isNotNull();
+
+        StructuredAiProviderResponse<AuthorIntentExtractionOutput> authorIntent = call(
+                authorIntentPromptFactory.providerRequest(new AuthorIntentContext(
+                        20L,
+                        "문제 정의",
+                        "독자가 문제와 해결 필요성을 이해하게 작성한다.",
+                        30L,
+                        3,
+                        "팀 의견이 흩어져 반복 수정이 발생하므로 하나의 흐름으로 정리해야 합니다.")));
+        assertThat(authorIntent.result().intent()).isNotBlank();
+
+        StructuredAiProviderResponse<ReviewIntentComparisonOutput> comparison = call(
+                reviewIntentComparisonPromptFactory.providerRequest(
+                        new ReviewIntentComparisonContext(
+                                40L,
+                                20L,
+                                3,
+                                "흩어진 팀 의견을 하나의 흐름으로 정리해야 한다.",
+                                "팀의 여러 의견을 한 문서로 합치는 서비스다.")));
+        assertThat(comparison.result().alignment()).isNotNull();
 
         assertThat(providerCalls).hasValueLessThanOrEqualTo(MAX_PROVIDER_CALLS);
     }
