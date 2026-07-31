@@ -392,8 +392,8 @@ class ExternalReviewIntegrationTest {
     }
 
     @Test
-    @DisplayName("이미 종료된 링크를 다시 종료해도 멱등 성공이다 (상태 유지)")
-    void closingAlreadyClosedLinkIsIdempotent() throws Exception {
+    @DisplayName("이미 종료된 링크를 다시 종료하면 409(R010) 로 거절하고 상태를 유지한다")
+    void closingAlreadyClosedLinkIsRejected() throws Exception {
         User owner = persistUser("owner-idem@wevo.com", "팀장");
         ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
         persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
@@ -401,17 +401,19 @@ class ExternalReviewIntegrationTest {
         Long linkId = linkId(issueLink(section.getId(), owner));
 
         closeLink(linkId, owner, "CLOSED").andExpect(status().isOk());
+        // 종료는 ACTIVE 링크에서만 성공한다 — 두 번째 호출은 사유를 구분해 거절한다.
         closeLink(linkId, owner, "CLOSED")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.code").value("REVIEW_LINK_CLOSED"));
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("R010"))
+                .andExpect(jsonPath("$.message").value("이미 종료된 링크입니다."));
 
         assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.CLOSED);
     }
 
     @Test
-    @DisplayName("본문 수정으로 만료(OUTDATED)된 링크는 수동 종료해도 만료 사유를 유지한다")
-    void closingOutdatedLinkKeepsOutdatedReason() throws Exception {
+    @DisplayName("본문 수정으로 만료(OUTDATED)된 링크를 종료하면 409(R011) 로 거절한다")
+    void closingOutdatedLinkIsRejected() throws Exception {
         User owner = persistUser("owner-keep-outdated@wevo.com", "팀장");
         ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
         persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
@@ -422,8 +424,11 @@ class ExternalReviewIntegrationTest {
         // 본문 저장 시점에 호출되는 만료 처리
         reviewLinkService.markSectionLinksOutdated(section.getId());
 
-        // 종료 요청은 성공하지만(멱등) OUTDATED 를 CLOSED 로 덮지 않는다
-        closeLink(linkId, owner, "CLOSED").andExpect(status().isOk());
+        // 이미 만료돼 제출을 받지 않는 링크를 닫는 건 성립하지 않는 요청이라 거절한다
+        closeLink(linkId, owner, "CLOSED")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R011"))
+                .andExpect(jsonPath("$.message").value("이미 만료된 링크입니다."));
         assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.OUTDATED);
 
         // 외부 검토자에게 안내되는 사유도 그대로 "본문이 수정돼 만료"(R004)
@@ -467,7 +472,7 @@ class ExternalReviewIntegrationTest {
     }
 
     @Test
-    @DisplayName("비멤버가 링크를 종료하면 404(S001) 로 섹션 존재를 숨긴다")
+    @DisplayName("비멤버가 링크를 종료하면 존재하지 않는 링크와 같은 404(R001) 로 링크 존재를 숨긴다")
     void nonMemberCannotCloseLink() throws Exception {
         User owner = persistUser("owner-close-stranger@wevo.com", "팀장");
         ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
@@ -476,9 +481,13 @@ class ExternalReviewIntegrationTest {
         em.flush();
         Long linkId = linkId(issueLink(section.getId(), owner));
 
+        // 남의 링크와 없는 링크의 응답이 완전히 같아야 ID 를 훑어 실재 여부를 알아낼 수 없다.
         closeLink(linkId, stranger, "CLOSED")
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("S001"));
+                .andExpect(jsonPath("$.code").value("R001"));
+        closeLink(999_999L, stranger, "CLOSED")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("R001"));
 
         assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.ACTIVE);
     }

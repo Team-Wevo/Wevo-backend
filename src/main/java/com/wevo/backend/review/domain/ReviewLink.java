@@ -1,6 +1,8 @@
 package com.wevo.backend.review.domain;
 
 import com.wevo.backend.global.common.BaseTimeEntity;
+import com.wevo.backend.global.exception.BusinessException;
+import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.user.domain.User;
 import jakarta.persistence.Column;
@@ -39,7 +41,9 @@ import lombok.NoArgsConstructor;
  *   <li><b>종료 상태는 되돌아가지 않는다</b> — {@code ACTIVE} 에서만 다른 상태로 전이하며,
  *       한 번 {@code OUTDATED}·{@code CLOSED} 가 된 링크는 상태가 다시 바뀌지 않는다.
  *       종료 사유({@code OUTDATED} = 본문 수정, {@code CLOSED} = 종료)가 나중 호출에 덮여
- *       외부 검토자 안내 문구가 뒤바뀌는 일을 막기 위함이다.</li>
+ *       외부 검토자 안내 문구가 뒤바뀌는 일을 막기 위함이다.
+ *       수동 종료({@code close()})는 {@code ACTIVE} 링크에서만 성공하고, 이미 끝난 링크는
+ *       사유별로 거절한다({@code CLOSED} → R010, {@code OUTDATED} → R011).</li>
  * </ul>
  */
 @Entity
@@ -118,12 +122,20 @@ public class ReviewLink extends BaseTimeEntity {
 
     /**
      * 링크를 종료한다. (재발급 시 기존 ACTIVE 링크 종료 · 팀장의 수동 종료)
-     * 이미 만료·종료된 링크는 상태를 유지한다 — {@link #markOutdated()} 와 대칭이며,
-     * {@code OUTDATED} 의 만료 사유를 {@code CLOSED} 로 덮지 않기 위한 가드다.
+     *
+     * <p><b>{@code ACTIVE} 링크만 종료할 수 있다.</b> 이미 끝난 링크는 상태를 그대로 둔 채
+     * 사유를 구분해 거절한다 — 종료({@code CLOSED})와 만료({@code OUTDATED})는 서로 다른 종결
+     * 상태이므로, 팀장이 "내가 방금 닫았다"고 오인하지 않도록 각각 다른 문구로 알린다.
+     * 예외가 던져지면 트랜잭션이 롤백되므로 어느 경우에도 기존 상태는 바뀌지 않는다.
+     *
+     * @throws BusinessException 이미 종료된 링크면 {@link ErrorCode#REVIEW_LINK_CLOSE_ALREADY_CLOSED},
+     *                           이미 만료된 링크면 {@link ErrorCode#REVIEW_LINK_CLOSE_ALREADY_OUTDATED}
      */
     public void close() {
-        if (status == ReviewLinkStatus.ACTIVE) {
-            this.status = ReviewLinkStatus.CLOSED;
+        switch (status) {
+            case ACTIVE -> this.status = ReviewLinkStatus.CLOSED;
+            case CLOSED -> throw new BusinessException(ErrorCode.REVIEW_LINK_CLOSE_ALREADY_CLOSED);
+            case OUTDATED -> throw new BusinessException(ErrorCode.REVIEW_LINK_CLOSE_ALREADY_OUTDATED);
         }
     }
 }
