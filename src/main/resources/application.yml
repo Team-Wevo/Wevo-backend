@@ -44,14 +44,31 @@ wevo:
       draft-review:
         max-input-tokens: ${AI_DRAFT_REVIEW_MAX_INPUT_TOKENS:64000}
     nvidia:
+      api-key: ${NVIDIA_API_KEY:}
+      base-url: ${NVIDIA_API_BASE_URL:https://integrate.api.nvidia.com}
       temperature: ${NVIDIA_API_TEMPERATURE:0.1}
       reasoning-effort: ${NVIDIA_API_REASONING_EFFORT:none}
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_API_BASE_URL:https://api.openai.com}
+      model: ${OPENAI_API_MODEL:gpt-5.6-luna}
+      timeout: ${OPENAI_API_TIMEOUT:60s}
+      max-output-tokens: ${OPENAI_API_MAX_TOKENS:4096}
+      reasoning-effort: ${OPENAI_API_REASONING_EFFORT:medium}
+      # 2026-07-31 공식 모델 snapshot. Java enum으로 고정하지 않는다.
+      model-context-limit: ${OPENAI_API_CONTEXT_LIMIT:1050000}
     structured-output:
       max-correction-retries: ${AI_STRUCTURED_OUTPUT_MAX_CORRECTION_RETRIES:2}
     jobs:
       max-executions-per-key: ${AI_JOB_MAX_EXECUTIONS_PER_KEY:3}
     pricing:
-      version: ${AI_PRICING_VERSION:}
+      version: ${AI_PRICING_VERSION:openai-2026-07-31-standard}
+      models:
+        gpt-5.6-luna:
+          input-per-million-tokens: 0.20
+          cache-read-per-million-tokens: 0.02
+          cache-write-per-million-tokens: 0.25
+          output-per-million-tokens: 1.20
     audit:
       recovery-enabled: true
       recovery-interval: 60s

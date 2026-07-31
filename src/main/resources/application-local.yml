@@ -4,17 +4,13 @@ spring:
 
   ai:
     model:
-      chat: openai
+      chat: none
       embedding: none
-    openai:
-      api-key: ${NVIDIA_API_KEY}
-      base-url: ${NVIDIA_API_BASE_URL:https://integrate.api.nvidia.com}/v1
-      timeout: ${NVIDIA_API_TIMEOUT:60s}
-      max-retries: 0
-      chat:
-        model: ${NVIDIA_API_MODEL:mistralai/mistral-medium-3.5-128b}
-        max-tokens: ${NVIDIA_API_MAX_TOKENS:4096}
-        temperature: ${NVIDIA_API_TEMPERATURE:0.1}
+      image: none
+      audio:
+        speech: none
+        transcription: none
+      moderation: none
 
   datasource:
     url: jdbc:postgresql://localhost:${POSTGRES_PORT}/${POSTGRES_DB}

@@ -15,7 +15,7 @@ import java.time.Duration;
 import java.util.concurrent.TimeoutException;
 
 @Component
-public class NvidiaExceptionTranslator implements AiExceptionTranslator {
+public class OpenAiExceptionTranslator implements AiExceptionTranslator {
 
     @Override
     public AiProviderException translate(Throwable throwable) {
@@ -110,7 +110,9 @@ public class NvidiaExceptionTranslator implements AiExceptionTranslator {
                 .flatMap(value -> {
                     try {
                         long seconds = Long.parseLong(value.strip());
-                        return seconds < 0 ? java.util.Optional.empty() : java.util.Optional.of(Duration.ofSeconds(seconds));
+                        return seconds < 0
+                                ? java.util.Optional.empty()
+                                : java.util.Optional.of(Duration.ofSeconds(seconds));
                     } catch (NumberFormatException ignored) {
                         return java.util.Optional.empty();
                     }

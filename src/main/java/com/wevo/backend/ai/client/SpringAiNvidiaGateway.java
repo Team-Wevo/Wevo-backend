@@ -4,6 +4,7 @@ import com.wevo.backend.ai.config.AiProperties;
 import com.wevo.backend.ai.config.NvidiaProviderProperties;
 import com.wevo.backend.ai.context.AiTokenBudgetEstimator;
 import com.wevo.backend.ai.context.AiTokenBudgetInput;
+import com.wevo.backend.ai.exception.AiExceptionTranslator;
 import com.wevo.backend.ai.exception.AiProviderException;
 import com.wevo.backend.ai.exception.NvidiaExceptionTranslator;
 import com.wevo.backend.global.exception.ErrorCode;
@@ -18,6 +19,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -39,13 +41,14 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
 
     private final ChatClient chatClient;
     private final AiProperties properties;
-    private final NvidiaProviderProperties nvidiaProperties;
-    private final NvidiaExceptionTranslator exceptionTranslator;
+    private final AiProviderRuntimeOptions runtimeOptions;
+    private final AiExceptionTranslator exceptionTranslator;
     private final ExecutorService providerRequestExecutor;
     private final AiUsageExtractor usageExtractor;
     private final AiRetrySleeper retrySleeper;
     private final AiTokenBudgetEstimator tokenBudgetEstimator;
 
+    @Autowired
     public SpringAiNvidiaGateway(
             ChatClient chatClient,
             AiProperties properties,
@@ -56,9 +59,37 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
             AiRetrySleeper retrySleeper,
             AiTokenBudgetEstimator tokenBudgetEstimator
     ) {
+        this(
+                chatClient,
+                properties,
+                new AiProviderRuntimeOptions(
+                        PROVIDER_ID,
+                        nvidiaProperties.reasoningEffort(),
+                        nvidiaProperties.temperature(),
+                        false,
+                        false
+                ),
+                exceptionTranslator,
+                providerRequestExecutor,
+                usageExtractor,
+                retrySleeper,
+                tokenBudgetEstimator
+        );
+    }
+
+    protected SpringAiNvidiaGateway(
+            ChatClient chatClient,
+            AiProperties properties,
+            AiProviderRuntimeOptions runtimeOptions,
+            AiExceptionTranslator exceptionTranslator,
+            ExecutorService providerRequestExecutor,
+            AiUsageExtractor usageExtractor,
+            AiRetrySleeper retrySleeper,
+            AiTokenBudgetEstimator tokenBudgetEstimator
+    ) {
         this.chatClient = chatClient;
         this.properties = properties;
-        this.nvidiaProperties = nvidiaProperties;
+        this.runtimeOptions = runtimeOptions;
         this.exceptionTranslator = exceptionTranslator;
         this.providerRequestExecutor = providerRequestExecutor;
         this.usageExtractor = usageExtractor;
@@ -235,7 +266,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
                         new SystemMessage(request.prompt().systemPrompt()),
                         new UserMessage(userPrompt)
                 ))
-                .options(structuredProviderOptions(options))
+                .options(structuredProviderOptions(options, request.outputDefinition()))
                 .call()
                 .responseEntity(converter);
     }
@@ -247,17 +278,19 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
         if (responseEntity == null || responseEntity.response() == null) {
             throw new AiProviderException(
                     ErrorCode.AI_PROVIDER_INVALID_RESPONSE,
-                    new IllegalStateException("NVIDIA structured response is null")
+                    new IllegalStateException("AI Provider structured response is null")
             );
         }
 
         ChatResponse response = responseEntity.response();
-        AiUsageMetadata usage = usageExtractor.extract(response.getMetadata(), requestedModel, PROVIDER_ID);
+        AiUsageMetadata usage = usageExtractor.extract(
+                response.getMetadata(), requestedModel, runtimeOptions.providerId()
+        );
         Generation generation = response.getResult();
         if (generation == null || generation.getOutput() == null) {
             throw new AiProviderException(
                     ErrorCode.AI_PROVIDER_INVALID_RESPONSE,
-                    new IllegalStateException("NVIDIA structured result is empty"),
+                    new IllegalStateException("AI Provider structured result is empty"),
                     usage,
                     0
             );
@@ -411,7 +444,8 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
     private boolean isRetryable(ErrorCode errorCode) {
         return errorCode == ErrorCode.AI_RATE_LIMITED
                 || errorCode == ErrorCode.AI_PROVIDER_OVERLOADED
-                || errorCode == ErrorCode.AI_PROVIDER_UNAVAILABLE;
+                || errorCode == ErrorCode.AI_PROVIDER_UNAVAILABLE
+                || errorCode == ErrorCode.AI_PROVIDER_TIMEOUT;
     }
 
     private ChatResponse callProvider(AiProviderRequest request, AiProperties.ModelOptions options) {
@@ -424,7 +458,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
         if (response == null) {
             throw new AiProviderException(
                     ErrorCode.AI_PROVIDER_INVALID_RESPONSE,
-                    new IllegalStateException("NVIDIA response is null")
+                    new IllegalStateException("AI Provider response is null")
             );
         }
         return response;
@@ -442,33 +476,46 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
     }
 
     private OpenAiChatOptions.Builder providerOptions(AiProperties.ModelOptions options) {
-        return OpenAiChatOptions.builder()
+        OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder()
                 .model(options.model())
-                .maxTokens(options.maxOutputTokens())
                 .n(1)
-                .temperature(nvidiaProperties.temperature())
-                .reasoningEffort(nvidiaProperties.reasoningEffort())
+                .reasoningEffort(runtimeOptions.reasoningEffort())
                 .timeout(options.timeout())
                 .customHeaders(Map.of("Accept", "application/json"))
                 .maxRetries(0);
+        if (runtimeOptions.maxCompletionTokens()) {
+            builder.maxCompletionTokens(options.maxOutputTokens());
+        } else {
+            builder.maxTokens(options.maxOutputTokens());
+        }
+        if (runtimeOptions.temperature() != null) {
+            builder.temperature(runtimeOptions.temperature());
+        }
+        return builder;
     }
 
-    private OpenAiChatOptions.Builder structuredProviderOptions(AiProperties.ModelOptions options) {
-        return providerOptions(options)
-                .responseFormat(OpenAiChatModel.ResponseFormat.builder()
-                        .type(OpenAiChatModel.ResponseFormat.Type.JSON_OBJECT)
-                        .build());
+    private OpenAiChatOptions.Builder structuredProviderOptions(
+            AiProperties.ModelOptions options,
+            StructuredOutputDefinition<?> outputDefinition
+    ) {
+        OpenAiChatModel.ResponseFormat.Builder responseFormat = OpenAiChatModel.ResponseFormat.builder();
+        if (runtimeOptions.nativeStrictSchema()) {
+            responseFormat.jsonSchema(outputDefinition.jsonSchema());
+        } else {
+            responseFormat.type(OpenAiChatModel.ResponseFormat.Type.JSON_OBJECT);
+        }
+        return providerOptions(options).responseFormat(responseFormat.build());
     }
 
     private AiProviderResponse toResponse(ChatResponse response, String requestedModel) {
         Generation generation = response.getResult();
         AiUsageMetadata usageMetadata = usageExtractor.extract(
-                response.getMetadata(), requestedModel, PROVIDER_ID
+                response.getMetadata(), requestedModel, runtimeOptions.providerId()
         );
         if (generation == null || generation.getOutput() == null) {
             throw new AiProviderException(
                     ErrorCode.AI_PROVIDER_INVALID_RESPONSE,
-                    new IllegalStateException("NVIDIA response result is empty"),
+                    new IllegalStateException("AI Provider response result is empty"),
                     usageMetadata,
                     0
             );
@@ -476,7 +523,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
         if (hasProviderRefusal(generation)) {
             throw new AiProviderException(
                     ErrorCode.AI_PROVIDER_REFUSAL,
-                    new IllegalStateException("NVIDIA provider refused the request"),
+                    new IllegalStateException("AI Provider refused the request"),
                     usageMetadata,
                     0
             );
@@ -484,7 +531,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
         if (generation.getOutput().getText() == null || generation.getOutput().getText().isBlank()) {
             throw new AiProviderException(
                     ErrorCode.AI_PROVIDER_INVALID_RESPONSE,
-                    new IllegalStateException("NVIDIA response content is empty"),
+                    new IllegalStateException("AI Provider response content is empty"),
                     usageMetadata,
                     0
             );
@@ -496,7 +543,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
         if (finishError != null) {
             throw new AiProviderException(
                     finishError,
-                    new IllegalStateException("NVIDIA response finish reason is not successful"),
+                    new IllegalStateException("AI Provider response finish reason is not successful"),
                     usageMetadata,
                     0
             );
