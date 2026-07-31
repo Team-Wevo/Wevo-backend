@@ -101,6 +101,36 @@ class SectionDraftEvidenceReadIntegrationTest {
     }
 
     @Test
+    @DisplayName("AI 초안이 여러 번 생성되면 가장 높은 버전의 근거만 반환한다")
+    void returnsEvidenceOfHighestVersionAiDraftOnly() throws Exception {
+        Fixture fixture = fixture();
+        writer.createAiDraft(command(fixture, 0, fixture.generationRequestId(),
+                "이전 세트 합의", "이전 초안이 쓴 의견 스냅샷", "이전 결정"));
+
+        // 재수집(COLLECTING) → 재정리(SYNTHESIZING)를 거쳐 같은 섹션에 두 번째 AI 초안(version 2)을 만든다.
+        // AI 초안 생성은 SYNTHESIZING 에서만 가능하고 DRAFTING → SYNTHESIZING 직접 전이는 막혀 있다.
+        ProjectSection section = em.find(ProjectSection.class, fixture.section().getId());
+        section.changeStatus(ProjectSectionStatus.COLLECTING);
+        section.changeStatus(ProjectSectionStatus.SYNTHESIZING);
+        UUID secondRequestId = UUID.randomUUID();
+        em.persist(job(secondRequestId, section.getProject(), section, fixture.owner(),
+                AiFeature.DRAFT_GENERATION, randomHex64()));
+        em.flush();
+
+        writer.createAiDraft(command(fixture, 1, secondRequestId,
+                "최신 세트 합의", "최신 초안이 쓴 의견 스냅샷", "최신 결정"));
+        em.flush();
+        em.clear();
+
+        // 근거 행이 둘 다 남아 있어도(생성 시점 스냅샷 보존) 조회는 최신 버전 것만 내려준다.
+        getEvidence(fixture.section().getId(), fixture.owner())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.consensusSummary").value("최신 세트 합의"))
+                .andExpect(jsonPath("$.data.opinions[0].content").value("최신 초안이 쓴 의견 스냅샷"))
+                .andExpect(jsonPath("$.data.decisions[0].decision").value("최신 결정"));
+    }
+
+    @Test
     @DisplayName("AI로 생성된 초안이 없으면 404(S003)")
     void noAiDraftEvidenceReturnsNotFound() throws Exception {
         User owner = persistUser("owner-evidence-none@wevo.com");
@@ -196,24 +226,39 @@ class SectionDraftEvidenceReadIntegrationTest {
     }
 
     private AiSectionDraftCreateCommand command(Fixture fixture) {
+        return command(fixture, 0, fixture.generationRequestId(),
+                "생성 시점 합의", "제출 의견 스냅샷", "OWNER 확정 결정");
+    }
+
+    /**
+     * 근거 스냅샷 문구를 호출마다 다르게 주어, 어느 초안의 근거가 반환됐는지 구분할 수 있게 한다.
+     */
+    private AiSectionDraftCreateCommand command(
+            Fixture fixture,
+            int baseVersion,
+            UUID generationRequestId,
+            String consensusSummary,
+            String opinionSnapshot,
+            String decisionSnapshot
+    ) {
         return new AiSectionDraftCreateCommand(
                 fixture.section().getId(),
                 fixture.owner().getId(),
-                "AI가 생성한 본문",
-                0,
+                "AI가 생성한 본문 v" + (baseVersion + 1),
+                baseVersion,
                 fixture.synthesisSet().getId(),
                 0,
-                fixture.generationRequestId(),
+                generationRequestId,
                 "a".repeat(64),
                 "draft-v1-s" + fixture.synthesisSet().getId() + "-g0",
-                "생성 시점 합의",
+                consensusSummary,
                 List.of(new OpinionEvidence(
-                        fixture.opinion().getId(), fixture.owner().getName(), "제출 의견 스냅샷")),
+                        fixture.opinion().getId(), fixture.owner().getName(), opinionSnapshot)),
                 List.of(new DecisionEvidence(
                         fixture.conflict().getId(),
                         fixture.decision().getId(),
                         fixture.conflict().getQuestion(),
-                        "OWNER 확정 결정")),
+                        decisionSnapshot)),
                 List.of(new GapAnswerEvidence(
                         fixture.gap().getId(),
                         fixture.answer().getId(),

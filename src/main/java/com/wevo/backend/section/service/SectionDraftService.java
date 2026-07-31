@@ -2,7 +2,6 @@ package com.wevo.backend.section.service;
 
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
-import com.wevo.backend.project.service.ProjectAccessGuard;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.project.service.VerifiedProjectAccess;
 import com.wevo.backend.review.service.ReviewLinkService;
@@ -47,7 +46,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class SectionDraftService {
 
     private final SectionAccessGuard sectionAccessGuard;
-    private final ProjectAccessGuard projectAccessGuard;
     private final SectionDraftRepository sectionDraftRepository;
     private final UserService userService;
     private final ReviewLinkService reviewLinkService;
@@ -57,7 +55,6 @@ public class SectionDraftService {
     private final SectionDraftEvidenceQueryService sectionDraftEvidenceQueryService;
 
     public SectionDraftService(SectionAccessGuard sectionAccessGuard,
-                               ProjectAccessGuard projectAccessGuard,
                                SectionDraftRepository sectionDraftRepository,
                                UserService userService,
                                ReviewLinkService reviewLinkService,
@@ -66,7 +63,6 @@ public class SectionDraftService {
                                SectionDriftService sectionDriftService,
                                SectionDraftEvidenceQueryService sectionDraftEvidenceQueryService) {
         this.sectionAccessGuard = sectionAccessGuard;
-        this.projectAccessGuard = projectAccessGuard;
         this.sectionDraftRepository = sectionDraftRepository;
         this.userService = userService;
         this.reviewLinkService = reviewLinkService;
@@ -107,9 +103,8 @@ public class SectionDraftService {
      *                           AI로 생성된 초안이 없음({@code S003})
      */
     public SectionDraftEvidenceResponse getDraftEvidence(Long sectionId, Long userId) {
-        ProjectSection section = sectionAccessGuard.requireParticipantSection(sectionId, userId);
         VerifiedProjectAccess access =
-                projectAccessGuard.requireParticipantAccess(section.getProject().getId(), userId);
+                sectionAccessGuard.requireParticipantAccessForSection(sectionId, userId);
         return SectionDraftEvidenceResponse.of(
                 sectionDraftEvidenceQueryService.getLatest(access, sectionId));
     }
