@@ -52,6 +52,8 @@ import static org.assertj.core.api.Assertions.assertThat;
         "wevo.ai.openai.timeout=${OPENAI_API_TIMEOUT:60s}",
         "wevo.ai.openai.max-output-tokens=1024",
         "wevo.ai.openai.reasoning-effort=${OPENAI_API_REASONING_EFFORT:medium}",
+        "wevo.ai.default-options.model-context-limit=1050000",
+        "wevo.ai.default-options.max-input-tokens=100000",
         "wevo.ai.default-options.max-retries=0",
         "wevo.ai.structured-output.max-correction-retries=0"
 })
