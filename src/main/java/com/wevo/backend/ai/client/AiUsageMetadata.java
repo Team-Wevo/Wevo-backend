@@ -11,8 +11,24 @@ public record AiUsageMetadata(
         Long inputTokens,
         Long outputTokens,
         Long cacheReadInputTokens,
-        Long cacheWriteInputTokens
+        Long cacheWriteInputTokens,
+        Long reasoningTokens
 ) {
+
+    public AiUsageMetadata(
+            String providerId,
+            String providerRequestId,
+            String modelId,
+            Long inputTokens,
+            Long outputTokens,
+            Long cacheReadInputTokens,
+            Long cacheWriteInputTokens
+    ) {
+        this(
+                providerId, providerRequestId, modelId, inputTokens, outputTokens,
+                cacheReadInputTokens, cacheWriteInputTokens, null
+        );
+    }
 
     public AiUsageMetadata(
             String providerRequestId,
@@ -22,7 +38,10 @@ public record AiUsageMetadata(
             Long cacheReadInputTokens,
             Long cacheWriteInputTokens
     ) {
-        this(null, providerRequestId, modelId, inputTokens, outputTokens, cacheReadInputTokens, cacheWriteInputTokens);
+        this(
+                null, providerRequestId, modelId, inputTokens, outputTokens,
+                cacheReadInputTokens, cacheWriteInputTokens, null
+        );
     }
 
     public Long totalInputTokens() {

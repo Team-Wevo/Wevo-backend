@@ -338,7 +338,8 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
                 addNullable(accumulated.inputTokens(), current.inputTokens()),
                 addNullable(accumulated.outputTokens(), current.outputTokens()),
                 addNullable(accumulated.cacheReadInputTokens(), current.cacheReadInputTokens()),
-                addNullable(accumulated.cacheWriteInputTokens(), current.cacheWriteInputTokens())
+                addNullable(accumulated.cacheWriteInputTokens(), current.cacheWriteInputTokens()),
+                addNullable(accumulated.reasoningTokens(), current.reasoningTokens())
         );
     }
 

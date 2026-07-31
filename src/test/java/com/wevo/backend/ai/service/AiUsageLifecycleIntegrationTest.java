@@ -95,16 +95,19 @@ class AiUsageLifecycleIntegrationTest {
 
         usageService.completeSuccess(
                 handle,
-                new AiUsageMetadata("provider-1", "response-model", 100L, 20L, 5L, 3L),
+                new AiUsageMetadata(
+                        "openai", "provider-1", "response-model", 100L, 20L, 5L, 3L, 8L
+                ),
                 2,
                 91L
         );
 
         AiUsageLog completed = usageLogRepository.findByRequestId(handle.requestId()).orElseThrow();
         assertThat(completed.getRequestStatus()).isEqualTo(AiRequestStatus.SUCCEEDED);
-        assertThat(completed.getProvider()).isEqualTo("nvidia");
+        assertThat(completed.getProvider()).isEqualTo("openai");
         assertThat(completed.getProviderRequestId()).isEqualTo("provider-1");
         assertThat(completed.getTotalInputTokens()).isEqualTo(108L);
+        assertThat(completed.getReasoningTokens()).isEqualTo(8L);
         assertThat(completed.getAttemptCount()).isEqualTo(2);
         assertThat(completed.getResultId()).isEqualTo(91L);
         assertThat(completed.getEstimatedCost()).isNull();

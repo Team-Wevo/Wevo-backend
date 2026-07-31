@@ -34,13 +34,21 @@ class AiCostCalculatorTest {
 
     @Test
     void unknownPricingOrMissingUsageDoesNotBecomeZeroCost() {
-        AiCostCalculator calculator = calculator(Map.of());
+        AiCostCalculator calculator = calculator(Map.of(
+                "model-1",
+                new AiPricingProperties.ModelPricing(
+                        BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE
+                )
+        ));
 
         assertThat(calculator.calculate(
                 new AiUsageMetadata(null, "unknown", 1L, 1L, null, null)
         ).estimatedCost()).isNull();
         assertThat(calculator.calculate(
                 new AiUsageMetadata(null, "unknown", null, null, null, null)
+        ).estimatedCost()).isNull();
+        assertThat(calculator.calculate(
+                new AiUsageMetadata(null, "model-1", 1L, 1L, null, 0L)
         ).estimatedCost()).isNull();
     }
 

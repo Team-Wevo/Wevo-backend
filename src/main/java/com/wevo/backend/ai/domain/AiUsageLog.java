@@ -89,6 +89,9 @@ public class AiUsageLog extends BaseTimeEntity {
     @Column(name = "cache_write_input_tokens")
     private Long cacheWriteInputTokens;
 
+    @Column(name = "reasoning_tokens")
+    private Long reasoningTokens;
+
     @Column(name = "pricing_version", length = 100)
     private String pricingVersion;
 
@@ -258,6 +261,7 @@ public class AiUsageLog extends BaseTimeEntity {
             this.outputTokens = usage.outputTokens();
             this.cacheReadInputTokens = usage.cacheReadInputTokens();
             this.cacheWriteInputTokens = usage.cacheWriteInputTokens();
+            this.reasoningTokens = usage.reasoningTokens();
         }
         if (cost != null) {
             this.pricingVersion = cost.pricingVersion();
