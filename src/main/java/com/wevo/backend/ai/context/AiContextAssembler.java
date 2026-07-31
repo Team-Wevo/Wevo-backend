@@ -174,6 +174,26 @@ public class AiContextAssembler {
         });
     }
 
+    public AssembledAiContext<AuthorIntentContext> assembleAuthorIntent(
+            VerifiedProjectAccess access,
+            Long sectionId
+    ) {
+        requireAssemblyTarget(access, sectionId);
+        return safely(() -> {
+            CommonInputs common = commonInputs(access, sectionId);
+            SectionVersionedContent draft = sectionQueryService.getLatestDraft(access, sectionId);
+            requireVersionedContent(draft, sectionId);
+            AuthorIntentContext context = new AuthorIntentContext(
+                    sectionId,
+                    common.section().title(),
+                    normalizeOptional(common.section().template().guide()),
+                    draft.draftId(),
+                    draft.contentVersion(),
+                    normalizeRequired(draft.content()));
+            return assembled(context);
+        });
+    }
+
     private CommonInputs commonInputs(VerifiedProjectAccess access, Long sectionId) {
         ProjectAiContext project = projectQueryService.getProjectContext(access);
         SectionAiMetadata section = sectionQueryService.getMetadata(access, sectionId);

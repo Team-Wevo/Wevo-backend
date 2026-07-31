@@ -41,6 +41,12 @@ public interface AiJobRepository extends JpaRepository<AiJob, Long> {
             AiFeature feature
     );
 
+    Optional<AiJob> findTopByProjectSection_IdAndFeatureAndSourceVersionOrderByQueuedAtDescIdDesc(
+            Long projectSectionId,
+            AiFeature feature,
+            String sourceVersion
+    );
+
     /**
      * 섹션의 해당 기능 <b>최신 성공 실행</b>을 조회한다. 현재 정리 세트({@code resultId})의 출처다.
      *
