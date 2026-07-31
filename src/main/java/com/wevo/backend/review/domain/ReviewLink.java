@@ -2,6 +2,7 @@ package com.wevo.backend.review.domain;
 
 import com.wevo.backend.global.common.BaseTimeEntity;
 import com.wevo.backend.section.domain.ProjectSection;
+import com.wevo.backend.section.domain.SectionAuthorIntent;
 import com.wevo.backend.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -80,6 +81,15 @@ public class ReviewLink extends BaseTimeEntity {
     @Column(name = "content_version", nullable = false)
     private Integer contentVersion;
 
+    /** 발급 시점에 확정된 작성자 의도. 공개 검토 응답에는 절대 노출하지 않는다. */
+    @Column(name = "author_intent_snapshot", length = 300)
+    private String authorIntentSnapshot;
+
+    /** 의도 snapshot의 원본 이력. 레거시 링크에는 없을 수 있다. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "author_intent_id")
+    private SectionAuthorIntent authorIntent;
+
     @Enumerated(EnumType.STRING)
     @Column(length = 20, nullable = false)
     private ReviewLinkStatus status;
@@ -87,6 +97,7 @@ public class ReviewLink extends BaseTimeEntity {
     @Builder
     private ReviewLink(ProjectSection projectSection, User createdBy, String tokenHash,
                        String sectionTitleSnapshot, String contentSnapshot, Integer contentVersion,
+                       String authorIntentSnapshot, SectionAuthorIntent authorIntent,
                        ReviewLinkStatus status) {
         this.projectSection = projectSection;
         this.createdBy = createdBy;
@@ -94,6 +105,8 @@ public class ReviewLink extends BaseTimeEntity {
         this.sectionTitleSnapshot = sectionTitleSnapshot;
         this.contentSnapshot = contentSnapshot;
         this.contentVersion = contentVersion;
+        this.authorIntentSnapshot = authorIntentSnapshot;
+        this.authorIntent = authorIntent;
         this.status = status;
     }
 

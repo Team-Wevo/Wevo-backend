@@ -43,6 +43,12 @@ wevo:
         max-input-tokens: ${AI_DRAFT_GENERATION_MAX_INPUT_TOKENS:48000}
       draft-review:
         max-input-tokens: ${AI_DRAFT_REVIEW_MAX_INPUT_TOKENS:64000}
+      author-intent-extraction:
+        max-input-tokens: ${AI_AUTHOR_INTENT_MAX_INPUT_TOKENS:24000}
+        max-output-tokens: ${AI_AUTHOR_INTENT_MAX_OUTPUT_TOKENS:512}
+      review-intent-comparison:
+        max-input-tokens: ${AI_REVIEW_INTENT_COMPARISON_MAX_INPUT_TOKENS:12000}
+        max-output-tokens: ${AI_REVIEW_INTENT_COMPARISON_MAX_OUTPUT_TOKENS:768}
     nvidia:
       api-key: ${NVIDIA_API_KEY:}
       base-url: ${NVIDIA_API_BASE_URL:https://integrate.api.nvidia.com}

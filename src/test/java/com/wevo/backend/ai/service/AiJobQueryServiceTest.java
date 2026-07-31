@@ -72,7 +72,7 @@ class AiJobQueryServiceTest {
     }
 
     @Test
-    void mapsInternalFeaturesToOnlyThreePublicFeatureNames() {
+    void mapsInternalFeaturesToPublicFeatureNames() {
         given(job.getStatus()).willReturn(AiJobStatus.SUCCEEDED);
 
         given(job.getFeature()).willReturn(AiFeature.ISSUE_DETECTION);
@@ -86,6 +86,28 @@ class AiJobQueryServiceTest {
         given(job.getFeature()).willReturn(AiFeature.DRAFT_REVIEW);
         assertThat(service.getJob(REQUEST_ID, USER_ID).feature())
                 .isEqualTo(AiRequestFeature.PRECHECK);
+
+        given(job.getFeature()).willReturn(AiFeature.AUTHOR_INTENT_EXTRACTION);
+        assertThat(service.getJob(REQUEST_ID, USER_ID).feature())
+                .isEqualTo(AiRequestFeature.AUTHOR_INTENT_EXTRACTION);
+
+        given(job.getFeature()).willReturn(AiFeature.REVIEW_INTENT_COMPARISON);
+        assertThat(service.getJob(REQUEST_ID, USER_ID).feature())
+                .isEqualTo(AiRequestFeature.REVIEW_INTENT_COMPARISON);
+    }
+
+    @Test
+    void authorIntentAndComparisonJobsRequireOwner() {
+        given(job.getStatus()).willReturn(AiJobStatus.RUNNING);
+
+        given(job.getFeature()).willReturn(AiFeature.AUTHOR_INTENT_EXTRACTION);
+        service.getJob(REQUEST_ID, USER_ID);
+        verify(projectAccessGuard).requireOwner(PROJECT_ID, USER_ID);
+
+        given(job.getFeature()).willReturn(AiFeature.REVIEW_INTENT_COMPARISON);
+        service.getJob(REQUEST_ID, USER_ID);
+        verify(projectAccessGuard, org.mockito.Mockito.times(2))
+                .requireOwner(PROJECT_ID, USER_ID);
     }
 
     @Test
