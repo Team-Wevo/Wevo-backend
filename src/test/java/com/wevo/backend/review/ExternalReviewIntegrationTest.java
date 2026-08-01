@@ -676,8 +676,8 @@ class ExternalReviewIntegrationTest {
     }
 
     @Test
-    @DisplayName("summary 는 이해도와 무관하게 항상 선택이다 (정책서 §6.2 — 코멘트는 항상 선택)")
-    void summaryIsAlwaysOptional() throws Exception {
+    @DisplayName("이해됨·애매함은 summary 없이 제출하면 400(C001) 로 거절한다 (정책서 §6.2.3)")
+    void summaryIsRequiredForUnderstoodSignals() throws Exception {
         User owner = persistUser("owner-summary@wevo.com", "팀장");
         ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
         persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
@@ -685,19 +685,79 @@ class ExternalReviewIntegrationTest {
         String token = issueLink(section.getId(), owner);
 
         submitWithoutSummary(token, "CLEAR", "browser-clear")
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.understandingSignal").value("CLEAR"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
 
         submitWithoutSummary(token, "PARTIAL", "browser-partial")
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.understandingSignal").value("PARTIAL"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
 
+        // 공백만 보낸 우회도 같은 이유로 막는다.
+        submitWithSummary(token, "CLEAR", "browser-blank", "   ")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+
+        assertThat(reviewSubmissionRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("추가 코멘트는 선택 입력이라 없으면 null 로 저장되고, 넣으면 결과 조회에 노출된다")
+    void reviewerCommentIsOptionalAndExposedToOwner() throws Exception {
+        User owner = persistUser("owner-comment@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+
+        // 코멘트 미입력 — summary 만 있으면 제출은 정상 처리된다.
+        submitAsReviewer(token, "CLEAR", "browser-no-comment")
+                .andExpect(status().isCreated());
+        // 코멘트 입력
+        mockMvc.perform(post("/public/review-links/{token}/submissions", token)
+                        .header(REVIEWER_ID_HEADER, reviewerId("browser-with-comment"))
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "understandingSignal": "PARTIAL",
+                                  "summary": "핵심을 이해했어요.",
+                                  "reviewerComment": "2문단이 길어요."
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        em.flush();
+        em.clear();
+        assertThat(reviewSubmissionRepository.findAll())
+                .extracting(ReviewSubmission::getReviewerComment)
+                .containsExactlyInAnyOrder(null, "2문단이 길어요.");
+
+        mockMvc.perform(get("/api/project-sections/{id}/review-submissions", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[?(@.understandingSignal == 'PARTIAL')].reviewerComment")
+                        .value("2문단이 길어요."))
+                // 미입력 코멘트는 null 로 싣지 않고 키를 생략한다 (CLAUDE.md §5.4).
+                .andExpect(jsonPath("$.data.items[?(@.understandingSignal == 'CLEAR')].reviewerComment")
+                        .isEmpty());
+    }
+
+    @Test
+    @DisplayName("이해 어려움은 summary 없이 제출할 수 있고 비교는 NOT_AVAILABLE 로 남는다")
+    void summaryStaysOptionalForUnclearSignal() throws Exception {
+        User owner = persistUser("owner-unclear-summary@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+
+        // "이해하지 못했다"는 답 자체가 신호라 문장을 강제하지 않는다. 대신 대조할 이해가 없으므로
+        // 의도 vs 이해 비교(REV-04)는 성립하지 않는다.
         submitWithoutSummary(token, "UNCLEAR", "browser-unclear")
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.understandingSignal").value("UNCLEAR"));
 
         assertThat(comparisonRepository.findAll())
-                .hasSize(3)
+                .hasSize(1)
                 .allMatch(comparison -> comparison.getStatus()
                         == ReviewIntentComparisonStatus.NOT_AVAILABLE);
     }
@@ -776,7 +836,8 @@ class ExternalReviewIntegrationTest {
         mockMvc.perform(post("/public/review-links/{token}/submissions", token)
                         .header(REVIEWER_ID_HEADER, "not-a-uuid")
                         .contentType("application/json")
-                        .content("{ \"understandingSignal\": \"CLEAR\" }"))
+                        // 본문은 유효하게 둬서 검토자 키 형식만으로 거절되는지 본다.
+                        .content("{ \"understandingSignal\": \"CLEAR\", \"summary\": \"핵심을 이해했어요.\" }"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("C001"));
 
@@ -815,6 +876,15 @@ class ExternalReviewIntegrationTest {
                 .header(REVIEWER_ID_HEADER, reviewerId(reviewerLabel))
                 .contentType("application/json")
                 .content("{ \"understandingSignal\": \"%s\" }".formatted(signal)));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions submitWithSummary(
+            String token, String signal, String reviewerLabel, String summary) throws Exception {
+        return mockMvc.perform(post("/public/review-links/{token}/submissions", token)
+                .header(REVIEWER_ID_HEADER, reviewerId(reviewerLabel))
+                .contentType("application/json")
+                .content("{ \"understandingSignal\": \"%s\", \"summary\": \"%s\" }"
+                        .formatted(signal, summary)));
     }
 
     private org.springframework.test.web.servlet.ResultActions submitAsReviewer(

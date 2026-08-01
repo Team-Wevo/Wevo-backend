@@ -188,6 +188,7 @@ public class ReviewLinkService {
                 .understandingSignal(request.understandingSignal())
                 .reviewerName(request.reviewerName())
                 .summary(request.summary())
+                .reviewerComment(request.reviewerComment())
                 .build();
         try {
             reviewSubmissionRepository.saveAndFlush(submission);
