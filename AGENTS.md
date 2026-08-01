@@ -287,6 +287,7 @@ Content-Type: application/json
 | --- | --- |
 | `200 OK` | 정상 조회, 수정 성공 |
 | `201 Created` | 생성 성공 |
+| `202 Accepted` | 비동기 작업 요청 수락 (처리 완료 전이며 `requestId`로 상태·결과 조회) |
 | `204 No Content` | 삭제 또는 해제 성공 (본문 없음 — `ApiResponse` 래퍼 미적용) |
 | `400 Bad Request` | 잘못된 요청 (형식·필수값·타입 오류) |
 | `401 Unauthorized` | 인증 실패 |
@@ -295,6 +296,10 @@ Content-Type: application/json
 | `409 Conflict` | 리소스의 현재 상태·버전과 충돌 |
 | `422 Unprocessable Entity` | 저장 상태와 무관한 요청 내용의 의미적 오류 |
 | `500 Internal Server Error` | 서버 오류 |
+
+- `202 Accepted`는 요청 처리가 완료되지 않은 **비동기 작업 API에만** 사용합니다. 응답에는 작업을
+  조회할 `requestId`를 포함하고, 상태·결과 조회 API와 완료·실패 계약을 엔드포인트 명세에 함께
+  기록합니다.
 
 **409 vs 422 판단 기준** — 리뷰에서 자주 갈리는 지점이므로 기준을 고정합니다.
 

@@ -14,23 +14,44 @@ import com.wevo.backend.ai.dto.response.OpinionClusteringResponse.CurrentSetResp
 import com.wevo.backend.ai.dto.response.OpinionClusteringResponse.LatestJobResponse;
 import com.wevo.backend.ai.service.OpinionClusteringQueryService;
 import com.wevo.backend.ai.service.OpinionClusteringRequestService;
-import com.wevo.backend.global.security.AuthPrincipal;
+import com.wevo.backend.global.config.CorsProperties;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.global.security.AuthPrincipal;
+import com.wevo.backend.global.security.JwtProvider;
+import com.wevo.backend.global.security.RestAccessDeniedHandler;
+import com.wevo.backend.global.security.RestAuthenticationEntryPoint;
+import com.wevo.backend.global.security.SecurityConfig;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration;
+import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterAutoConfiguration;
+import org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
-@SpringBootTest
-@AutoConfigureMockMvc
+@WebMvcTest(OpinionClusteringController.class)
+@ImportAutoConfiguration({
+        SecurityAutoConfiguration.class,
+        ServletWebSecurityAutoConfiguration.class,
+        SecurityFilterAutoConfiguration.class
+})
+@Import({
+        SecurityConfig.class,
+        RestAuthenticationEntryPoint.class,
+        RestAccessDeniedHandler.class
+})
+@EnableConfigurationProperties(CorsProperties.class)
 class OpinionClusteringControllerWebMvcTest {
 
     private static final String URL = "/api/project-sections/10/opinion-clusters";
@@ -38,6 +59,7 @@ class OpinionClusteringControllerWebMvcTest {
     @Autowired private MockMvc mockMvc;
     @MockitoBean private OpinionClusteringRequestService requestService;
     @MockitoBean private OpinionClusteringQueryService queryService;
+    @MockitoBean private JwtProvider jwtProvider;
 
     @Test
     void requestReturnsAcceptedJobId() throws Exception {
@@ -113,7 +135,7 @@ class OpinionClusteringControllerWebMvcTest {
                 .andExpect(jsonPath("$.code").value("S001"));
     }
 
-    private org.springframework.test.web.servlet.request.RequestPostProcessor authenticatedUser() {
+    private RequestPostProcessor authenticatedUser() {
         return authentication(new UsernamePasswordAuthenticationToken(
                 new AuthPrincipal(7L), null, AuthorityUtils.NO_AUTHORITIES));
     }
