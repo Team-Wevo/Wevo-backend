@@ -18,6 +18,9 @@ public interface OpinionRepository extends JpaRepository<Opinion, Long> {
 
     boolean existsByProjectSection_IdAndStatus(Long projectSectionId, OpinionStatus status);
 
+    boolean existsByProjectSection_IdAndAuthor_IdAndStatus(
+            Long projectSectionId, Long authorId, OpinionStatus status);
+
     /**
      * 섹션의 특정 상태 의견 목록을 작성자와 함께 제출 시각 순으로 조회한다.
      *

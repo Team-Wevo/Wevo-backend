@@ -33,4 +33,10 @@ public class OpinionSynthesisQueryService {
                 .map(SubmittedOpinionView::from)
                 .toList();
     }
+
+    /** cluster 결과가 기존 의견 공개 gate를 우회하지 않도록 제출 이력을 확인한다. */
+    public boolean hasSubmittedOpinion(Long projectSectionId, Long userId) {
+        return opinionRepository.existsByProjectSection_IdAndAuthor_IdAndStatus(
+                projectSectionId, userId, OpinionStatus.SUBMITTED);
+    }
 }
