@@ -1,5 +1,6 @@
 package com.wevo.backend.export.service;
 
+import com.wevo.backend.export.dto.response.FinalOutputContentResponse;
 import com.wevo.backend.export.dto.response.FinalOutputResponse;
 import com.wevo.backend.export.dto.response.FinalOutputResponse.SectionOutput;
 import com.wevo.backend.global.exception.BusinessException;
@@ -20,7 +21,11 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>확정된 섹션의 <b>확정본</b>({@code confirmedVersion} 기준 본문)을 섹션 순서대로 이어 붙여
  * 하나의 결과물로 반환한다.
- * 복사·미리보기는 FE가 이 JSON으로 처리한다.
+ *
+ * <p>미리보기는 FE가 {@link #getFinalOutput} 의 구조화 JSON으로 처리하고, 클립보드 복사용
+ * <b>문자열 조립은 BE가 소유</b>한다({@link #getFormattedOutput})
+ * 이후 추가될 파일 다운로드와 포맷 정본이 FE·BE로 갈리지 않게 하기 위함이며,
+ * 조립 규칙 자체는 {@link FinalOutputFormatter} 가 소유한다.
  *
  * <p>섹션 데이터는 리포지토리를 직접 보지 않고 section 도메인이 공개한
  * {@link SectionConfirmationQueryService} 로만 조회한다. (CLAUDE.md §6)
@@ -32,11 +37,14 @@ public class FinalOutputService {
 
     private final ProjectAccessGuard projectAccessGuard;
     private final SectionConfirmationQueryService sectionConfirmationQueryService;
+    private final FinalOutputFormatter finalOutputFormatter;
 
     public FinalOutputService(ProjectAccessGuard projectAccessGuard,
-                              SectionConfirmationQueryService sectionConfirmationQueryService) {
+                              SectionConfirmationQueryService sectionConfirmationQueryService,
+                              FinalOutputFormatter finalOutputFormatter) {
         this.projectAccessGuard = projectAccessGuard;
         this.sectionConfirmationQueryService = sectionConfirmationQueryService;
+        this.finalOutputFormatter = finalOutputFormatter;
     }
 
     /**
@@ -58,6 +66,34 @@ public class FinalOutputService {
         }
 
         return FinalOutputResponse.ready(project, confirmedContents(access, summary.totalCount()));
+    }
+
+    /**
+     * 완성본을 클립보드 복사용 문자열로 조립해 반환한다. (프로젝트 멤버 전용)
+     *
+     * <p><b>조회 API 와 같은 확정 기준을 따른다</b> — 모든 섹션이 {@code CONFIRMED} 일 때만 조립하고,
+     * 하나라도 미확정이면 {@code 409} 로 거절한다. 일부만 담긴 문자열이 완성본으로 오인돼 외부에
+     * 공유되는 것을 막기 위함이며, 부분 반환을 하지 않는 {@link #getFinalOutput} 의 결정
+     * (정책서 §2.3)을 그대로 상속한다.
+     *
+     * <p>미확정을 {@code CONFLICT}({@code C003})로 두는 이유: FE 는 {@code final-output} 조회의
+     * {@code ready}·진행도로 이미 복사 버튼 활성 여부를 판단할 수 있어, 이 응답의 원인을 따로
+     * 분기할 필요가 없다. 전용 코드를 만들지 않는다. (CLAUDE.md §5.8)
+     *
+     * @throws BusinessException 멤버가 아니면 {@link ErrorCode#PROJECT_NOT_FOUND}(존재 숨김),
+     *                           미확정 섹션이 있으면 {@link ErrorCode#CONFLICT}
+     */
+    public FinalOutputContentResponse getFormattedOutput(
+            Long projectId, Long userId, FinalOutputFormat format) {
+        // 조립 대상은 조회 API 가 내주는 것과 같은 완성본이므로 그 결과를 그대로 받아 문자열로 만든다.
+        // 권한 검사·확정 판정·정합성 검사를 여기서 다시 쓰지 않아야, 두 API 의 규칙이 갈릴 수 없다.
+        FinalOutputResponse output = getFinalOutput(projectId, userId);
+        if (!output.ready()) {
+            throw new BusinessException(ErrorCode.CONFLICT);
+        }
+
+        return new FinalOutputContentResponse(
+                finalOutputFormatter.format(output.title(), output.sections(), format));
     }
 
     /**
