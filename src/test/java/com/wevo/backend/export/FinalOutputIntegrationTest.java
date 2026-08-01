@@ -239,10 +239,120 @@ class FinalOutputIntegrationTest {
                 .andExpect(jsonPath("$.code").value("P001"));
     }
 
+    @Test
+    @DisplayName("전 섹션 확정 시 일반 텍스트 복사본을 조립해 반환한다")
+    void copiesAsPlainText() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        ProjectSection second = persistSection(project, "해결 방안", 2, ProjectSectionStatus.CONFIRMED, 1);
+        ProjectSection first = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 1);
+        persistDraft(second, "해결 방안 확정본", 1, owner);
+        persistDraft(first, "문제 정의 확정본", 1, owner);
+        flushAndClear();
+
+        getCopy(project.getId(), owner, "plain-text")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data.content").value("""
+                        위보 기획
+
+                        01. 문제 정의
+
+                        문제 정의 확정본
+
+                        02. 해결 방안
+
+                        해결 방안 확정본"""));
+    }
+
+    @Test
+    @DisplayName("전 섹션 확정 시 마크다운 복사본을 조립해 반환한다")
+    void copiesAsMarkdown() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        ProjectSection first = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 1);
+        persistDraft(first, "문제 정의 확정본", 1, owner);
+        flushAndClear();
+
+        getCopy(project.getId(), owner, "markdown")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content").value("""
+                        # 위보 기획
+
+                        ## 01. 문제 정의
+
+                        문제 정의 확정본"""));
+    }
+
+    @Test
+    @DisplayName("미확정 섹션이 있으면 복사본을 만들지 않고 409(C003) 로 거절한다")
+    void partiallyConfirmedIsRejectedForCopy() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        ProjectSection confirmed = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 1);
+        persistSection(project, "해결 방안", 2, ProjectSectionStatus.REVIEWING, 0);
+        persistDraft(confirmed, "문제 정의 확정본", 1, owner);
+        flushAndClear();
+
+        // 조회 API 와 같은 기준 — 일부만 담긴 문자열이 완성본으로 오인돼 공유되는 것을 막는다.
+        for (String format : new String[]{"plain-text", "markdown"}) {
+            getCopy(project.getId(), owner, format)
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.success").value(false))
+                    .andExpect(jsonPath("$.code").value("C003"));
+        }
+    }
+
+    @Test
+    @DisplayName("팀원(MEMBER)도 복사본을 조회할 수 있다")
+    void memberCanCopy() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        User member = persistUser("member@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistMember(project, member, ProjectMemberRole.MEMBER);
+
+        ProjectSection first = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 1);
+        persistDraft(first, "문제 정의 확정본", 1, owner);
+        flushAndClear();
+
+        getCopy(project.getId(), member, "plain-text")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("프로젝트 멤버가 아니면 복사도 404(P001) — 프로젝트 존재를 숨긴다")
+    void nonMemberCannotCopy() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        User stranger = persistUser("stranger@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        ProjectSection first = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 1);
+        persistDraft(first, "문제 정의 확정본", 1, owner);
+        flushAndClear();
+
+        getCopy(project.getId(), stranger, "markdown")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("P001"));
+    }
+
     // --- 헬퍼 ---
 
     private ResultActions getFinalOutput(Long projectId, User user) throws Exception {
         return mockMvc.perform(get("/api/projects/{id}/final-output", projectId)
+                .with(authentication(authOf(user))));
+    }
+
+    private ResultActions getCopy(Long projectId, User user, String format) throws Exception {
+        return mockMvc.perform(get("/api/projects/{id}/final-output/{format}", projectId, format)
                 .with(authentication(authOf(user))));
     }
 
