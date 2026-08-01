@@ -19,7 +19,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 검토 링크를 통해 제출된 검토 결과. 검토자가 이해한 내용(summary)과 이해도 신호를 담는다.
+ * 검토 링크를 통해 제출된 검토 결과. 검토자가 이해한 내용(summary)과 이해도 신호,
+ * 선택 입력인 추가 코멘트(reviewerComment)를 담는다.
  * (공개 제출이므로 reviewer_name 문자열만 보관하고 User 와 직접 연결하지 않는다.)
  *
  * <p><b>브라우저당 1회</b> — 브라우저에 저장된 익명 검토자 키({@code anonymousReviewerId})와 링크의 조합을
@@ -54,19 +55,31 @@ public class ReviewSubmission extends BaseTimeEntity {
     @Column(name = "understanding_signal", length = 20, nullable = false)
     private UnderstandingSignal understandingSignal;
 
+    /** 이해한 핵심 한 문장. CLEAR/PARTIAL 은 제출 시 필수, UNCLEAR 만 비어 있을 수 있다. (정책서 §6.2.3) */
     @Column(columnDefinition = "TEXT")
     private String summary;
+
+    /**
+     * 검토자가 덧붙인 추가 코멘트. 이해도와 무관하게 <b>항상 선택</b>이라 비어 있을 수 있다. (정책서 §6.2.3)
+     *
+     * <p>{@link #summary} 와 별개 입력이다 — 의도 vs 이해 비교는 {@code summary} 만 사용하므로
+     * 이 코멘트는 AI 에 전송되지 않는다. (CLAUDE.md §7 AI 전송 최소화)
+     */
+    @Column(name = "reviewer_comment", columnDefinition = "TEXT")
+    private String reviewerComment;
 
     @Column(name = "reviewer_name", length = 100)
     private String reviewerName;
 
     @Builder
     private ReviewSubmission(ReviewLink reviewLink, String anonymousReviewerId,
-                            UnderstandingSignal understandingSignal, String summary, String reviewerName) {
+                            UnderstandingSignal understandingSignal, String summary,
+                            String reviewerComment, String reviewerName) {
         this.reviewLink = reviewLink;
         this.anonymousReviewerId = anonymousReviewerId;
         this.understandingSignal = understandingSignal;
         this.summary = summary;
+        this.reviewerComment = reviewerComment;
         this.reviewerName = reviewerName;
     }
 }
