@@ -123,7 +123,7 @@ must be implemented in a new versioned migration rather than by editing V1.
 
 ## Project flow review history
 
-`V13__add_project_flow_review.sql` adds the project-scoped AI feature and immutable result history.
+`V14__add_project_flow_review.sql` adds the project-scoped AI feature and immutable result history.
 Each result stores the canonical input hash and checked section/version/content hashes. Findings
 reference real project sections through foreign keys, while application semantic validation also
 requires every excerpt to occur in the corresponding confirmed snapshot. No current/outdated flag

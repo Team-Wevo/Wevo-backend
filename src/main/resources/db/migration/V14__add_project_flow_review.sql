@@ -1,3 +1,4 @@
+-- V14 follows the reviewer-comment V13 merged from dev.
 ALTER TABLE ai_jobs DROP CONSTRAINT chk_ai_jobs_feature;
 ALTER TABLE ai_jobs ADD CONSTRAINT chk_ai_jobs_feature CHECK (feature IN (
     'ISSUE_DETECTION', 'OPINION_SYNTHESIS', 'DRAFT_GENERATION', 'DRAFT_REVIEW',
