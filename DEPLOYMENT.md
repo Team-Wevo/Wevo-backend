@@ -50,6 +50,37 @@ git log -1 --oneline
 운영 이미지에는 `latest`와 함께 커밋 SHA 기반의 변경 불가 태그를 부여하는 것을 권장합니다.
 롤백 대상이 명확해질 때까지 이전 이미지를 삭제하지 않습니다.
 
+## GitHub Actions 자동 배포
+
+`dev` 브랜치에 변경이 반영되면 `.github/workflows/deploy.yml`이 다음 순서로 운영 배포를 수행합니다.
+
+1. Gradle 테스트 실행
+2. GitHub OIDC로 단기 AWS 자격 증명 발급
+3. 커밋 SHA를 태그로 사용해 Docker 이미지 빌드 및 ECR Push
+4. Systems Manager Run Command로 EC2의 `/opt/wevo` 배포 실행
+5. 컨테이너 내부 Actuator 응답이 `UP`인지 확인
+
+GitHub 저장소의 `Settings > Secrets and variables > Actions > Variables`에는 다음 Repository variable이
+등록되어 있어야 합니다. 이 값들은 비밀번호가 아니며 운영 비밀 값은 계속 EC2의 `.env.prod`에서만
+관리합니다.
+
+| 변수 | 용도 |
+| --- | --- |
+| `AWS_ROLE_ARN` | GitHub OIDC가 맡을 배포 역할 ARN |
+| `AWS_REGION` | ECR, EC2, SSM 리전 |
+| `ECR_REPOSITORY` | 이미지를 Push할 ECR 저장소 이름 |
+| `EC2_INSTANCE_ID` | SSM 배포 대상 EC2 인스턴스 |
+
+IAM 신뢰 정책은 `Team-Wevo/Wevo-backend` 저장소의 `dev` 브랜치로 제한합니다. 배포 역할에는 지정된
+ECR 저장소 Push와 지정된 EC2에 대한 SSM 명령 실행·조회 권한만 부여하며, 정적 AWS Access Key를
+GitHub Secrets에 등록하지 않습니다. EC2 인스턴스 역할에는 SSM Agent 통신과 ECR Pull 권한이
+필요합니다.
+
+수동 실행은 Actions의 `Production CD` 워크플로에서 할 수 있지만, OIDC 신뢰 조건과 동일하게 `dev`
+브랜치에서만 배포 작업이 실행됩니다. 실패 시 해당 Actions 실행의 `Deploy through Systems Manager`
+단계에서 SSM 상태, 컨테이너 상태, 앱 최근 로그를 확인합니다. 자동 롤백은 하지 않으며 아래 수동 롤백
+절차를 사용합니다.
+
 ## EC2 수동 배포
 
 Session Manager로 EC2에 접속한 뒤 실행합니다.
