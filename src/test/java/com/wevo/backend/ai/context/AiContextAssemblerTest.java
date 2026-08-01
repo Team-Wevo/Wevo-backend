@@ -128,6 +128,31 @@ class AiContextAssemblerTest {
     }
 
     @Test
+    void clusteringSnapshotIsRepositoryOrderIndependentAndExcludesIdentity() {
+        AssembledAiContext<OpinionClusteringContext> first =
+                assembler.assembleOpinionClustering(access, SECTION_ID);
+
+        when(opinionQueryService.findSubmittedOpinions(access, SECTION_ID))
+                .thenReturn(List.of(
+                        opinionsInRepositoryOrder().get(1),
+                        opinionsInRepositoryOrder().get(2),
+                        opinionsInRepositoryOrder().get(0)
+                ));
+        AssembledAiContext<OpinionClusteringContext> second =
+                assembler.assembleOpinionClustering(access, SECTION_ID);
+
+        assertThat(first.context().opinions())
+                .extracting(AiOpinionContext::opinionId)
+                .containsExactly(11L, 12L, 13L);
+        assertThat(second.snapshot().inputSnapshotHash())
+                .isEqualTo(first.snapshot().inputSnapshotHash());
+        String canonical = new String(first.snapshot().canonicalBytes(), StandardCharsets.UTF_8);
+        assertThat(canonical)
+                .contains("problem-definition", "member-1", "member-2")
+                .doesNotContain("9001", "9002", "팀 리더", "아이디어");
+    }
+
+    @Test
     void synthesisSnapshotChangesForSubmittedContentGapAnswerAndGateGeneration() {
         String baseline = assembler.assembleOpinionSynthesis(access, SECTION_ID)
                 .snapshot().inputSnapshotHash();

@@ -6,7 +6,8 @@ public enum AiRequestFeature {
     DRAFT_GENERATION,
     PRECHECK,
     AUTHOR_INTENT_EXTRACTION,
-    REVIEW_INTENT_COMPARISON;
+    REVIEW_INTENT_COMPARISON,
+    OPINION_CLUSTERING;
 
     public static AiRequestFeature from(AiFeature feature) {
         return switch (feature) {
@@ -15,6 +16,7 @@ public enum AiRequestFeature {
             case DRAFT_REVIEW -> PRECHECK;
             case AUTHOR_INTENT_EXTRACTION -> AUTHOR_INTENT_EXTRACTION;
             case REVIEW_INTENT_COMPARISON -> REVIEW_INTENT_COMPARISON;
+            case OPINION_CLUSTERING -> OPINION_CLUSTERING;
         };
     }
 }

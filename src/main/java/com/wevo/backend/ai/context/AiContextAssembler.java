@@ -102,6 +102,25 @@ public class AiContextAssembler {
         });
     }
 
+    public AssembledAiContext<OpinionClusteringContext> assembleOpinionClustering(
+            VerifiedProjectAccess access,
+            Long sectionId
+    ) {
+        requireAssemblyTarget(access, sectionId);
+        return safely(() -> {
+            CommonInputs common = commonInputs(access, sectionId);
+            OpinionClusteringContext context = new OpinionClusteringContext(
+                    common.projectIdentity().projectId(),
+                    common.section().sectionId(),
+                    common.section().title(),
+                    common.section().opinionGateGeneration(),
+                    common.section().template(),
+                    opinions(access, sectionId)
+            );
+            return assembled(context);
+        });
+    }
+
     public AssembledAiContext<DraftGenerationContext> assembleDraftGeneration(
             VerifiedProjectAccess access,
             Long sectionId
