@@ -14,14 +14,18 @@ import com.wevo.backend.review.dto.response.ReviewSubmissionResponse;
 import com.wevo.backend.review.repository.ReviewLinkRepository;
 import com.wevo.backend.review.repository.ReviewSubmissionRepository;
 import com.wevo.backend.section.domain.ProjectSection;
+import com.wevo.backend.section.domain.SectionAuthorIntent;
 import com.wevo.backend.section.domain.SectionDraft;
 import com.wevo.backend.section.repository.SectionDraftRepository;
+import com.wevo.backend.section.service.SectionAuthorIntentQueryService;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.repository.UserRepository;
 import java.util.List;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 외부 검토 링크(보조 검토) 관련 로직. (제품 정책서 §1.3, §6.2)
@@ -46,25 +50,33 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class ReviewLinkService {
 
+    private static final Logger log = LoggerFactory.getLogger(ReviewLinkService.class);
+
     private final SectionAccessGuard sectionAccessGuard;
     private final SectionDraftRepository sectionDraftRepository;
     private final ReviewLinkRepository reviewLinkRepository;
     private final ReviewSubmissionRepository reviewSubmissionRepository;
     private final UserRepository userRepository;
     private final ReviewTokenHasher tokenHasher;
+    private final SectionAuthorIntentQueryService authorIntentQueryService;
+    private final ReviewIntentComparisonCoordinator comparisonCoordinator;
 
     public ReviewLinkService(SectionAccessGuard sectionAccessGuard,
                              SectionDraftRepository sectionDraftRepository,
                              ReviewLinkRepository reviewLinkRepository,
                              ReviewSubmissionRepository reviewSubmissionRepository,
                              UserRepository userRepository,
-                             ReviewTokenHasher tokenHasher) {
+                             ReviewTokenHasher tokenHasher,
+                             SectionAuthorIntentQueryService authorIntentQueryService,
+                             ReviewIntentComparisonCoordinator comparisonCoordinator) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.sectionDraftRepository = sectionDraftRepository;
         this.reviewLinkRepository = reviewLinkRepository;
         this.reviewSubmissionRepository = reviewSubmissionRepository;
         this.userRepository = userRepository;
         this.tokenHasher = tokenHasher;
+        this.authorIntentQueryService = authorIntentQueryService;
+        this.comparisonCoordinator = comparisonCoordinator;
     }
 
     /**
@@ -90,6 +102,10 @@ public class ReviewLinkService {
         SectionDraft latestDraft = sectionDraftRepository
                 .findTopByProjectSection_IdOrderByVersionDesc(section.getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.REVIEW_LINK_DRAFT_REQUIRED));
+        SectionAuthorIntent authorIntent = authorIntentQueryService
+                .findConfirmed(section.getId(), latestDraft.getVersion())
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.REVIEW_LINK_AUTHOR_INTENT_REQUIRED));
 
         // 대체 발급 — 기존 ACTIVE 링크를 닫는다 (섹션 행 잠금을 잡고 있어 발급·만료와 직렬화됨)
         List<ReviewLink> previousActive = reviewLinkRepository
@@ -110,6 +126,8 @@ public class ReviewLinkService {
                 .sectionTitleSnapshot(section.getTitle())
                 .contentSnapshot(latestDraft.getContent())
                 .contentVersion(latestDraft.getVersion())
+                .authorIntentSnapshot(authorIntent.getConfirmedIntent())
+                .authorIntent(authorIntent)
                 .status(ReviewLinkStatus.ACTIVE)
                 .build();
         try {
@@ -169,6 +187,15 @@ public class ReviewLinkService {
             reviewSubmissionRepository.saveAndFlush(submission);
         } catch (DataIntegrityViolationException e) {
             throw new BusinessException(ErrorCode.REVIEW_ALREADY_SUBMITTED);
+        }
+
+        try {
+            comparisonCoordinator.prepare(submission);
+        } catch (RuntimeException exception) {
+            // 비교 준비 실패가 정상 저장된 공개 제출을 롤백하지 않도록 마지막 방어선으로 격리한다.
+            // 원문·summary가 예외 메시지에 섞일 수 있으므로 타입만 기록한다.
+            log.warn("검토 의도 비교 준비 실패 submissionId={}, exceptionType={}",
+                    submission.getId(), exception.getClass().getSimpleName());
         }
 
         return ReviewSubmissionResponse.from(submission);

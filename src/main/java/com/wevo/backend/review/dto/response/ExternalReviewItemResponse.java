@@ -1,6 +1,7 @@
 package com.wevo.backend.review.dto.response;
 
 import com.wevo.backend.review.domain.ReviewSubmission;
+import com.wevo.backend.review.domain.ReviewIntentComparison;
 import com.wevo.backend.review.domain.UnderstandingSignal;
 import java.time.LocalDateTime;
 
@@ -20,16 +21,23 @@ public record ExternalReviewItemResponse(
         String reviewerName,
         String summary,
         Integer contentVersion,
-        LocalDateTime submittedAt
+        LocalDateTime submittedAt,
+        String authorIntent,
+        ReviewIntentComparisonResponse comparison
 ) {
 
-    public static ExternalReviewItemResponse from(ReviewSubmission submission) {
+    public static ExternalReviewItemResponse from(
+            ReviewSubmission submission,
+            ReviewIntentComparison comparison
+    ) {
         return new ExternalReviewItemResponse(
                 submission.getId(),
                 submission.getUnderstandingSignal(),
                 submission.getReviewerName(),
                 submission.getSummary(),
                 submission.getReviewLink().getContentVersion(),
-                submission.getCreatedAt());
+                submission.getCreatedAt(),
+                submission.getReviewLink().getAuthorIntentSnapshot(),
+                ReviewIntentComparisonResponse.from(comparison));
     }
 }

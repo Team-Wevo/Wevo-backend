@@ -60,6 +60,12 @@ input snapshot, and ordered opinion/decision/GAP/prerequisite evidence.
 its source job and checked draft, keeps ordered findings and direct-prerequisite version snapshots,
 and records one-time full-rewrite application/rebinding metadata.
 
+`V11__add_author_intent_review_comparison.sql` adds version-bound author intent history, immutable
+author-intent snapshots on new external review links, and one comparison lifecycle per public
+submission. Existing links deliberately keep nullable intent snapshots and remain historical;
+the migration never invents or backfills an author intent. It also extends the AI job/usage feature
+constraints for extraction and comparison.
+
 ## Existing local databases
 
 V1 is an initial migration for an **empty PostgreSQL database**. A database previously

@@ -1,12 +1,14 @@
 package com.wevo.backend.review.dto.response;
 
 import com.wevo.backend.review.domain.ReviewSubmission;
+import com.wevo.backend.review.domain.ReviewIntentComparison;
 import com.wevo.backend.review.domain.UnderstandingSignal;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
+import java.util.function.Function;
 
 /**
  * 섹션의 외부 검토 결과 집계 + 개별 목록. (팀장 참고용)
@@ -61,9 +63,17 @@ public record ExternalReviewResultResponse(
         }
     }
 
-    public static ExternalReviewResultResponse from(List<ReviewSubmission> submissions) {
+    public static ExternalReviewResultResponse from(
+            List<ReviewSubmission> submissions,
+            List<ReviewIntentComparison> comparisons
+    ) {
+        Map<Long, ReviewIntentComparison> comparisonBySubmission = comparisons.stream()
+                .collect(Collectors.toMap(
+                        comparison -> comparison.getReviewSubmission().getId(),
+                        Function.identity()));
         List<ExternalReviewItemResponse> items = submissions.stream()
-                .map(ExternalReviewItemResponse::from)
+                .map(submission -> ExternalReviewItemResponse.from(
+                        submission, comparisonBySubmission.get(submission.getId())))
                 .toList();
 
         // 검토한 버전별로 묶어 최신 버전부터 집계한다. (TreeMap 내림차순)
