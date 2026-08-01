@@ -7,7 +7,6 @@ import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.dto.model.ProjectFlowReviewOutput;
 import com.wevo.backend.ai.dto.model.ProjectFlowFindingOutput;
 import com.wevo.backend.ai.prompt.ProjectFlowReviewPromptFactory;
-import com.wevo.backend.ai.client.StructuredOutputSemanticException;
 import com.wevo.backend.ai.client.StructuredOutputValidationContext;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -40,6 +39,11 @@ public class ProjectFlowReviewer {
         if (job == null || context == null) {
             throw new IllegalArgumentException("AI 작업과 flow review context는 필수입니다.");
         }
+        int sectionCount = context.sections().size();
+        if (sectionCount < ProjectFlowReviewContract.MIN_SECTION_COUNT
+                || sectionCount > ProjectFlowReviewContract.MAX_SECTION_COUNT) {
+            throw new IllegalStateException("전체 흐름 점검 section 수는 2개 이상 9개 이하여야 합니다.");
+        }
         ProjectFlowReviewPromptContext full = ProjectFlowReviewPromptContext.full(context);
         if (budgetEstimator.estimate(AiFeature.PROJECT_FLOW_REVIEW,
                 promptFactory.tokenBudgetInput(full)).withinBudget()) {
@@ -49,9 +53,6 @@ public class ProjectFlowReviewer {
     }
 
     private ProjectFlowReviewOutput pairwise(AiJob job, ProjectFlowReviewContext context) {
-        if (context.sections().size() < 2) {
-            throw new StructuredOutputSemanticException();
-        }
         Map<String, ProjectFlowFindingOutput> merged = new LinkedHashMap<>();
         for (int left = 0; left < context.sections().size() - 1; left++) {
             for (int right = left + 1; right < context.sections().size(); right++) {

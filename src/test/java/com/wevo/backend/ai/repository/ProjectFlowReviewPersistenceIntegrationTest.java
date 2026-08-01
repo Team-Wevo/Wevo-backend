@@ -99,6 +99,27 @@ class ProjectFlowReviewPersistenceIntegrationTest {
                 """, findingId, Long.MAX_VALUE)).isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    @Test
+    void migrationValidatesFeatureChecksAndIndexesSectionReferences() {
+        assertThat(jdbc.queryForList("""
+                SELECT conname
+                FROM pg_constraint
+                WHERE conname IN ('chk_ai_jobs_feature', 'chk_ai_usage_logs_feature')
+                  AND convalidated
+                ORDER BY conname
+                """, String.class)).containsExactly(
+                "chk_ai_jobs_feature", "chk_ai_usage_logs_feature");
+        assertThat(jdbc.queryForList("""
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND indexname IN ('idx_project_flow_inputs_section',
+                                    'idx_project_flow_finding_sections_section')
+                ORDER BY indexname
+                """, String.class)).containsExactly(
+                "idx_project_flow_finding_sections_section", "idx_project_flow_inputs_section");
+    }
+
     private ProjectFlowReviewContext context() {
         return new ProjectFlowReviewContext(new AiProjectIdentity(project.getId(), "흐름 점검", OutputType.PROPOSAL),
                 new AiProjectBrief(null, null, "고객"), 2, 2,

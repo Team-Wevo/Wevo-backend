@@ -1,6 +1,7 @@
 package com.wevo.backend.ai.context;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
@@ -75,6 +76,19 @@ class ProjectFlowReviewContextAssemblerTest {
         String dependencyChanged = assembler.assemble(access).snapshot().inputSnapshotHash();
 
         assertThat(List.of(baseline, versionChanged, dependencyChanged)).doesNotHaveDuplicates();
+    }
+
+    @Test
+    void templateLessConfirmedSectionIsRejectedAsInvalidDefaultSection() {
+        given(confirmationQuery.findConfirmedContents(access)).willReturn(List.of(
+                new ConfirmedSectionContent(10L, null, 1, 1,
+                        "문제", null, null, "문제 본문"),
+                second()));
+
+        assertThatThrownBy(() -> assembler.assemble(access))
+                .isInstanceOf(AiContextAssemblyException.class)
+                .hasRootCauseInstanceOf(IllegalStateException.class)
+                .hasRootCauseMessage("흐름 점검 필수 문자열이 누락되었습니다.");
     }
 
     private ConfirmedSectionContent first(int version) {

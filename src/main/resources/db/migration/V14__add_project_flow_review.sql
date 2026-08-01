@@ -4,14 +4,14 @@ ALTER TABLE ai_jobs ADD CONSTRAINT chk_ai_jobs_feature CHECK (feature IN (
     'ISSUE_DETECTION', 'OPINION_SYNTHESIS', 'DRAFT_GENERATION', 'DRAFT_REVIEW',
     'AUTHOR_INTENT_EXTRACTION', 'REVIEW_INTENT_COMPARISON', 'OPINION_CLUSTERING',
     'PROJECT_FLOW_REVIEW'
-));
+)) NOT VALID;
 
 ALTER TABLE ai_usage_logs DROP CONSTRAINT chk_ai_usage_logs_feature;
 ALTER TABLE ai_usage_logs ADD CONSTRAINT chk_ai_usage_logs_feature CHECK (feature IN (
     'ISSUE_DETECTION', 'OPINION_SYNTHESIS', 'DRAFT_GENERATION', 'DRAFT_REVIEW',
     'AUTHOR_INTENT_EXTRACTION', 'REVIEW_INTENT_COMPARISON', 'OPINION_CLUSTERING',
     'PROJECT_FLOW_REVIEW'
-));
+)) NOT VALID;
 
 CREATE TABLE project_flow_checks (
     id BIGSERIAL PRIMARY KEY,
@@ -55,6 +55,8 @@ CREATE TABLE project_flow_check_inputs (
     CONSTRAINT chk_project_flow_inputs_text CHECK (
         char_length(btrim(section_key)) > 0 AND char_length(btrim(section_title)) > 0)
 );
+CREATE INDEX idx_project_flow_inputs_section
+    ON project_flow_check_inputs (project_section_id);
 
 CREATE TABLE project_flow_check_findings (
     id BIGSERIAL PRIMARY KEY,
@@ -91,3 +93,5 @@ CREATE TABLE project_flow_finding_sections (
     CONSTRAINT chk_project_flow_finding_sections_values CHECK (
         confirmed_version > 0 AND sort_order > 0 AND char_length(btrim(target_excerpt)) > 0)
 );
+CREATE INDEX idx_project_flow_finding_sections_section
+    ON project_flow_finding_sections (project_section_id);

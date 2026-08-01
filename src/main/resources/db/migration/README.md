@@ -127,4 +127,7 @@ must be implemented in a new versioned migration rather than by editing V1.
 Each result stores the canonical input hash and checked section/version/content hashes. Findings
 reference real project sections through foreign keys, while application semantic validation also
 requires every excerpt to occur in the corresponding confirmed snapshot. No current/outdated flag
-is stored as a source of truth; freshness is derived from the current canonical snapshot.
+is stored as a source of truth; freshness is derived from the current canonical snapshot. The
+expanded AI feature checks are added as `NOT VALID`; `V15__validate_project_flow_review_feature_constraints.sql`
+validates existing AI history rows after V14 commits so the table scan does not retain V14's
+stronger lock. Dedicated section-reference indexes support foreign-key checks from `project_sections`.

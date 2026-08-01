@@ -1,10 +1,12 @@
 package com.wevo.backend.ai.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.wevo.backend.ai.config.AiProperties;
@@ -65,6 +67,31 @@ class ProjectFlowReviewerTest {
 
         assertThat(result.findings()).isEmpty();
         verify(invocation, times(36)).invokeStructured(any(), any(), any());
+    }
+
+    @Test
+    void rejectsSectionCountOutsideProductContractBeforeProviderInvocation() {
+        AiProperties properties = new AiProperties("none", new AiProperties.ModelOptions(
+                "test-model", Duration.ofSeconds(1), 96_000, 4_096, 120_000, 8_000,
+                AiProperties.ModelOptions.CONSERVATIVE_CHAR_V1,
+                AiProperties.ModelOptions.REJECT_OVERSIZED_INPUT_V1,
+                0, Duration.ZERO, Duration.ZERO), Map.of(), null);
+        var validator = new ProjectFlowReviewOutputValidator();
+        var factory = new ProjectFlowReviewPromptFactory(
+                new PromptRegistry(new PromptResourceLoader()), new PromptRenderer(),
+                new AiInputSnapshotHasher(), new ProjectFlowReviewOutputDefinition(validator));
+        AiInvocationService invocation = mock(AiInvocationService.class);
+        var reviewer = new ProjectFlowReviewer(new AiTokenBudgetEstimator(properties), factory,
+                invocation, validator);
+        AiJob job = mock(AiJob.class);
+
+        assertThatThrownBy(() -> reviewer.review(job, context(1, 10)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("전체 흐름 점검 section 수는 2개 이상 9개 이하여야 합니다.");
+        assertThatThrownBy(() -> reviewer.review(job, context(10, 10)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("전체 흐름 점검 section 수는 2개 이상 9개 이하여야 합니다.");
+        verifyNoInteractions(invocation);
     }
 
     private ProjectFlowReviewContext context(int count, int contentLength) {

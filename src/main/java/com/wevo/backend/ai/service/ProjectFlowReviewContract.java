@@ -5,6 +5,8 @@ public final class ProjectFlowReviewContract {
     public static final String SOURCE_VERSION = "project-flow-review-source:v1";
     public static final String PROMPT_VERSION = "project-flow-review:v1";
     public static final String SCHEMA_VERSION = "project-flow-review-output:v1";
+    public static final int MIN_SECTION_COUNT = 2;
+    public static final int MAX_SECTION_COUNT = 9;
     public static final int MAX_FINDING_COUNT = 50;
     public static final int MAX_EXCERPT_LENGTH = 500;
     public static final int MAX_DESCRIPTION_LENGTH = 1000;

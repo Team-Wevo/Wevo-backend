@@ -63,15 +63,18 @@ public class ProjectFlowReviewContextAssembler {
             List<ProjectFlowReviewSectionContext> sections = new ArrayList<>();
             for (ConfirmedSectionContent item : raw) {
                 if (item == null || item.sectionId() == null || item.confirmedVersion() == null
-                        || item.confirmedVersion() <= 0 || item.order() == null || item.order() <= 0
-                        || !ids.add(item.sectionId()) || !keys.add(item.templateKey())) {
+                        || item.confirmedVersion() <= 0 || item.order() == null || item.order() <= 0) {
                     throw new IllegalStateException("확정 section 식별 데이터가 유효하지 않습니다.");
                 }
-                idByKey.put(item.templateKey(), item.sectionId());
+                String templateKey = required(item.templateKey());
+                if (!ids.add(item.sectionId()) || !keys.add(templateKey)) {
+                    throw new IllegalStateException("확정 section 식별 데이터가 유효하지 않습니다.");
+                }
+                idByKey.put(templateKey, item.sectionId());
                 sections.add(new ProjectFlowReviewSectionContext(
-                        item.sectionId(), required(item.templateKey()), item.order(),
+                        item.sectionId(), templateKey, item.order(),
                         item.confirmedVersion(), required(item.title()),
-                        new AiTemplateContext(required(item.templateKey()),
+                        new AiTemplateContext(templateKey,
                                 optional(item.templateDescription()), optional(item.templateGuide())),
                         required(item.content())));
             }
