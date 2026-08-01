@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface InviteLinkRepository extends JpaRepository<InviteLink, Long> {
@@ -25,4 +26,12 @@ public interface InviteLinkRepository extends JpaRepository<InviteLink, Long> {
     @Query("SELECT i FROM InviteLink i JOIN FETCH i.project "
             + "WHERE i.token = :token AND i.isActive = true")
     Optional<InviteLink> findActiveWithProjectByToken(@Param("token") String token);
+
+    /**
+     * 프로젝트의 활성 초대 링크를 모두 조회한다. (보관 처리 시 일괄 비활성화 — §3.2.9)
+     *
+     * <p>정책상 활성 링크는 프로젝트당 1개지만, 동시 발급 경합으로 중복 저장된 행이 남아 있을 수
+     * 있어 목록으로 받아 전부 끈다 — 하나만 끄면 남은 링크로 합류가 계속 가능하다.
+     */
+    List<InviteLink> findAllByProjectIdAndIsActiveTrue(Long projectId);
 }

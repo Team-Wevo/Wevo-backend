@@ -4,6 +4,7 @@ import com.wevo.backend.global.common.BaseTimeEntity;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.section.domain.ProjectSection;
+import com.wevo.backend.section.domain.SectionAuthorIntent;
 import com.wevo.backend.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -43,7 +44,7 @@ import lombok.NoArgsConstructor;
  *       종료 사유({@code OUTDATED} = 본문 수정, {@code CLOSED} = 종료)가 나중 호출에 덮여
  *       외부 검토자 안내 문구가 뒤바뀌는 일을 막기 위함이다.
  *       수동 종료({@code close()})는 {@code ACTIVE} 링크에서만 성공하고, 이미 끝난 링크는
- *       사유별로 거절한다({@code CLOSED} → R010, {@code OUTDATED} → R011).</li>
+ *       사유별로 거절한다({@code CLOSED} → R011, {@code OUTDATED} → R012).</li>
  * </ul>
  */
 @Entity
@@ -88,6 +89,15 @@ public class ReviewLink extends BaseTimeEntity {
     @Column(name = "content_version", nullable = false)
     private Integer contentVersion;
 
+    /** 발급 시점에 확정된 작성자 의도. 공개 검토 응답에는 절대 노출하지 않는다. */
+    @Column(name = "author_intent_snapshot", length = 300)
+    private String authorIntentSnapshot;
+
+    /** 의도 snapshot의 원본 이력. 레거시 링크에는 없을 수 있다. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "author_intent_id")
+    private SectionAuthorIntent authorIntent;
+
     @Enumerated(EnumType.STRING)
     @Column(length = 20, nullable = false)
     private ReviewLinkStatus status;
@@ -95,6 +105,7 @@ public class ReviewLink extends BaseTimeEntity {
     @Builder
     private ReviewLink(ProjectSection projectSection, User createdBy, String tokenHash,
                        String sectionTitleSnapshot, String contentSnapshot, Integer contentVersion,
+                       String authorIntentSnapshot, SectionAuthorIntent authorIntent,
                        ReviewLinkStatus status) {
         this.projectSection = projectSection;
         this.createdBy = createdBy;
@@ -102,6 +113,8 @@ public class ReviewLink extends BaseTimeEntity {
         this.sectionTitleSnapshot = sectionTitleSnapshot;
         this.contentSnapshot = contentSnapshot;
         this.contentVersion = contentVersion;
+        this.authorIntentSnapshot = authorIntentSnapshot;
+        this.authorIntent = authorIntent;
         this.status = status;
     }
 

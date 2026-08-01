@@ -4,13 +4,17 @@ package com.wevo.backend.ai.domain;
 public enum AiRequestFeature {
     SYNTHESIS,
     DRAFT_GENERATION,
-    PRECHECK;
+    PRECHECK,
+    AUTHOR_INTENT_EXTRACTION,
+    REVIEW_INTENT_COMPARISON;
 
     public static AiRequestFeature from(AiFeature feature) {
         return switch (feature) {
             case ISSUE_DETECTION, OPINION_SYNTHESIS -> SYNTHESIS;
             case DRAFT_GENERATION -> DRAFT_GENERATION;
             case DRAFT_REVIEW -> PRECHECK;
+            case AUTHOR_INTENT_EXTRACTION -> AUTHOR_INTENT_EXTRACTION;
+            case REVIEW_INTENT_COMPARISON -> REVIEW_INTENT_COMPARISON;
         };
     }
 }

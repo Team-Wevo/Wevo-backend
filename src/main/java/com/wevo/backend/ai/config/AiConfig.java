@@ -1,6 +1,7 @@
 package com.wevo.backend.ai.config;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -8,7 +9,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.time.Clock;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -20,22 +20,39 @@ public class AiConfig {
     @Bean
     @ConditionalOnProperty(prefix = "wevo.ai", name = "provider", havingValue = "nvidia")
     public ChatClient nvidiaChatClient(
-            ChatClient.Builder builder,
             AiProperties properties,
             NvidiaProviderProperties nvidiaProperties
     ) {
-        AiProperties.ModelOptions options = properties.defaultOptions();
-        return builder
-                .defaultOptions(OpenAiChatOptions.builder()
-                        .model(options.model())
-                        .maxTokens(options.maxOutputTokens())
-                        .n(1)
-                        .temperature(nvidiaProperties.temperature())
-                        .reasoningEffort(nvidiaProperties.reasoningEffort())
-                        .timeout(options.timeout())
-                        .customHeaders(Map.of("Accept", "application/json"))
-                        .maxRetries(0))
+        nvidiaProperties.validateConnectionSettings();
+        AiProperties.ModelOptions options = properties.providerDefaultOptions();
+        OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
+                .baseUrl(nvidiaProperties.clientBaseUrl())
+                .apiKey(nvidiaProperties.apiKey())
+                .model(options.model())
+                .maxTokens(options.maxOutputTokens())
+                .temperature(nvidiaProperties.temperature())
+                .reasoningEffort(nvidiaProperties.reasoningEffort())
+                .timeout(options.timeout())
+                .maxRetries(0)
                 .build();
+        return ChatClient.builder(OpenAiChatModel.builder().options(chatOptions).build()).build();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "wevo.ai", name = "provider", havingValue = "openai")
+    public ChatClient openAiChatClient(AiProperties properties) {
+        AiProperties.OpenAiOptions openai = properties.openai();
+        AiProperties.ModelOptions options = properties.providerDefaultOptions();
+        OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
+                .baseUrl(openai.clientBaseUrl())
+                .apiKey(openai.apiKey())
+                .model(options.model())
+                .maxCompletionTokens(options.maxOutputTokens())
+                .reasoningEffort(openai.reasoningEffort())
+                .timeout(options.timeout())
+                .maxRetries(0)
+                .build();
+        return ChatClient.builder(OpenAiChatModel.builder().options(chatOptions).build()).build();
     }
 
     /**

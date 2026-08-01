@@ -13,6 +13,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -91,5 +92,19 @@ public class ProjectController {
     ) {
         List<SectionSummaryResponse> sections = projectService.getSections(principal.userId(), projectId);
         return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", sections));
+    }
+
+    /**
+     * 프로젝트 삭제 — 보관 처리(ARCHIVED)로 목록에서 제외한다. OWNER 만 호출할 수 있다.
+     *
+     * <p>본문 없이 204 를 반환한다. 이미 보관된 프로젝트를 다시 삭제해도 멱등하게 성공한다.
+     */
+    @DeleteMapping("/{projectId}")
+    public ResponseEntity<Void> delete(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @PathVariable Long projectId
+    ) {
+        projectService.archiveProject(principal.userId(), projectId);
+        return ResponseEntity.noContent().build();
     }
 }

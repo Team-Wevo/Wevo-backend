@@ -89,6 +89,7 @@ public enum ErrorCode {
     TEAM_REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "R007", "팀 검토를 찾을 수 없습니다."),
     TEAM_REVIEW_NOT_CHANGES_REQUESTED(HttpStatus.CONFLICT, "R008", "수정 요청 상태의 검토만 처리할 수 있습니다."),
     REVIEW_LINK_DRAFT_REQUIRED(HttpStatus.CONFLICT, "R009", "본문 초안이 없어 외부 검토 링크를 발급할 수 없습니다."),
+    REVIEW_LINK_AUTHOR_INTENT_REQUIRED(HttpStatus.CONFLICT, "R010", "확정된 작성자 의도가 없어 외부 검토 링크를 발급할 수 없습니다."),
     // 수동 종료(API_SPEC §3.5.9) 전용 — ACTIVE 링크만 종료할 수 있고, 이미 끝난 링크는 사유를 구분해 거절한다.
     // R004·R005 를 재사용하지 않는 이유: 그 둘은 외부 검토자의 제출 거절 문구라 안내 대상과 맥락이 다르다.
     // 팀장 화면은 두 사유를 각각 다른 문구로 보여줘야 하므로 클라이언트가 분기할 코드가 필요하다. (CLAUDE.md §5.8)

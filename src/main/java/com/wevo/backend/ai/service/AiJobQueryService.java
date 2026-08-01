@@ -1,5 +1,6 @@
 package com.wevo.backend.ai.service;
 
+import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiRequestFeature;
 import com.wevo.backend.ai.dto.response.AiJobResponse;
@@ -34,10 +35,16 @@ public class AiJobQueryService {
     public AiJobResponse getJob(UUID requestId, Long userId) {
         AiJob job = aiJobRepository.findByRequestId(requestId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.AI_JOB_NOT_FOUND));
-        ProjectAccessGuard.hidingNonMember(
-                ErrorCode.AI_JOB_NOT_FOUND,
-                () -> projectAccessGuard.requireParticipant(job.getProject().getId(), userId)
-        );
+        if (job.getFeature() == AiFeature.AUTHOR_INTENT_EXTRACTION
+                || job.getFeature() == AiFeature.REVIEW_INTENT_COMPARISON) {
+            ProjectAccessGuard.hidingNonMember(
+                    ErrorCode.AI_JOB_NOT_FOUND,
+                    () -> projectAccessGuard.requireOwner(job.getProject().getId(), userId));
+        } else {
+            ProjectAccessGuard.hidingNonMember(
+                    ErrorCode.AI_JOB_NOT_FOUND,
+                    () -> projectAccessGuard.requireParticipant(job.getProject().getId(), userId));
+        }
 
         AiJobStatusMapper.MappedStatus mapped = statusMapper.map(job);
         return new AiJobResponse(

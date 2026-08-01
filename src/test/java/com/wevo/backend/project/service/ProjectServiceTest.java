@@ -6,9 +6,12 @@ import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
+import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.dto.request.ProjectCreateRequest;
 import com.wevo.backend.project.dto.response.ProjectCreateResponse;
 import com.wevo.backend.project.dto.response.ProjectMemberListResponse;
+import com.wevo.backend.project.domain.InviteLink;
+import com.wevo.backend.project.repository.InviteLinkRepository;
 import com.wevo.backend.project.repository.ProjectMemberRepository;
 import com.wevo.backend.project.repository.ProjectRepository;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
@@ -57,6 +60,8 @@ class ProjectServiceTest {
     private ProjectSectionRepository projectSectionRepository;
     @Mock
     private SectionTemplateRepository sectionTemplateRepository;
+    @Mock
+    private InviteLinkRepository inviteLinkRepository;
 
     @InjectMocks
     private ProjectService projectService;
@@ -192,6 +197,85 @@ class ProjectServiceTest {
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PROJECT_NOT_FOUND);
         verify(projectMemberRepository, never()).findAllWithUserByProjectId(any());
+    }
+
+    @Test
+    @DisplayName("OWNER 가 삭제하면 프로젝트가 ARCHIVED 로 전이되고 활성 초대 링크가 비활성화된다")
+    void archiveProject_ownerArchivesAndDeactivatesInviteLinks() {
+        User owner = user(1L, "김위보", null);
+        Project project = project(100L, ProjectStatus.ACTIVE);
+        InviteLink activeLink = InviteLink.issue(project, owner, "token-1");
+        given(projectMemberRepository.findByProjectIdAndUserId(100L, 1L))
+                .willReturn(Optional.of(membership(project, owner, ProjectMemberRole.OWNER)));
+        given(inviteLinkRepository.findAllByProjectIdAndIsActiveTrue(100L))
+                .willReturn(List.of(activeLink));
+
+        projectService.archiveProject(1L, 100L);
+
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.ARCHIVED);
+        assertThat(activeLink.getIsActive()).isFalse();
+    }
+
+    @Test
+    @DisplayName("MEMBER 가 삭제를 시도하면 FORBIDDEN 으로 거부하고 상태를 바꾸지 않는다")
+    void archiveProject_member_forbidden() {
+        User member = user(2L, "이팀원", null);
+        Project project = project(100L, ProjectStatus.ACTIVE);
+        given(projectMemberRepository.findByProjectIdAndUserId(100L, 2L))
+                .willReturn(Optional.of(membership(project, member, ProjectMemberRole.MEMBER)));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> projectService.archiveProject(2L, 100L));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.ACTIVE);
+        verify(inviteLinkRepository, never()).findAllByProjectIdAndIsActiveTrue(any());
+    }
+
+    @Test
+    @DisplayName("비멤버가 삭제를 시도하면 PROJECT_NOT_FOUND 로 존재를 숨긴다")
+    void archiveProject_nonMember_hidesProject() {
+        given(projectMemberRepository.findByProjectIdAndUserId(100L, 99L)).willReturn(Optional.empty());
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> projectService.archiveProject(99L, 100L));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PROJECT_NOT_FOUND);
+        verify(inviteLinkRepository, never()).findAllByProjectIdAndIsActiveTrue(any());
+    }
+
+    @Test
+    @DisplayName("이미 ARCHIVED 인 프로젝트를 다시 삭제하면 멱등하게 성공하고 링크를 다시 건드리지 않는다")
+    void archiveProject_alreadyArchived_isIdempotent() {
+        User owner = user(1L, "김위보", null);
+        Project project = project(100L, ProjectStatus.ARCHIVED);
+        given(projectMemberRepository.findByProjectIdAndUserId(100L, 1L))
+                .willReturn(Optional.of(membership(project, owner, ProjectMemberRole.OWNER)));
+
+        projectService.archiveProject(1L, 100L);
+
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.ARCHIVED);
+        verify(inviteLinkRepository, never()).findAllByProjectIdAndIsActiveTrue(any());
+    }
+
+    private Project project(Long id, ProjectStatus status) {
+        Project project = Project.builder()
+                .title("위보 발표 준비")
+                .resultType(OutputType.PRESENTATION)
+                .audience("심사위원")
+                .status(status)
+                .build();
+        ReflectionTestUtils.setField(project, "id", id);
+        return project;
+    }
+
+    private ProjectMember membership(Project project, User user, ProjectMemberRole role) {
+        return ProjectMember.builder()
+                .project(project)
+                .user(user)
+                .role(role)
+                .joinedAt(LocalDateTime.now())
+                .build();
     }
 
     private User user(Long id, String name, String profileImageUrl) {

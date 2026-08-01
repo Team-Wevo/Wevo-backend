@@ -6,14 +6,18 @@ import com.openai.errors.OpenAIServiceException;
 import com.wevo.backend.global.exception.ErrorCode;
 import org.springframework.stereotype.Component;
 
+import java.net.ConnectException;
+import java.net.NoRouteToHostException;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.concurrent.TimeoutException;
 
 @Component
-public class NvidiaExceptionTranslator {
+public class NvidiaExceptionTranslator implements AiExceptionTranslator {
 
+    @Override
     public AiProviderException translate(Throwable throwable) {
         if (throwable instanceof AiProviderException providerException) {
             return providerException;
@@ -40,6 +44,9 @@ public class NvidiaExceptionTranslator {
         }
         if (hasTimeoutCause(throwable)) {
             return new AiProviderException(ErrorCode.AI_PROVIDER_TIMEOUT, throwable);
+        }
+        if (hasConnectionCause(throwable)) {
+            return new AiProviderException(ErrorCode.AI_PROVIDER_UNAVAILABLE, throwable);
         }
         return new AiProviderException(ErrorCode.AI_PROVIDER_ERROR, throwable);
     }
@@ -77,6 +84,19 @@ public class NvidiaExceptionTranslator {
             if (current instanceof TimeoutException
                     || current instanceof SocketTimeoutException
                     || current instanceof HttpTimeoutException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private boolean hasConnectionCause(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof ConnectException
+                    || current instanceof UnknownHostException
+                    || current instanceof NoRouteToHostException) {
                 return true;
             }
             current = current.getCause();

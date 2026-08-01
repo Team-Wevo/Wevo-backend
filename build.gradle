@@ -73,7 +73,7 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform {
-        excludeTags 'nvidia-integration', 'nvidia-evaluation', 'postgres-schema'
+        excludeTags 'nvidia-integration', 'nvidia-evaluation', 'openai-integration', 'postgres-schema'
 	}
 }
 
@@ -106,6 +106,17 @@ tasks.register('nvidiaEvaluationTest', Test) {
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform {
         includeTags 'nvidia-evaluation'
+    }
+    shouldRunAfter tasks.named('test')
+}
+
+tasks.register('openAiIntegrationTest', Test) {
+    description = 'Runs budgeted opt-in OpenAI GPT-5.6 Luna integration tests.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'openai-integration'
     }
     shouldRunAfter tasks.named('test')
 }

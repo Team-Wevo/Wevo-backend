@@ -1,10 +1,12 @@
 package com.wevo.backend.review;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -19,14 +21,18 @@ import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.review.domain.ReviewLinkStatus;
 import com.wevo.backend.review.domain.ReviewSubmission;
+import com.wevo.backend.review.domain.ReviewIntentComparison;
+import com.wevo.backend.review.domain.ReviewIntentComparisonStatus;
 import com.wevo.backend.review.domain.UnderstandingSignal;
 import com.wevo.backend.review.repository.ReviewSubmissionRepository;
 import com.wevo.backend.review.domain.ReviewLink;
 import com.wevo.backend.review.repository.ReviewLinkRepository;
+import com.wevo.backend.review.repository.ReviewIntentComparisonRepository;
 import com.wevo.backend.review.service.ReviewLinkService;
 import com.wevo.backend.review.service.ReviewTokenHasher;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
+import com.wevo.backend.section.domain.SectionAuthorIntent;
 import com.wevo.backend.section.domain.SectionDraft;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
@@ -83,6 +89,8 @@ class ExternalReviewIntegrationTest {
     @Autowired
     private ReviewLinkService reviewLinkService;
     @Autowired
+    private ReviewIntentComparisonRepository comparisonRepository;
+    @Autowired
     private ReviewTokenHasher tokenHasher;
 
     @PersistenceContext
@@ -116,13 +124,17 @@ class ExternalReviewIntegrationTest {
         assertThat(savedLink.getCreatedBy().getId()).isEqualTo(owner.getId());
         assertThat(savedLink.getTokenHash()).isNotEqualTo(token);
         assertThat(savedLink.getContentSnapshot()).isEqualTo(DRAFT_CONTENT);
+        assertThat(savedLink.getAuthorIntentSnapshot())
+                .isEqualTo("정보가 흩어진 문제를 해결하는 것이 핵심이다.");
+        assertThat(savedLink.getAuthorIntent()).isNotNull();
 
         // 2) 공개 열람 (로그인 없이)
         mockMvc.perform(get("/public/review-links/{token}", token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.sectionId").value(section.getId()))
                 .andExpect(jsonPath("$.data.sectionTitle").value("문제 정의"))
-                .andExpect(jsonPath("$.data.content").value(DRAFT_CONTENT));
+                .andExpect(jsonPath("$.data.content").value(DRAFT_CONTENT))
+                .andExpect(jsonPath("$.data.authorIntent").doesNotExist());
 
         // 3) 이해도 제출 (로그인 없이)
         mockMvc.perform(post("/public/review-links/{token}/submissions", token)
@@ -215,6 +227,56 @@ class ExternalReviewIntegrationTest {
     }
 
     @Test
+    @DisplayName("확정 작성자 의도가 없는 최신 초안은 링크 발급을 409(R010)으로 거부한다")
+    void cannotIssueLinkWithoutConfirmedAuthorIntent() throws Exception {
+        User owner = persistUser("owner-nointent@wevo.com", "팀장");
+        Project project = persistProject(owner);
+        ProjectSection section = persistSectionWithoutDraft(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        em.persist(SectionDraft.builder()
+                .projectSection(section)
+                .content(DRAFT_CONTENT)
+                .version(1)
+                .lastEditor(owner)
+                .build());
+        em.flush();
+
+        mockMvc.perform(post("/api/project-sections/{id}/review-links", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R010"));
+    }
+
+    @Test
+    @DisplayName("같은 본문 version의 확정 의도를 바꾸면 기존 ACTIVE 링크가 OUTDATED 된다")
+    void changingConfirmedIntentInvalidatesActiveLink() throws Exception {
+        User owner = persistUser("owner-intent-change@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+
+        mockMvc.perform(put("/api/project-sections/{id}/author-intent", section.getId())
+                        .with(authentication(authOf(owner)))
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "contentVersion": 1,
+                                  "intent": "정보를 하나의 실행 가능한 제안으로 정리하는 것이 핵심이다."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("AUTHOR_INTENT_CONFIRMED"));
+
+        ReviewLink savedLink = reviewLinkRepository
+                .findByTokenHash(tokenHasher.hash(token))
+                .orElseThrow();
+        assertThat(savedLink.getStatus()).isEqualTo(ReviewLinkStatus.OUTDATED);
+        assertThat(savedLink.getAuthorIntentSnapshot())
+                .isEqualTo("정보가 흩어진 문제를 해결하는 것이 핵심이다.");
+    }
+
+    @Test
     @DisplayName("존재하지 않는 토큰으로 열람하면 404(R001) 를 반환한다")
     void unknownTokenReturns404() throws Exception {
         mockMvc.perform(get("/public/review-links/{token}", "no-such-token"))
@@ -244,7 +306,10 @@ class ExternalReviewIntegrationTest {
                 .andExpect(jsonPath("$.data.items.length()").value(2))
                 .andExpect(jsonPath("$.data.items[0].understandingSignal").exists())
                 .andExpect(jsonPath("$.data.items[0].reviewerName").exists())
-                .andExpect(jsonPath("$.data.items[0].summary").exists());
+                .andExpect(jsonPath("$.data.items[0].summary").exists())
+                .andExpect(jsonPath("$.data.items[0].authorIntent")
+                        .value("정보가 흩어진 문제를 해결하는 것이 핵심이다."))
+                .andExpect(jsonPath("$.data.items[0].comparison.status").value("PENDING"));
     }
 
     @Test
@@ -392,7 +457,7 @@ class ExternalReviewIntegrationTest {
     }
 
     @Test
-    @DisplayName("이미 종료된 링크를 다시 종료하면 409(R010) 로 거절하고 상태를 유지한다")
+    @DisplayName("이미 종료된 링크를 다시 종료하면 409(R011) 로 거절하고 상태를 유지한다")
     void closingAlreadyClosedLinkIsRejected() throws Exception {
         User owner = persistUser("owner-idem@wevo.com", "팀장");
         ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
@@ -405,14 +470,14 @@ class ExternalReviewIntegrationTest {
         closeLink(linkId, owner, "CLOSED")
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.code").value("R010"))
+                .andExpect(jsonPath("$.code").value("R011"))
                 .andExpect(jsonPath("$.message").value("이미 종료된 링크입니다."));
 
         assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.CLOSED);
     }
 
     @Test
-    @DisplayName("본문 수정으로 만료(OUTDATED)된 링크를 종료하면 409(R011) 로 거절한다")
+    @DisplayName("본문 수정으로 만료(OUTDATED)된 링크를 종료하면 409(R012) 로 거절한다")
     void closingOutdatedLinkIsRejected() throws Exception {
         User owner = persistUser("owner-keep-outdated@wevo.com", "팀장");
         ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
@@ -427,7 +492,7 @@ class ExternalReviewIntegrationTest {
         // 이미 만료돼 제출을 받지 않는 링크를 닫는 건 성립하지 않는 요청이라 거절한다
         closeLink(linkId, owner, "CLOSED")
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("R011"))
+                .andExpect(jsonPath("$.code").value("R012"))
                 .andExpect(jsonPath("$.message").value("이미 만료된 링크입니다."));
         assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.OUTDATED);
 
@@ -630,6 +695,73 @@ class ExternalReviewIntegrationTest {
         submitWithoutSummary(token, "UNCLEAR", "browser-unclear")
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.understandingSignal").value("UNCLEAR"));
+
+        assertThat(comparisonRepository.findAll())
+                .hasSize(3)
+                .allMatch(comparison -> comparison.getStatus()
+                        == ReviewIntentComparisonStatus.NOT_AVAILABLE);
+    }
+
+    @Test
+    @DisplayName("의도와 summary가 있는 제출은 공개 응답을 기다리게 하지 않고 PENDING 비교를 저장한다")
+    void comparableSubmissionIsSavedAsPendingWithoutPublicAiDetails() throws Exception {
+        User owner = persistUser("owner-pending@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+
+        submitAsReviewer(token, "PARTIAL", "browser-pending")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.requestId").doesNotExist())
+                .andExpect(jsonPath("$.data.authorIntent").doesNotExist())
+                .andExpect(jsonPath("$.data.comparison").doesNotExist());
+
+        ReviewIntentComparison comparison = comparisonRepository.findAll().get(0);
+        assertThat(comparison.getStatus()).isEqualTo(ReviewIntentComparisonStatus.PENDING);
+        assertThat(comparison.getIntentSnapshotHash()).matches("[0-9a-f]{64}");
+        assertThat(comparison.getReviewerSummaryHash()).matches("[0-9a-f]{64}");
+    }
+
+    @Test
+    @DisplayName("동일 section-version 의도는 DB 유니크 제약으로 중복을 막는다")
+    void authorIntentUniqueConstraintIsEnforced() {
+        User owner = persistUser("owner-unique-intent@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        assertThatThrownBy(() -> {
+            em.persist(SectionAuthorIntent.confirmed(
+                    section, 1, "중복 의도다.", owner, LocalDateTime.now()));
+            em.flush();
+        })
+                .isInstanceOf(org.hibernate.exception.ConstraintViolationException.class);
+    }
+
+    @Test
+    @DisplayName("동일 submission 비교는 DB 유니크 제약으로 중복을 막는다")
+    void comparisonUniqueConstraintIsEnforced() throws Exception {
+        User owner = persistUser("owner-unique-comparison@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLink(section.getId(), owner);
+        submitAsReviewer(token, "PARTIAL", "browser-unique-comparison")
+                .andExpect(status().isCreated());
+
+        ReviewIntentComparison saved = comparisonRepository.findAll().get(0);
+        assertThatThrownBy(() -> {
+            em.persist(ReviewIntentComparison.pending(
+                    saved.getReviewSubmission(),
+                    saved.getIntentSnapshotHash(),
+                    saved.getReviewerSummaryHash(),
+                    saved.getPromptVersion(),
+                    saved.getSchemaVersion(),
+                    saved.getModelId()));
+            em.flush();
+        })
+                .isInstanceOf(org.hibernate.exception.ConstraintViolationException.class);
     }
 
     @Test
@@ -783,6 +915,13 @@ class ExternalReviewIntegrationTest {
                 .lastEditor(editor)
                 .build();
         em.persist(draft);
+        User confirmer = editor == null ? section.getProject().getOwner() : editor;
+        em.persist(SectionAuthorIntent.confirmed(
+                section,
+                version,
+                "정보가 흩어진 문제를 해결하는 것이 핵심이다.",
+                confirmer,
+                LocalDateTime.now()));
         em.flush();
     }
 }

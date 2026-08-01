@@ -36,8 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(properties = {
-        "spring.ai.openai.api-key=test-nvidia-api-key",
-        "spring.ai.openai.max-retries=0",
+        "wevo.ai.nvidia.api-key=test-nvidia-api-key",
         "wevo.ai.default-options.timeout=5s",
         "wevo.ai.default-options.max-retries=0"
 })
@@ -57,8 +56,8 @@ class NvidiaProviderContractTest {
     @DynamicPropertySource
     static void providerProperties(DynamicPropertyRegistry registry) {
         registry.add(
-                "spring.ai.openai.base-url",
-                () -> "http://127.0.0.1:" + SERVER.getAddress().getPort() + "/v1"
+                "wevo.ai.nvidia.base-url",
+                () -> "http://127.0.0.1:" + SERVER.getAddress().getPort()
         );
     }
 

@@ -6,6 +6,9 @@ import com.wevo.backend.review.dto.response.ExternalReviewResultResponse;
 import com.wevo.backend.review.dto.response.ReviewLinkCurrentResponse;
 import com.wevo.backend.review.repository.ReviewLinkRepository;
 import com.wevo.backend.review.repository.ReviewSubmissionRepository;
+import com.wevo.backend.review.repository.ReviewIntentComparisonRepository;
+import com.wevo.backend.review.domain.ReviewSubmission;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,13 +31,16 @@ public class ExternalReviewQueryService {
     private final SectionAccessGuard sectionAccessGuard;
     private final ReviewLinkRepository reviewLinkRepository;
     private final ReviewSubmissionRepository reviewSubmissionRepository;
+    private final ReviewIntentComparisonRepository comparisonRepository;
 
     public ExternalReviewQueryService(SectionAccessGuard sectionAccessGuard,
                                       ReviewLinkRepository reviewLinkRepository,
-                                      ReviewSubmissionRepository reviewSubmissionRepository) {
+                                      ReviewSubmissionRepository reviewSubmissionRepository,
+                                      ReviewIntentComparisonRepository comparisonRepository) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.reviewLinkRepository = reviewLinkRepository;
         this.reviewSubmissionRepository = reviewSubmissionRepository;
+        this.comparisonRepository = comparisonRepository;
     }
 
     /**
@@ -43,8 +49,14 @@ public class ExternalReviewQueryService {
     public ExternalReviewResultResponse getResults(Long sectionId, Long userId) {
         sectionAccessGuard.requireOwnedSection(sectionId, userId);
 
+        List<ReviewSubmission> submissions =
+                reviewSubmissionRepository.findAllWithLinkByProjectSectionId(sectionId);
         return ExternalReviewResultResponse.from(
-                reviewSubmissionRepository.findAllWithLinkByProjectSectionId(sectionId));
+                submissions,
+                submissions.isEmpty()
+                        ? List.of()
+                        : comparisonRepository.findAllWithSubmissionBySubmissionIdIn(
+                                submissions.stream().map(ReviewSubmission::getId).toList()));
     }
 
     /**

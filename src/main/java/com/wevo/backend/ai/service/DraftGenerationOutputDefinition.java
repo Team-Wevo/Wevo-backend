@@ -15,8 +15,7 @@ public class DraftGenerationOutputDefinition {
     private static final String ID_ARRAY = """
             {
               "type": "array",
-              "items": {"type": "integer", "minimum": 1},
-              "uniqueItems": true
+              "items": {"type": "integer", "minimum": 1}
             }
             """;
 
