@@ -4,6 +4,8 @@ import com.wevo.backend.auth.dto.request.DevLoginRequest;
 import com.wevo.backend.auth.dto.response.TokenResponse;
 import com.wevo.backend.auth.service.DevLoginService;
 import com.wevo.backend.global.response.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/auth")
 @Profile("local")
+@Tag(name = "Auth", description = "소셜 로그인·토큰 재발급·로그아웃 API")
 public class DevAuthController {
 
     private static final String DEFAULT_EMAIL = "dev@wevo.com";
@@ -34,6 +37,7 @@ public class DevAuthController {
     /**
      * 임시 로그인 — 지정한(생략 시 기본) 사용자로 JWT 를 발급한다.
      */
+    @Operation(summary = "임시 로그인 (개발 전용 · local 프로파일) — 소셜 인증 없이 JWT 발급")
     @PostMapping("/dev-login")
     public ResponseEntity<ApiResponse<TokenResponse>> devLogin(
             @RequestBody(required = false) DevLoginRequest request

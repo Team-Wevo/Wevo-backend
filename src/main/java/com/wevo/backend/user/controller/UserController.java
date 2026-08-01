@@ -5,6 +5,9 @@ import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.user.dto.request.ProfileUpdateRequest;
 import com.wevo.backend.user.dto.response.MyProfileResponse;
 import com.wevo.backend.user.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -16,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/users")
+@Tag(name = "Users", description = "내 정보 조회·프로필 수정 API")
 public class UserController {
 
     private final UserService userService;
@@ -27,6 +31,15 @@ public class UserController {
     /**
      * 내 정보 조회 — 로그인한 사용자의 프로필을 반환한다.
      */
+    @Operation(summary = "내 정보 조회 — 프로필 표시·세션 복원용")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "OK"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "U001 — 토큰의 사용자를 찾을 수 없음")
+    })
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<MyProfileResponse>> getMyProfile(
             @AuthenticationPrincipal AuthPrincipal principal
@@ -38,6 +51,17 @@ public class UserController {
     /**
      * 내 정보 수정 — 표시 이름을 변경한다.
      */
+    @Operation(summary = "내 프로필 수정 — 표시 이름만 (이메일·사진 수정 불가)")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "USER_UPDATED"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400", description = "C001 — name 누락·공백·100자 초과"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "U001 — 토큰의 사용자를 찾을 수 없음")
+    })
     @PatchMapping("/me")
     public ResponseEntity<ApiResponse<MyProfileResponse>> updateMyProfile(
             @AuthenticationPrincipal AuthPrincipal principal,
