@@ -66,6 +66,11 @@ submission. Existing links deliberately keep nullable intent snapshots and remai
 the migration never invents or backfills an author intent. It also extends the AI job/usage feature
 constraints for extraction and comparison.
 
+`V12__add_review_submission_reviewer_comment.sql` adds the reviewer's optional free-form comment
+to public review submissions. It is a separate input from the understanding sentence (`summary`)
+and is always optional, so the column is nullable with no default and no backfill — existing rows
+stay `NULL` because those submissions had no comment.
+
 ## Existing local databases
 
 V1 is an initial migration for an **empty PostgreSQL database**. A database previously
