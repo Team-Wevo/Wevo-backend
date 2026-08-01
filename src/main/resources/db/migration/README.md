@@ -115,3 +115,11 @@ The baseline creates `opinions.submitted_content` and status-dependent checks fo
 `submitted_content` and `submitted_at` directly. Because V1 targets an empty database, no
 data backfill statement belongs in this migration. Any future production data transition
 must be implemented in a new versioned migration rather than by editing V1.
+
+## Project flow review history
+
+`V13__add_project_flow_review.sql` adds the project-scoped AI feature and immutable result history.
+Each result stores the canonical input hash and checked section/version/content hashes. Findings
+reference real project sections through foreign keys, while application semantic validation also
+requires every excerpt to occur in the corresponding confirmed snapshot. No current/outdated flag
+is stored as a source of truth; freshness is derived from the current canonical snapshot.
