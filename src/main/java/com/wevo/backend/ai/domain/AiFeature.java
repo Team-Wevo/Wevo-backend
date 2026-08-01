@@ -8,7 +8,8 @@ public enum AiFeature {
     DRAFT_GENERATION,
     DRAFT_REVIEW,
     AUTHOR_INTENT_EXTRACTION,
-    REVIEW_INTENT_COMPARISON;
+    REVIEW_INTENT_COMPARISON,
+    OPINION_CLUSTERING;
 
     public String configKey() {
         return name().toLowerCase(Locale.ROOT).replace('_', '-');
