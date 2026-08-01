@@ -5,6 +5,9 @@ import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.review.dto.response.ExternalReviewResultResponse;
 import com.wevo.backend.review.dto.response.ReviewLinkCurrentResponse;
 import com.wevo.backend.review.service.ExternalReviewQueryService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/project-sections")
+@Tag(name = "Reviews", description = "외부 검토 링크·팀 검토 API")
 public class ExternalReviewQueryController {
 
     private final ExternalReviewQueryService externalReviewQueryService;
@@ -31,6 +35,17 @@ public class ExternalReviewQueryController {
     /**
      * 섹션의 외부 검토 결과(이해도 집계 + 개별 코멘트)를 조회한다. (팀장 전용)
      */
+    @Operation(summary = "외부 검토 결과 조회 — 이해도 집계·버전별 집계·개별 목록 (OWNER 만)")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "OK"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "403", description = "A002 — 멤버지만 OWNER 아님"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)")
+    })
     @GetMapping("/{sectionId}/review-submissions")
     public ResponseEntity<ApiResponse<ExternalReviewResultResponse>> getReviewSubmissions(
             @PathVariable Long sectionId,
@@ -51,6 +66,18 @@ public class ExternalReviewQueryController {
      * <p>활성 링크가 없어도 조회 자체는 성공이므로 {@code 200 OK} 로 응답하고 {@code data} 만
      * 생략한다({@code null} 필드는 직렬화 제외).
      */
+    @Operation(summary = "현재 활성 검토 링크 조회 — 재발급 사고 방지용 상태 복구 (토큰 미포함)")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = "OK — 활성 링크가 없으면 data 가 null 로 생략된다"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "403", description = "A002 — 멤버지만 OWNER 아님"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)")
+    })
     @GetMapping("/{sectionId}/review-links/current")
     public ResponseEntity<ApiResponse<ReviewLinkCurrentResponse>> getCurrentLink(
             @PathVariable Long sectionId,

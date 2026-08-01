@@ -5,6 +5,9 @@ import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.review.dto.request.ReviewLinkStatusUpdateRequest;
 import com.wevo.backend.review.dto.response.ReviewLinkResponse;
 import com.wevo.backend.review.service.ReviewLinkService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api")
+@Tag(name = "Reviews", description = "외부 검토 링크·팀 검토 API")
 public class ReviewLinkController {
 
     private final ReviewLinkService reviewLinkService;
@@ -38,6 +42,19 @@ public class ReviewLinkController {
     /**
      * 섹션 외부 검토 링크를 발급한다. (팀장 전용)
      */
+    @Operation(summary = "외부 검토 링크 발급 — 섹션당 ACTIVE 1개, 재발급 시 대체 발급 (OWNER 만)")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "201", description = "REVIEW_LINK_CREATED — 원문 토큰은 이 응답으로만 반환"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "403", description = "A002 — 멤버지만 OWNER 아님"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "409", description = "R009 — 초안이 없어 발급 불가")
+    })
     @PostMapping("/project-sections/{sectionId}/review-links")
     public ResponseEntity<ApiResponse<ReviewLinkResponse>> issueExternalLink(
             @PathVariable Long sectionId,
@@ -55,6 +72,22 @@ public class ReviewLinkController {
      * 만료된 링크는 409({@code R012})로 거절하며 어느 경우에도 기존 상태는 바뀌지 않는다.
      * 종료된 링크는 다시 살릴 수 없고 새 본문의 외부 검토는 재발급으로만 가능하다.
      */
+    @Operation(summary = "외부 검토 링크 비활성화 — CLOSED 로 종료 (OWNER 만)")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "REVIEW_LINK_CLOSED"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400", description = "C001 — CLOSED 외 값 지정"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "403", description = "A002 — 멤버지만 OWNER 아님"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "R001 — 링크 없음 또는 비멤버 (존재 숨김)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "409",
+                    description = "R011 — 이미 종료된 링크 / R012 — 이미 만료된 링크")
+    })
     @PatchMapping("/review-links/{reviewLinkId}")
     public ResponseEntity<ApiResponse<Void>> updateStatus(
             @PathVariable Long reviewLinkId,

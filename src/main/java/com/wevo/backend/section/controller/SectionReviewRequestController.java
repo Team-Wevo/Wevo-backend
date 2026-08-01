@@ -4,6 +4,9 @@ import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.section.dto.response.SectionReviewRequestResponse;
 import com.wevo.backend.section.service.SectionReviewRequestService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/project-sections")
+@Tag(name = "Sections", description = "섹션 초안·편집 잠금·검토 요청·확정 API")
 public class SectionReviewRequestController {
 
     private final SectionReviewRequestService sectionReviewRequestService;
@@ -27,6 +31,19 @@ public class SectionReviewRequestController {
     /**
      * 초안 작성이 끝난 섹션을 검토 단계로 보낸다. (DRAFTING → REVIEWING)
      */
+    @Operation(summary = "검토 요청 — DRAFTING → REVIEWING 전이, 팀 검토 PENDING 초기화")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "REVIEW_REQUESTED"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404",
+                    description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김) / S003 — 초안 없음"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "409",
+                    description = "S002 — DRAFTING 아님 / S004 — 타인이 편집 중")
+    })
     @PostMapping("/{sectionId}/review-request")
     public ResponseEntity<ApiResponse<SectionReviewRequestResponse>> requestReview(
             @PathVariable Long sectionId,
