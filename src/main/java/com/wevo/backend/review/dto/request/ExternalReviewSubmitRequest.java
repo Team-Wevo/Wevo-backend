@@ -19,8 +19,12 @@ import jakarta.validation.constraints.Size;
  * 반대로 UNCLEAR 는 "이해하지 못했다"는 답 자체가 신호라 문장을 강제하지 않는다.
  *
  * <p>추가 코멘트(reviewerComment)는 summary 와 별개 입력이며 <b>이해도와 무관하게 항상 선택</b>이다
- * (§6.2.3 "추가 코멘트는 선택 입력한다"). 미입력·공백만 입력한 경우 모두 {@code null} 로 저장해
- * "코멘트 없음"을 한 가지 형태로만 표현한다.
+ * (§6.2.3 "추가 코멘트는 선택 입력한다").
+ *
+ * <p>선택 입력 세 개(reviewerName·summary·reviewerComment) 모두 미입력과 공백만 입력한 경우를
+ * {@code null} 하나로 정규화한다 — 저장 값과 응답이 "미입력"을 한 가지 형태로만 표현해야
+ * 클라이언트가 빈 문자열과 null 을 따로 다루지 않는다. 정규화된 {@code null} 필드는 응답에서
+ * 아예 생략된다. (CLAUDE.md §5.4)
  *
  * <p>이 이해도는 섹션 확정 조건에 포함되지 않는다.
  *
@@ -37,19 +41,28 @@ public record ExternalReviewSubmitRequest(
 ) {
 
     public ExternalReviewSubmitRequest {
-        // 공백만 담긴 코멘트는 입력하지 않은 것과 같다. 저장·응답 모두에서 null 한 가지로 다룬다.
-        if (reviewerComment != null && reviewerComment.isBlank()) {
-            reviewerComment = null;
-        }
+        // 공백만 담긴 입력은 입력하지 않은 것과 같다. 선택 입력 세 개를 모두 여기서 null 로 모아,
+        // 저장·응답·아래 필수 검증이 "미입력"을 한 가지 형태로만 보게 한다.
+        reviewerName = blankToNull(reviewerName);
+        summary = blankToNull(summary);
+        reviewerComment = blankToNull(reviewerComment);
     }
 
-    /** 이해됨(CLEAR)·애매함(PARTIAL)으로 제출하면 이해한 핵심 문장이 있어야 한다. */
+    /**
+     * 이해됨(CLEAR)·애매함(PARTIAL)으로 제출하면 이해한 핵심 문장이 있어야 한다.
+     *
+     * <p>공백 입력은 생성자에서 이미 {@code null} 로 정규화되므로 여기서는 null 여부만 본다.
+     */
     @AssertTrue(message = "이해한 내용을 한 문장으로 적어주세요.")
     public boolean isSummaryPresentForUnderstoodSignal() {
         if (understandingSignal != UnderstandingSignal.CLEAR
                 && understandingSignal != UnderstandingSignal.PARTIAL) {
             return true;
         }
-        return summary != null && !summary.isBlank();
+        return summary != null;
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 }

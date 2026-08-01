@@ -2,8 +2,6 @@ package com.wevo.backend.review;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -738,10 +736,9 @@ class ExternalReviewIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[?(@.understandingSignal == 'PARTIAL')].reviewerComment")
                         .value("2문단이 길어요."))
-                // 미입력 코멘트는 키가 사라지는 게 아니라 null 로 실린다
-                // (ExternalReviewItemResponse 에 @JsonInclude 가 없어 nullable 필드를 그대로 직렬화한다).
+                // 미입력 코멘트는 null 로 싣지 않고 키를 생략한다 (CLAUDE.md §5.4).
                 .andExpect(jsonPath("$.data.items[?(@.understandingSignal == 'CLEAR')].reviewerComment")
-                        .value(contains(nullValue())));
+                        .isEmpty());
     }
 
     @Test
