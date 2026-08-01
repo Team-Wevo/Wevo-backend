@@ -93,8 +93,8 @@ public enum ErrorCode {
     // 수동 종료(API_SPEC §3.5.9) 전용 — ACTIVE 링크만 종료할 수 있고, 이미 끝난 링크는 사유를 구분해 거절한다.
     // R004·R005 를 재사용하지 않는 이유: 그 둘은 외부 검토자의 제출 거절 문구라 안내 대상과 맥락이 다르다.
     // 팀장 화면은 두 사유를 각각 다른 문구로 보여줘야 하므로 클라이언트가 분기할 코드가 필요하다. (CLAUDE.md §5.8)
-    REVIEW_LINK_CLOSE_ALREADY_CLOSED(HttpStatus.CONFLICT, "R010", "이미 종료된 링크입니다."),
-    REVIEW_LINK_CLOSE_ALREADY_OUTDATED(HttpStatus.CONFLICT, "R011", "이미 만료된 링크입니다."),
+    REVIEW_LINK_CLOSE_ALREADY_CLOSED(HttpStatus.CONFLICT, "R011", "이미 종료된 링크입니다."),
+    REVIEW_LINK_CLOSE_ALREADY_OUTDATED(HttpStatus.CONFLICT, "R012", "이미 만료된 링크입니다."),
 
     // Export
     FINAL_OUTPUT_ASSEMBLY_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "E001", "완성본을 조립할 수 없습니다. 잠시 후 다시 시도해주세요.");
