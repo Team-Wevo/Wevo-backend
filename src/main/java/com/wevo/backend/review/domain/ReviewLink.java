@@ -1,6 +1,8 @@
 package com.wevo.backend.review.domain;
 
 import com.wevo.backend.global.common.BaseTimeEntity;
+import com.wevo.backend.global.exception.BusinessException;
+import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.SectionAuthorIntent;
 import com.wevo.backend.user.domain.User;
@@ -33,10 +35,16 @@ import lombok.NoArgsConstructor;
  *       제목·본문·{@code contentVersion} 스냅샷은 발급 이후 <b>불변</b>이다. 외부 검토자는 <b>항상 스냅샷</b>을
  *       읽으며, 이후 본문이 수정돼도 링크가 가리키던 버전을 그대로 본다. 초안이 없으면 발급을 거부한다(R009).
  *       새 본문에 대한 외부 검토는 링크 <b>재발급</b>으로만 가능하다.</li>
- *   <li><b>서버 자동 만료</b> — 링크 종료는 서버가 처리한다. 본문이 수정되면 링크는
+ *   <li><b>서버 자동 만료 (기본 경로)</b> — 링크 종료는 서버가 처리한다. 본문이 수정되면 링크는
  *       {@link ReviewLinkStatus#OUTDATED} 로 만료되고, 재발급 시 기존 {@code ACTIVE} 링크는
- *       {@link ReviewLinkStatus#CLOSED} 로 닫힌다. 수동 비활성화({@code CLOSED})는 내부 로직으로만
- *       남아 있고 HTTP 엔드포인트로 노출하지 않는다. 만료·비활성 링크는 제출을 받지 않는다.</li>
+ *       {@link ReviewLinkStatus#CLOSED} 로 닫힌다. 팀장이 지금 당장 수집을 끊어야 할 때만
+ *       수동 종료(API_SPEC §3.5.9)를 쓴다. 만료·비활성 링크는 제출을 받지 않는다.</li>
+ *   <li><b>종료 상태는 되돌아가지 않는다</b> — {@code ACTIVE} 에서만 다른 상태로 전이하며,
+ *       한 번 {@code OUTDATED}·{@code CLOSED} 가 된 링크는 상태가 다시 바뀌지 않는다.
+ *       종료 사유({@code OUTDATED} = 본문 수정, {@code CLOSED} = 종료)가 나중 호출에 덮여
+ *       외부 검토자 안내 문구가 뒤바뀌는 일을 막기 위함이다.
+ *       수동 종료({@code close()})는 {@code ACTIVE} 링크에서만 성공하고, 이미 끝난 링크는
+ *       사유별로 거절한다({@code CLOSED} → R011, {@code OUTDATED} → R012).</li>
  * </ul>
  */
 @Entity
@@ -125,8 +133,22 @@ public class ReviewLink extends BaseTimeEntity {
         }
     }
 
-    /** 링크를 비활성화한다. (재발급 시 기존 ACTIVE 링크 종료 · 내부 수동 비활성화) */
+    /**
+     * 링크를 종료한다. (재발급 시 기존 ACTIVE 링크 종료 · 팀장의 수동 종료)
+     *
+     * <p><b>{@code ACTIVE} 링크만 종료할 수 있다.</b> 이미 끝난 링크는 상태를 그대로 둔 채
+     * 사유를 구분해 거절한다 — 종료({@code CLOSED})와 만료({@code OUTDATED})는 서로 다른 종결
+     * 상태이므로, 팀장이 "내가 방금 닫았다"고 오인하지 않도록 각각 다른 문구로 알린다.
+     * 예외가 던져지면 트랜잭션이 롤백되므로 어느 경우에도 기존 상태는 바뀌지 않는다.
+     *
+     * @throws BusinessException 이미 종료된 링크면 {@link ErrorCode#REVIEW_LINK_CLOSE_ALREADY_CLOSED},
+     *                           이미 만료된 링크면 {@link ErrorCode#REVIEW_LINK_CLOSE_ALREADY_OUTDATED}
+     */
     public void close() {
-        this.status = ReviewLinkStatus.CLOSED;
+        switch (status) {
+            case ACTIVE -> this.status = ReviewLinkStatus.CLOSED;
+            case CLOSED -> throw new BusinessException(ErrorCode.REVIEW_LINK_CLOSE_ALREADY_CLOSED);
+            case OUTDATED -> throw new BusinessException(ErrorCode.REVIEW_LINK_CLOSE_ALREADY_OUTDATED);
+        }
     }
 }

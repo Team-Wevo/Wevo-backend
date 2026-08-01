@@ -47,6 +47,28 @@ public class SectionAccessGuard {
     }
 
     /**
+     * 섹션을 조회하고 요청자가 프로젝트 참여자인지 검증한 뒤, 검증 <b>증거</b>를 반환한다.
+     *
+     * <p>{@link VerifiedProjectAccess}를 인자로 요구하는 조회 서비스(예:
+     * {@code SectionDraftEvidenceQueryService})를 섹션 ID로 진입하는 API가 호출할 때 쓴다.
+     * {@link #requireParticipantSection} 뒤에 {@link ProjectAccessGuard#requireParticipantAccess}를
+     * 직접 이어 붙이면 멤버십을 두 번 조회하게 되고, 두 번째 호출이 존재 숨김 밖에 있어 그 사이
+     * 멤버십이 사라졌을 때 {@code 404 S001} 대신 {@code 403 P002}가 새어 나간다. 숨김 적용 지점을
+     * 하나로 유지하기 위한 진입점이다.
+     *
+     * @return 접근 권한이 확인된 프로젝트 접근 증거
+     * @throws BusinessException 섹션이 없거나 프로젝트에 참여하지 않았으면(존재 숨김)
+     *                           {@link ErrorCode#SECTION_NOT_FOUND}
+     */
+    public VerifiedProjectAccess requireParticipantAccessForSection(Long sectionId, Long userId) {
+        ProjectSection section = requireSection(sectionId);
+        return ProjectAccessGuard.hidingNonMember(
+                ErrorCode.SECTION_NOT_FOUND,
+                () -> projectAccessGuard.requireParticipantAccess(
+                        section.getProject().getId(), userId));
+    }
+
+    /**
      * 이미 검증된 project 접근과 section 소속의 일치를 확인해 내부 조회용 증거를 발급한다.
      *
      * <p>AI use case처럼 project 권한 검증을 먼저 수행한 흐름에서 중복 멤버십 조회 없이 사용한다.

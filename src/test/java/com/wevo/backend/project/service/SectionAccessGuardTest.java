@@ -3,6 +3,8 @@ package com.wevo.backend.project.service;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.project.domain.Project;
+import com.wevo.backend.project.domain.ProjectMember;
+import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.repository.ProjectSectionRepository;
 import java.util.Optional;
@@ -20,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class SectionAccessGuardTest {
@@ -100,6 +103,38 @@ class SectionAccessGuardTest {
         assertThat(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, USER_ID))
                 .isSameAs(section);
         verify(projectAccessGuard).requireParticipant(PROJECT_ID, USER_ID);
+    }
+
+    @Test
+    @DisplayName("섹션 기준 참여자 접근 증거 발급은 멤버십을 한 번만 조회한다")
+    void requireParticipantAccessForSection_delegatesParticipantAccessOnce() {
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        VerifiedProjectAccess access = VerifiedProjectAccess.of(
+                ProjectMember.builder()
+                        .project(section.getProject())
+                        .role(ProjectMemberRole.MEMBER)
+                        .build());
+        given(projectAccessGuard.requireParticipantAccess(PROJECT_ID, USER_ID)).willReturn(access);
+
+        assertThat(sectionAccessGuard.requireParticipantAccessForSection(SECTION_ID, USER_ID))
+                .isSameAs(access);
+        // 증거를 발급하는 조회 하나로 끝내야 한다 — requireParticipant 를 덧대면 멤버십을 두 번 읽는다.
+        verify(projectAccessGuard).requireParticipantAccess(PROJECT_ID, USER_ID);
+        verifyNoMoreInteractions(projectAccessGuard);
+    }
+
+    @Test
+    @DisplayName("섹션 기준 참여자 접근 증거 발급도 비멤버는 SECTION_NOT_FOUND 로 숨긴다")
+    void requireParticipantAccessForSection_hidesNonMemberAsNotFound() {
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectAccessGuard.requireParticipantAccess(PROJECT_ID, USER_ID))
+                .willThrow(new BusinessException(ErrorCode.NOT_PROJECT_MEMBER));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> sectionAccessGuard.requireParticipantAccessForSection(SECTION_ID, USER_ID));
+
+        // 숨김 밖에 두면 403 P002(NOT_PROJECT_MEMBER)가 그대로 새어 나간다.
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
     }
 
     @Test

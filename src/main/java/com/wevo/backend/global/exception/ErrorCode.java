@@ -82,12 +82,19 @@ public enum ErrorCode {
     REVIEW_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "R002", "이미 검토를 제출했어요."),
     REVIEW_SUBMISSION_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "R003", "이 링크는 검토 정원(20명)이 모두 찼어요."),
     REVIEW_LINK_OUTDATED(HttpStatus.CONFLICT, "R004", "외부 검토 링크가 이전 본문 기준이라 만료됐어요."),
-    REVIEW_LINK_CLOSED(HttpStatus.CONFLICT, "R005", "종료된 외부 검토 링크예요."),
+    // 상수명이 수동 종료 성공 code("REVIEW_LINK_CLOSED", API_SPEC §3.5.9)와 겹치지 않게 ALREADY 를 붙인다.
+    // ErrorCode 상수명은 개발자용이고 외부에 노출되는 값은 "R005" 뿐이다. (CLAUDE.md §5.8)
+    REVIEW_LINK_ALREADY_CLOSED(HttpStatus.CONFLICT, "R005", "종료된 외부 검토 링크예요."),
     TEAM_REVIEW_SECTION_NOT_REVIEWING(HttpStatus.CONFLICT, "R006", "검토 단계(REVIEWING)의 섹션만 검토할 수 있습니다."),
     TEAM_REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "R007", "팀 검토를 찾을 수 없습니다."),
     TEAM_REVIEW_NOT_CHANGES_REQUESTED(HttpStatus.CONFLICT, "R008", "수정 요청 상태의 검토만 처리할 수 있습니다."),
     REVIEW_LINK_DRAFT_REQUIRED(HttpStatus.CONFLICT, "R009", "본문 초안이 없어 외부 검토 링크를 발급할 수 없습니다."),
     REVIEW_LINK_AUTHOR_INTENT_REQUIRED(HttpStatus.CONFLICT, "R010", "확정된 작성자 의도가 없어 외부 검토 링크를 발급할 수 없습니다."),
+    // 수동 종료(API_SPEC §3.5.9) 전용 — ACTIVE 링크만 종료할 수 있고, 이미 끝난 링크는 사유를 구분해 거절한다.
+    // R004·R005 를 재사용하지 않는 이유: 그 둘은 외부 검토자의 제출 거절 문구라 안내 대상과 맥락이 다르다.
+    // 팀장 화면은 두 사유를 각각 다른 문구로 보여줘야 하므로 클라이언트가 분기할 코드가 필요하다. (CLAUDE.md §5.8)
+    REVIEW_LINK_CLOSE_ALREADY_CLOSED(HttpStatus.CONFLICT, "R011", "이미 종료된 링크입니다."),
+    REVIEW_LINK_CLOSE_ALREADY_OUTDATED(HttpStatus.CONFLICT, "R012", "이미 만료된 링크입니다."),
 
     // Export
     FINAL_OUTPUT_ASSEMBLY_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "E001", "완성본을 조립할 수 없습니다. 잠시 후 다시 시도해주세요.");

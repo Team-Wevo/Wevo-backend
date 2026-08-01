@@ -3,6 +3,7 @@ package com.wevo.backend.section.controller;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.section.dto.request.SectionDraftSaveRequest;
+import com.wevo.backend.section.dto.response.SectionDraftEvidenceResponse;
 import com.wevo.backend.section.dto.response.SectionDraftReadResponse;
 import com.wevo.backend.section.dto.response.SectionDraftSaveResponse;
 import com.wevo.backend.section.service.SectionDraftService;
@@ -57,5 +58,18 @@ public class SectionDraftController {
                 sectionDraftService.saveDraft(sectionId, principal.userId(), request);
         return ResponseEntity.ok(
                 ApiResponse.success("DRAFT_SAVED", "초안이 저장되었습니다.", response));
+    }
+
+    /**
+     * 최신 AI 초안의 근거(사용된 의견·합의점·쟁점 결정·보충 근거)를 조회한다.
+     */
+    @GetMapping("/{sectionId}/draft/evidence")
+    public ResponseEntity<ApiResponse<SectionDraftEvidenceResponse>> getDraftEvidence(
+            @PathVariable Long sectionId,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        SectionDraftEvidenceResponse response =
+                sectionDraftService.getDraftEvidence(sectionId, principal.userId());
+        return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", response));
     }
 }

@@ -3,11 +3,13 @@ package com.wevo.backend.section.service;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.project.service.SectionAccessGuard;
+import com.wevo.backend.project.service.VerifiedProjectAccess;
 import com.wevo.backend.review.service.ReviewLinkService;
 import com.wevo.backend.review.service.TeamReviewService;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.SectionDraft;
 import com.wevo.backend.section.dto.request.SectionDraftSaveRequest;
+import com.wevo.backend.section.dto.response.SectionDraftEvidenceResponse;
 import com.wevo.backend.section.dto.response.SectionDraftReadResponse;
 import com.wevo.backend.section.dto.response.SectionDraftReadResponse.ActiveEditor;
 import com.wevo.backend.section.dto.response.SectionDraftSaveResponse;
@@ -50,6 +52,7 @@ public class SectionDraftService {
     private final TeamReviewService teamReviewService;
     private final DraftLeaseService draftLeaseService;
     private final SectionDriftService sectionDriftService;
+    private final SectionDraftEvidenceQueryService sectionDraftEvidenceQueryService;
 
     public SectionDraftService(SectionAccessGuard sectionAccessGuard,
                                SectionDraftRepository sectionDraftRepository,
@@ -57,7 +60,8 @@ public class SectionDraftService {
                                ReviewLinkService reviewLinkService,
                                TeamReviewService teamReviewService,
                                DraftLeaseService draftLeaseService,
-                               SectionDriftService sectionDriftService) {
+                               SectionDriftService sectionDriftService,
+                               SectionDraftEvidenceQueryService sectionDraftEvidenceQueryService) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.sectionDraftRepository = sectionDraftRepository;
         this.userService = userService;
@@ -65,6 +69,7 @@ public class SectionDraftService {
         this.teamReviewService = teamReviewService;
         this.draftLeaseService = draftLeaseService;
         this.sectionDriftService = sectionDriftService;
+        this.sectionDraftEvidenceQueryService = sectionDraftEvidenceQueryService;
     }
 
     /**
@@ -86,6 +91,22 @@ public class SectionDraftService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_DRAFT_NOT_FOUND));
 
         return SectionDraftReadResponse.of(draft, findActiveEditor(sectionId));
+    }
+
+    /**
+     * 최신 AI 초안의 근거(사용된 의견·합의점·쟁점 결정·보충 근거)를 조회한다. (API_SPEC §3.7.3)
+     *
+     * <p>초안 <b>생성 시점</b>에 고정된 스냅샷을 그대로 반환한다 — 이후 정리 세트가 대체돼도
+     * (§3.8.1) 이 초안이 실제로 근거로 삼은 내용은 바뀌지 않는다.
+     *
+     * @throws BusinessException 섹션 없음/미참여(존재 숨김, {@code S001}),
+     *                           AI로 생성된 초안이 없음({@code S003})
+     */
+    public SectionDraftEvidenceResponse getDraftEvidence(Long sectionId, Long userId) {
+        VerifiedProjectAccess access =
+                sectionAccessGuard.requireParticipantAccessForSection(sectionId, userId);
+        return SectionDraftEvidenceResponse.of(
+                sectionDraftEvidenceQueryService.getLatest(access, sectionId));
     }
 
     /**

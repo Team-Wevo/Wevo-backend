@@ -3,6 +3,7 @@ package com.wevo.backend.review.service;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.global.response.FieldError;
+import com.wevo.backend.project.service.ProjectAccessGuard;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.review.domain.ReviewLink;
 import com.wevo.backend.review.domain.ReviewLinkStatus;
@@ -44,7 +45,9 @@ import org.slf4j.LoggerFactory;
  *   <li><b>토큰 해시 저장</b> — 원문 대신 해시만 저장하고 요청 토큰을 해시해 비교한다.</li>
  * </ul>
  *
- * <p>팀장(OWNER) 권한 검증은 SectionAccessGuard 에 위임한다.
+ * <p>팀장(OWNER) 권한 검증은 SectionAccessGuard 에 위임한다. 단, 링크 ID 를 진입점으로 받는
+ * 경로({@link #updateStatus})는 섹션이 아니라 <b>링크</b>의 존재를 숨겨야 하므로
+ * {@link ProjectAccessGuard#hidingNonMember} 로 숨김 코드를 직접 지정한다.
  */
 @Service
 @Transactional(readOnly = true)
@@ -53,6 +56,7 @@ public class ReviewLinkService {
     private static final Logger log = LoggerFactory.getLogger(ReviewLinkService.class);
 
     private final SectionAccessGuard sectionAccessGuard;
+    private final ProjectAccessGuard projectAccessGuard;
     private final SectionDraftRepository sectionDraftRepository;
     private final ReviewLinkRepository reviewLinkRepository;
     private final ReviewSubmissionRepository reviewSubmissionRepository;
@@ -62,6 +66,7 @@ public class ReviewLinkService {
     private final ReviewIntentComparisonCoordinator comparisonCoordinator;
 
     public ReviewLinkService(SectionAccessGuard sectionAccessGuard,
+                             ProjectAccessGuard projectAccessGuard,
                              SectionDraftRepository sectionDraftRepository,
                              ReviewLinkRepository reviewLinkRepository,
                              ReviewSubmissionRepository reviewSubmissionRepository,
@@ -70,6 +75,7 @@ public class ReviewLinkService {
                              SectionAuthorIntentQueryService authorIntentQueryService,
                              ReviewIntentComparisonCoordinator comparisonCoordinator) {
         this.sectionAccessGuard = sectionAccessGuard;
+        this.projectAccessGuard = projectAccessGuard;
         this.sectionDraftRepository = sectionDraftRepository;
         this.reviewLinkRepository = reviewLinkRepository;
         this.reviewSubmissionRepository = reviewSubmissionRepository;
@@ -202,13 +208,32 @@ public class ReviewLinkService {
     }
 
     /**
-     * 외부 검토 링크를 수동으로 비활성화({@code CLOSED})한다. (내부용 — HTTP 엔드포인트 없음)
+     * 외부 검토 링크를 팀장이 수동으로 종료({@code CLOSED})한다. (API_SPEC §3.5.9)
      *
-     * <p>검토 링크 종료의 <b>기본 경로는 서버 자동 만료</b>다 — 본문 수정 시
+     * <p>검토 링크 종료의 <b>기본 경로는 서버 자동 처리</b>다 — 본문 수정 시
      * {@link #markSectionLinksOutdated}로 {@code OUTDATED} 되고, 재발급 시 기존 {@code ACTIVE}
-     * 링크가 {@link #issueExternalLink}에서 {@code CLOSED} 된다. FE 는 수동 비활성화를 호출하지
-     * 않으므로 이 메서드는 엔드포인트로 노출하지 않고, 운영·내부 로직이 필요할 때 쓰도록 남겨 둔다.
-     * ({@code CLOSED} 로만 전이 가능하며 OWNER 권한을 검증한다.)
+     * 링크가 {@link #issueExternalLink}에서 {@code CLOSED} 된다. 이 경로는 자동 처리로 덮이지 않는
+     * 상황(링크 오발송·유출 등 지금 당장 수집을 끊어야 하는 경우)을 위한 보조 수단이며,
+     * {@code CLOSED} 로만 전이할 수 있고 OWNER 권한을 검증한다.
+     *
+     * <p><b>ACTIVE 링크만 종료된다</b> — 이미 끝난 링크는 상태를 그대로 둔 채 사유를 구분해 거절한다
+     * ({@link ReviewLink#close()}): 이미 종료된 링크는 409 {@code R011} "이미 종료된 링크입니다.",
+     * 본문 수정으로 만료된 링크는 409 {@code R012} "이미 만료된 링크입니다.". 조용히 성공시키면
+     * 팀장이 실제 종료 사유를 오인하므로, 두 사유를 각각 다른 코드로 알려 화면에서 분기하게 한다.
+     * 외부 검토자의 제출 거절 문구(R004/R005)는 안내 대상이 달라 그대로 둔다.
+     *
+     * <p><b>잠금</b> — 링크 행을 배타 잠금으로 읽어 같은 행을 잠그는 제출
+     * ({@link #submitExternalReview})과 직렬화한다. 종료 커밋 전에 잠금을 잡은 제출은 그대로
+     * 성공하고, 그 뒤의 제출은 {@code CLOSED} 를 보고 거부되므로 "닫는 도중에 한 건 더 들어오는"
+     * 경합이 없다. 잠금을 먼저 잡고 권한을 검사하는 순서인데, 권한 검사는 잠금을 잡지 않는
+     * 조회라 발급 경로(섹션 행 잠금 → 링크 행 갱신)와 교착 사이클을 만들지 않는다.
+     * 권한 없는 호출자가 잠금을 잡는 구간은 인가 조회 한 번 길이이고, 실패 시 롤백으로 즉시 풀린다.
+     *
+     * <p><b>존재 숨김</b> — 이 API 는 링크 ID 가 진입점이므로 비멤버에게는 <b>링크</b>의 존재를
+     * 숨긴다({@code R001}). 섹션 기준 숨김 코드({@code S001})를 쓰면 "없는 링크 → R001 /
+     * 남의 링크 → S001" 로 갈려 ID 를 훑는 것만으로 링크 실재 여부가 드러나기 때문이다.
+     * 멤버지만 OWNER 가 아닌 경우는 숨길 이유가 없어 {@code 403}({@code A002}) 그대로다.
+     * (CLAUDE.md §5.6)
      */
     @Transactional
     public void updateStatus(Long reviewLinkId, Long userId, ReviewLinkStatus targetStatus) {
@@ -216,9 +241,13 @@ public class ReviewLinkService {
             throw new BusinessException(ErrorCode.INVALID_INPUT,
                     List.of(new FieldError("status", "CLOSED 로만 변경할 수 있습니다.")));
         }
-        ReviewLink link = reviewLinkRepository.findById(reviewLinkId)
+        ReviewLink link = reviewLinkRepository.findByIdForUpdate(reviewLinkId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.REVIEW_LINK_NOT_FOUND));
-        sectionAccessGuard.requireOwnedSection(link.getProjectSection().getId(), userId);
+        // 섹션 존재는 FK 로 보장되므로 SectionAccessGuard 의 섹션 조회를 거치지 않고
+        // 링크가 속한 프로젝트의 OWNER 검사만 수행하며, 비멤버는 R001 로 숨긴다.
+        ProjectAccessGuard.hidingNonMember(ErrorCode.REVIEW_LINK_NOT_FOUND,
+                () -> projectAccessGuard.requireOwner(
+                        link.getProjectSection().getProject().getId(), userId));
         link.close();
     }
 
@@ -232,18 +261,25 @@ public class ReviewLinkService {
      * ({@code ProjectSectionRepository#findByIdForUpdate})을 잡은 상태로 호출해야 한다.
      * 링크 발급({@link #issueExternalLink})이 같은 잠금을 잡으므로, 이 규약을 지키면
      * 발급 시점 버전 고정 계약(ACTIVE 링크의 스냅샷 = 최신 본문 버전)이 경합 없이 유지된다.
+     *
+     * <p><b>잠금</b> — 만료 대상을 <b>링크 행 배타 잠금</b>으로 읽는다. 섹션 잠금만으로는
+     * 수동 종료({@link #updateStatus})와 직렬화되지 않기 때문이다 — 수동 종료는 링크 ID 로 진입해
+     * 링크 행만 잠그므로 섹션 잠금을 거치지 않는다. 잠금 없이 읽으면 아직 커밋되지 않은 종료를
+     * 못 보고 {@code ACTIVE} 로 읽어, 방금 커밋된 {@code CLOSED} 를 {@code OUTDATED} 로 덮어쓴다
+     * (변경 손실). 잠금 순서는 저장·발급 모두 {@code 섹션 → 링크} 이고 수동 종료는 링크만 잡으므로
+     * 교착 사이클이 없다.
      */
     @Transactional
     public void markSectionLinksOutdated(Long sectionId) {
         List<ReviewLink> activeLinks = reviewLinkRepository
-                .findByProjectSection_IdAndStatus(sectionId, ReviewLinkStatus.ACTIVE);
+                .findByProjectSection_IdAndStatusForUpdate(sectionId, ReviewLinkStatus.ACTIVE);
         activeLinks.forEach(ReviewLink::markOutdated);
     }
 
     private void requireSubmittable(ReviewLink link) {
         switch (link.getStatus()) {
             case OUTDATED -> throw new BusinessException(ErrorCode.REVIEW_LINK_OUTDATED);
-            case CLOSED -> throw new BusinessException(ErrorCode.REVIEW_LINK_CLOSED);
+            case CLOSED -> throw new BusinessException(ErrorCode.REVIEW_LINK_ALREADY_CLOSED);
             default -> { } //ACTIVE -> 제출 가능
         }
     }
