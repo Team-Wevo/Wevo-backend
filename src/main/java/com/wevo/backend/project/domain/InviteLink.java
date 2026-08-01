@@ -68,4 +68,17 @@ public class InviteLink extends BaseTimeEntity {
                 .isActive(true)
                 .build();
     }
+
+    /**
+     * 초대 링크를 비활성화한다. (API_SPEC §3.2.9 — 프로젝트 보관 시 새 멤버 합류 차단)
+     *
+     * <p>토큰 행은 지우지 않는다. 이미 공유된 링크로 접근하면 미리보기·참여가
+     * {@code INVITE_LINK_NOT_FOUND}(P003)로 거부된다.
+     *
+     * <p>사용자가 개별 링크를 끄는 기능(정책서 §2.1 — MVP 이후)과는 별개이며,
+     * 여기서는 프로젝트 보관의 부수 효과로만 호출한다.
+     */
+    public void deactivate() {
+        this.isActive = false;
+    }
 }

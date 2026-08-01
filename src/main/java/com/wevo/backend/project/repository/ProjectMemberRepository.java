@@ -59,8 +59,14 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Lo
      *
      * <p>{@code JOIN FETCH} 로 프로젝트를 함께 로딩해 N+1 을 방지한다.
      * 멤버십을 함께 반환하므로 프로젝트별 내 역할(role)도 추가 조회 없이 알 수 있다.
+     *
+     * <p>보관 처리된({@code ARCHIVED}) 프로젝트는 제외한다 — 삭제(§3.2.9)는 하드 삭제가 아니라
+     * 상태 전이이므로, 목록에서 빼는 것이 "삭제됐다"는 사용자 기대를 충족하는 지점이다.
+     * 개별 조회는 계속 동작한다.
      */
     @Query("SELECT pm FROM ProjectMember pm JOIN FETCH pm.project p "
-            + "WHERE pm.user.id = :userId ORDER BY p.createdAt DESC")
+            + "WHERE pm.user.id = :userId "
+            + "AND p.status <> com.wevo.backend.project.domain.ProjectStatus.ARCHIVED "
+            + "ORDER BY p.createdAt DESC")
     List<ProjectMember> findAllWithProjectByUserId(@Param("userId") Long userId);
 }

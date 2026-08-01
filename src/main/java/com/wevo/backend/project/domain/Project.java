@@ -66,4 +66,23 @@ public class Project extends BaseTimeEntity {
         this.audience = audience;
         this.status = status;
     }
+
+    /**
+     * 프로젝트를 보관 처리한다. (API_SPEC §3.2.9 — 하드 삭제가 아니라 상태 전이)
+     *
+     * <p>여러 팀원이 작성한 의견·초안·검토가 이 프로젝트에 매달려 있어 실제 삭제는 남의 결과물까지
+     * 되돌릴 수 없게 지운다. 목록에서 제외하는 것으로 "삭제" 요구를 충족하고 데이터는 보존한다.
+     *
+     * <p>이미 보관된 프로젝트에 다시 호출해도 상태를 바꾸지 않는다 — 호출측이 멱등하게 응답할 수 있다.
+     */
+    public void archive() {
+        this.status = ProjectStatus.ARCHIVED;
+    }
+
+    /**
+     * 보관 처리된 프로젝트인지. (목록 제외·중복 삭제 판정에 사용)
+     */
+    public boolean isArchived() {
+        return this.status == ProjectStatus.ARCHIVED;
+    }
 }
