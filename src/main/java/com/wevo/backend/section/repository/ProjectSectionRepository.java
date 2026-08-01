@@ -27,6 +27,10 @@ public interface ProjectSectionRepository extends JpaRepository<ProjectSection, 
     @Query("SELECT s FROM ProjectSection s WHERE s.id IN :ids ORDER BY s.id")
     List<ProjectSection> findAllByIdInOrderByIdForUpdate(@Param("ids") List<Long> ids);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM ProjectSection s WHERE s.project.id = :projectId ORDER BY s.id")
+    List<ProjectSection> findAllByProjectIdForUpdate(@Param("projectId") Long projectId);
+
     List<ProjectSection> findByProjectIdOrderBySectionOrder(Long projectId);
 
     List<ProjectSection> findByProject_IdAndTemplate_IdInOrderBySectionOrderAscIdAsc(

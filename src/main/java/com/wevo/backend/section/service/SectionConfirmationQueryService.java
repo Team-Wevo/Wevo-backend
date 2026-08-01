@@ -58,9 +58,22 @@ public class SectionConfirmationQueryService {
     public List<ConfirmedSectionContent> findConfirmedContents(VerifiedProjectAccess access) {
         return sectionDraftRepository.findConfirmedDraftsByProjectId(access.projectId()).stream()
                 .map(draft -> new ConfirmedSectionContent(
+                        draft.getProjectSection().getId(),
+                        draft.getProjectSection().getTemplate() == null
+                                ? null : draft.getProjectSection().getTemplate().getSectionKey(),
                         draft.getProjectSection().getSectionOrder(),
+                        draft.getProjectSection().getConfirmedVersion(),
                         draft.getProjectSection().getTitle(),
+                        draft.getProjectSection().getTemplate() == null
+                                ? null : draft.getProjectSection().getTemplate().getDescription(),
+                        draft.getProjectSection().getTemplate() == null
+                                ? null : draft.getProjectSection().getTemplate().getGuideText(),
                         draft.getContent()))
                 .toList();
+    }
+
+    /** 완료 snapshot 대조와 섹션 변경을 같은 잠금 순서로 직렬화한다. */
+    public void lockAllForUpdate(VerifiedProjectAccess access) {
+        projectSectionRepository.findAllByProjectIdForUpdate(access.projectId());
     }
 }

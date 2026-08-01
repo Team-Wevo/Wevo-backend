@@ -52,6 +52,9 @@ wevo:
       opinion-clustering:
         max-input-tokens: ${AI_OPINION_CLUSTERING_MAX_INPUT_TOKENS:24000}
         max-output-tokens: ${AI_OPINION_CLUSTERING_MAX_OUTPUT_TOKENS:1024}
+      project-flow-review:
+        max-input-tokens: ${AI_PROJECT_FLOW_REVIEW_MAX_INPUT_TOKENS:96000}
+        max-output-tokens: ${AI_PROJECT_FLOW_REVIEW_MAX_OUTPUT_TOKENS:4096}
     nvidia:
       api-key: ${NVIDIA_API_KEY:}
       base-url: ${NVIDIA_API_BASE_URL:https://integrate.api.nvidia.com}
