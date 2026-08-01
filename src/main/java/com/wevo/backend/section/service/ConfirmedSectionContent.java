@@ -6,9 +6,21 @@ package com.wevo.backend.section.service;
  * <p>엔티티를 그대로 넘기지 않고 필요한 값만 담아, 타 도메인이 섹션·초안의 내부 구조에
  * 의존하지 않게 한다.
  *
+ * @param sectionId 섹션 ID
+ * @param templateKey 템플릿 key
  * @param order   섹션 순서 ({@code sectionOrder})
+ * @param confirmedVersion 확정본 version
  * @param title   섹션 제목
  * @param content 확정본 본문 — 섹션의 {@code confirmedVersion} 에 해당하는 초안
  */
-public record ConfirmedSectionContent(Integer order, String title, String content) {
+public record ConfirmedSectionContent(
+        Long sectionId,
+        String templateKey,
+        Integer order,
+        Integer confirmedVersion,
+        String title,
+        String templateDescription,
+        String templateGuide,
+        String content
+) {
 }

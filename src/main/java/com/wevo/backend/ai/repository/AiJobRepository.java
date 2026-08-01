@@ -22,7 +22,7 @@ public interface AiJobRepository extends JpaRepository<AiJob, Long> {
     @Query("""
             select job from AiJob job
             join fetch job.project
-            join fetch job.projectSection
+            left join fetch job.projectSection
             join fetch job.requestedBy
             where job.requestId = :requestId
             """)
@@ -59,6 +59,12 @@ public interface AiJobRepository extends JpaRepository<AiJob, Long> {
             AiFeature feature,
             AiJobStatus status
     );
+
+    Optional<AiJob> findTopByProject_IdAndFeatureOrderByQueuedAtDescIdDesc(
+            Long projectId, AiFeature feature);
+
+    Optional<AiJob> findTopByProject_IdAndFeatureAndStatusOrderByCompletedAtDescIdDesc(
+            Long projectId, AiFeature feature, AiJobStatus status);
 
     List<AiJob> findAllByIdempotencyKeyOrderByExecutionSequenceAsc(String idempotencyKey);
 

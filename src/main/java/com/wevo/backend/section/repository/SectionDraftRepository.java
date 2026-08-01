@@ -35,7 +35,7 @@ public interface SectionDraftRepository extends JpaRepository<SectionDraft, Long
      * <p>{@code COALESCE} 는 엔티티의 {@code getConfirmedVersion()} 과 같은 규칙(레거시 행의
      * null 을 미확정 0 으로 간주)을 쿼리에서도 유지한다. 초안 버전은 1 부터라 0 은 매칭되지 않는다.
      */
-    @Query("SELECT d FROM SectionDraft d JOIN FETCH d.projectSection s "
+    @Query("SELECT d FROM SectionDraft d JOIN FETCH d.projectSection s LEFT JOIN FETCH s.template t "
             + "WHERE s.project.id = :projectId "
             + "AND s.status = com.wevo.backend.section.domain.ProjectSectionStatus.CONFIRMED "
             + "AND d.version = COALESCE(s.confirmedVersion, 0) "

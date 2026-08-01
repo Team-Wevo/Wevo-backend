@@ -1,6 +1,7 @@
 package com.wevo.backend.ai.client;
 
 import java.util.Set;
+import java.util.Map;
 
 public record StructuredOutputValidationContext(
         Set<Long> allowedResourceIds,
@@ -8,7 +9,8 @@ public record StructuredOutputValidationContext(
         Set<Long> allowedAnswerIds,
         Set<Long> requiredUnresolvedIssueIds,
         Set<String> allowedSourceContents,
-        String primarySourceContent
+        String primarySourceContent,
+        Map<Long, String> allowedResourceContents
 ) {
 
     public StructuredOutputValidationContext {
@@ -21,6 +23,9 @@ public record StructuredOutputValidationContext(
         allowedSourceContents = allowedSourceContents == null
                 ? Set.of()
                 : Set.copyOf(allowedSourceContents);
+        allowedResourceContents = allowedResourceContents == null
+                ? Map.of()
+                : Map.copyOf(allowedResourceContents);
     }
 
     public StructuredOutputValidationContext(
@@ -30,16 +35,16 @@ public record StructuredOutputValidationContext(
             Set<Long> requiredUnresolvedIssueIds
     ) {
         this(allowedResourceIds, allowedIssueIds, allowedAnswerIds,
-                requiredUnresolvedIssueIds, Set.of(), null);
+                requiredUnresolvedIssueIds, Set.of(), null, Map.of());
     }
 
     public StructuredOutputValidationContext(Set<Long> allowedResourceIds) {
-        this(allowedResourceIds, Set.of(), Set.of(), Set.of(), Set.of(), null);
+        this(allowedResourceIds, Set.of(), Set.of(), Set.of(), Set.of(), null, Map.of());
     }
 
     public static StructuredOutputValidationContext empty() {
         return new StructuredOutputValidationContext(
-                Set.of(), Set.of(), Set.of(), Set.of(), Set.of(), null);
+                Set.of(), Set.of(), Set.of(), Set.of(), Set.of(), null, Map.of());
     }
 
     public static StructuredOutputValidationContext forSourceContents(
@@ -47,7 +52,13 @@ public record StructuredOutputValidationContext(
             Set<String> sourceContents
     ) {
         return new StructuredOutputValidationContext(
-                Set.of(), Set.of(), Set.of(), Set.of(), sourceContents, primarySourceContent);
+                Set.of(), Set.of(), Set.of(), Set.of(), sourceContents, primarySourceContent, Map.of());
+    }
+
+    public static StructuredOutputValidationContext forResourceContents(Map<Long, String> contents) {
+        Map<Long, String> copy = contents == null ? Map.of() : Map.copyOf(contents);
+        return new StructuredOutputValidationContext(
+                copy.keySet(), Set.of(), Set.of(), Set.of(), Set.copyOf(copy.values()), null, copy);
     }
 
     public void requireAllowedResourceId(Long resourceId) {
