@@ -87,7 +87,8 @@ public class InviteController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401", description = "A001 — 인증 필요"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "404", description = "P003 — 유효하지 않은 초대 링크"),
+                    responseCode = "404",
+                    description = "P003 — 유효하지 않은 초대 링크 / P001 — 프로젝트 없음 / U001 — 사용자 없음"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409", description = "P004 — 프로젝트 정원(4명) 초과")
     })

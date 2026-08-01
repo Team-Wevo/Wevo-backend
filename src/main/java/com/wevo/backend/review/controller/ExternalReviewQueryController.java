@@ -69,9 +69,8 @@ public class ExternalReviewQueryController {
     @Operation(summary = "현재 활성 검토 링크 조회 — 재발급 사고 방지용 상태 복구 (토큰 미포함)")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "200", description = "OK"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "204", description = "활성 링크 없음 (본문 없음)"),
+                    responseCode = "200",
+                    description = "OK — 활성 링크가 없으면 data 가 null 로 생략된다"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401", description = "A001 — 인증 필요"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(

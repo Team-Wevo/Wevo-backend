@@ -83,7 +83,10 @@ public class ReviewLinkController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403", description = "A002 — 멤버지만 OWNER 아님"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "404", description = "R001 — 링크 없음 또는 비멤버 (존재 숨김)")
+                    responseCode = "404", description = "R001 — 링크 없음 또는 비멤버 (존재 숨김)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "409",
+                    description = "R011 — 이미 종료된 링크 / R012 — 이미 만료된 링크")
     })
     @PatchMapping("/review-links/{reviewLinkId}")
     public ResponseEntity<ApiResponse<Void>> updateStatus(

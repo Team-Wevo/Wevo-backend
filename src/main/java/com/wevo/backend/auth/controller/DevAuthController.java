@@ -5,6 +5,7 @@ import com.wevo.backend.auth.dto.response.TokenResponse;
 import com.wevo.backend.auth.service.DevLoginService;
 import com.wevo.backend.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
@@ -38,6 +39,13 @@ public class DevAuthController {
      * 임시 로그인 — 지정한(생략 시 기본) 사용자로 JWT 를 발급한다.
      */
     @Operation(summary = "임시 로그인 (개발 전용 · local 프로파일) — 소셜 인증 없이 JWT 발급")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "DEV_LOGIN_SUCCESS"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404",
+                    description = "local 외 프로파일에서는 컨트롤러가 등록되지 않아 경로 자체가 없음")
+    })
     @PostMapping("/dev-login")
     public ResponseEntity<ApiResponse<TokenResponse>> devLogin(
             @RequestBody(required = false) DevLoginRequest request
