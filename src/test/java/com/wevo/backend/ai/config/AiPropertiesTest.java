@@ -81,13 +81,50 @@ class AiPropertiesTest {
     }
 
     @Test
+    void openAiProviderUsesExplicitDefaultsAndOverridesGenericModelOptions() {
+        AiProperties properties = new AiProperties(
+                "openai",
+                modelOptions("nvidia-model", Duration.ofSeconds(30), 128),
+                Map.of(),
+                null,
+                new AiProperties.OpenAiOptions(
+                        "test-key", "https://api.openai.com", null, null, null, null, null
+                )
+        );
+
+        AiProperties.ModelOptions options = properties.optionsFor(AiFeature.ISSUE_DETECTION);
+
+        assertThat(options.model()).isEqualTo("gpt-5.6-luna");
+        assertThat(options.timeout()).isEqualTo(Duration.ofSeconds(60));
+        assertThat(options.maxOutputTokens()).isEqualTo(4096);
+        assertThat(options.modelContextLimit()).isEqualTo(1_050_000);
+        assertThat(properties.openai().reasoningEffort()).isEqualTo("medium");
+        assertThat(properties.openai().clientBaseUrl()).isEqualTo("https://api.openai.com/v1");
+    }
+
+    @Test
+    void openAiConfigurationRejectsMissingKeyUnsupportedReasoningAndInvalidUrl() {
+        assertThatThrownBy(() -> openAiProperties(new AiProperties.OpenAiOptions(
+                " ", null, null, null, null, null, null
+        ))).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("api-key");
+
+        assertThatThrownBy(() -> openAiProperties(new AiProperties.OpenAiOptions(
+                "test-key", "https://api.openai.com", null, null, null, "extreme", null
+        ))).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("reasoning-effort");
+
+        assertThatThrownBy(() -> openAiProperties(new AiProperties.OpenAiOptions(
+                "test-key", "file:///tmp/openai", null, null, null, null, null
+        ))).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("base-url");
+    }
+
+    @Test
     void rejectsProviderMaxTokenLimitOverflow() {
         AiProperties.ModelOptions overflow = new AiProperties.ModelOptions(
                 "model",
                 Duration.ofSeconds(1),
                 100_000,
-                65_537,
-                131_072,
+                128_001,
+                300_000,
                 8_192,
                 AiProperties.ModelOptions.CONSERVATIVE_CHAR_V1,
                 AiProperties.ModelOptions.REJECT_OVERSIZED_INPUT_V1,
@@ -98,7 +135,19 @@ class AiPropertiesTest {
 
         assertThatThrownBy(() -> new AiProperties("nvidia", overflow, Map.of(), null))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("65536");
+                .hasMessageContaining("128000");
+    }
+
+    @Test
+    void openAiAcceptsDocumentedMaximumOutputAndNormalizesBaseUrl() {
+        AiProperties properties = openAiProperties(new AiProperties.OpenAiOptions(
+                "test-key", "https://api.openai.com/v1/", null, null,
+                128_000, null, null
+        ));
+
+        assertThat(properties.optionsFor(AiFeature.DRAFT_REVIEW).maxOutputTokens())
+                .isEqualTo(128_000);
+        assertThat(properties.openai().clientBaseUrl()).isEqualTo("https://api.openai.com/v1");
     }
 
     @Test
@@ -260,6 +309,16 @@ class AiPropertiesTest {
                 2,
                 Duration.ofMillis(500),
                 Duration.ofSeconds(8)
+        );
+    }
+
+    private AiProperties openAiProperties(AiProperties.OpenAiOptions openAiOptions) {
+        return new AiProperties(
+                "openai",
+                modelOptions("fallback", Duration.ofSeconds(30), 128),
+                Map.of(),
+                null,
+                openAiOptions
         );
     }
 }

@@ -30,12 +30,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @Tag("nvidia-evaluation")
 @SpringBootTest(properties = {
-        "spring.ai.openai.api-key=${NVIDIA_API_KEY}",
-        "spring.ai.openai.base-url=${NVIDIA_API_BASE_URL:https://integrate.api.nvidia.com}/v1",
-        "spring.ai.openai.timeout=${NVIDIA_API_TIMEOUT:60s}",
-        "spring.ai.openai.chat.model=${NVIDIA_API_MODEL:mistralai/mistral-medium-3.5-128b}",
-        "spring.ai.openai.chat.max-tokens=128",
-        "spring.ai.openai.chat.temperature=${NVIDIA_API_TEMPERATURE:0.1}",
+        "wevo.ai.nvidia.api-key=${NVIDIA_API_KEY}",
+        "wevo.ai.nvidia.base-url=${NVIDIA_API_BASE_URL:https://integrate.api.nvidia.com}",
         "wevo.ai.default-options.model=${NVIDIA_API_MODEL:mistralai/mistral-medium-3.5-128b}",
         "wevo.ai.default-options.timeout=${NVIDIA_API_TIMEOUT:60s}",
         "wevo.ai.default-options.max-output-tokens=128",

@@ -38,7 +38,7 @@ class AiUsageLogTest {
         assertThat(log.getProvider()).isEqualTo("nvidia");
 
         AiUsageMetadata usage = new AiUsageMetadata(
-                "nvidia", "provider-1", "model-2", 10L, 5L, 3L, 2L
+                "openai", "provider-1", "model-2", 10L, 5L, 3L, 2L, 4L
         );
         AiCostSnapshot cost = new AiCostSnapshot(
                 "v1",
@@ -52,8 +52,10 @@ class AiUsageLogTest {
 
         assertThat(log.getRequestStatus()).isEqualTo(AiRequestStatus.SUCCEEDED);
         assertThat(log.getProviderRequestId()).isEqualTo("provider-1");
+        assertThat(log.getProvider()).isEqualTo("openai");
         assertThat(log.getModelId()).isEqualTo("model-2");
         assertThat(log.getTotalInputTokens()).isEqualTo(15L);
+        assertThat(log.getReasoningTokens()).isEqualTo(4L);
         assertThat(log.getAttemptCount()).isEqualTo(2);
         assertThat(log.getLatencyMs()).isEqualTo(2_000L);
         assertThat(log.getResultId()).isEqualTo(77L);

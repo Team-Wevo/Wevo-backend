@@ -172,6 +172,25 @@ class SpringAiNvidiaGatewayTest {
     }
 
     @Test
+    void retriesProviderTimeoutWithinConfiguredBound() {
+        AtomicInteger attempts = new AtomicInteger();
+        ChatModel recoveringModel = prompt -> {
+            if (attempts.incrementAndGet() == 1) {
+                throw new TestServiceException(408);
+            }
+            return response("recovered");
+        };
+        SpringAiNvidiaGateway gateway = gateway(recoveringModel, Duration.ofSeconds(1), 1, 0);
+
+        AiProviderResponse response = gateway.generate(
+                new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", "user")
+        );
+
+        assertThat(response.attemptCount()).isEqualTo(2);
+        assertThat(attempts).hasValue(2);
+    }
+
+    @Test
     void prefersProviderRetryAfterWithinConfiguredBound() {
         AtomicInteger attempts = new AtomicInteger();
         AtomicReference<Duration> slept = new AtomicReference<>();

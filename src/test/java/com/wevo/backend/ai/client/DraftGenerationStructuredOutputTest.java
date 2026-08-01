@@ -15,6 +15,11 @@ class DraftGenerationStructuredOutputTest {
             new StrictStructuredOutputConverter<>(definition);
 
     @Test
+    void excludesUnsupportedUniqueItemsFromProviderSchema() {
+        assertThat(definition.jsonSchema()).doesNotContain("\"uniqueItems\"");
+    }
+
+    @Test
     void acceptsCompleteDraftContract() {
         assertThat(converter.convert("""
                 {

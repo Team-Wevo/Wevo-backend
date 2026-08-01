@@ -34,7 +34,26 @@ AI가 의견 사이의 충돌과 공백을 찾아 근거가 추적되는 초안�
 구현 단계에서는 Spring Security·JWT·Google/Kakao OAuth, SSE 또는 WebSocket/STOMP와
 서버 검증을 거치는 AI JSON 구조화 출력을 적용합니다.
 
-## 로컬 AI 개발 Provider
+## AI Provider
+
+현재 운영 후보 기준선은 OpenAI `gpt-5.6-luna`와 명시적
+`reasoning_effort=medium`이다. 기존 NVIDIA API Catalog 연동은 과거 개발·회귀 비교 기준선으로
+유지하며 Provider 선택만으로 기능 서비스나 구조화 출력 검증 계약은 바뀌지 않는다.
+
+```properties
+AI_PROVIDER=openai
+OPENAI_API_KEY=
+OPENAI_API_BASE_URL=https://api.openai.com
+OPENAI_API_MODEL=gpt-5.6-luna
+OPENAI_API_TIMEOUT=60s
+OPENAI_API_MAX_TOKENS=4096
+OPENAI_API_REASONING_EFFORT=medium
+```
+
+OpenAI 연결과 opt-in synthetic smoke 절차는
+[`docs/engineering/ai/openai-gpt-5-6-luna.md`](docs/engineering/ai/openai-gpt-5-6-luna.md)를 참고한다.
+
+### NVIDIA 비교 기준선
 
 로컬 개발과 명시적 통합 테스트에서는 NVIDIA API Catalog Free Endpoint의
 `mistralai/mistral-medium-3.5-128b`를 사용합니다. 일반·구조화 호출은
@@ -50,7 +69,7 @@ NVIDIA_API_TEMPERATURE=0.1
 NVIDIA_API_REASONING_EFFORT=none
 ```
 
-Free Endpoint는 synthetic 데이터 기반 개발·평가에만 사용하며 운영 트래픽과 실제 사용자 의견을
+NVIDIA Free Endpoint는 synthetic 데이터 기반 개발·평가에만 사용하며 운영 트래픽과 실제 사용자 의견을
 전송하지 않습니다. 전체 설정은 `.env.example`을 기준으로 합니다.
 
 ## 패키지 구조

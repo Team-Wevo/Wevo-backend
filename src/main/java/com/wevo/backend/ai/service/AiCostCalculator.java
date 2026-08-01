@@ -35,11 +35,14 @@ public class AiCostCalculator {
         }
 
         BigDecimal estimatedCost = null;
-        if (usage.inputTokens() != null && usage.outputTokens() != null) {
+        if (usage.inputTokens() != null
+                && usage.outputTokens() != null
+                && usage.cacheReadInputTokens() != null
+                && usage.cacheWriteInputTokens() != null) {
             estimatedCost = cost(usage.inputTokens(), pricing.inputPerMillionTokens())
                     .add(cost(usage.outputTokens(), pricing.outputPerMillionTokens()))
-                    .add(cost(orZero(usage.cacheReadInputTokens()), pricing.cacheReadPerMillionTokens()))
-                    .add(cost(orZero(usage.cacheWriteInputTokens()), pricing.cacheWritePerMillionTokens()))
+                    .add(cost(usage.cacheReadInputTokens(), pricing.cacheReadPerMillionTokens()))
+                    .add(cost(usage.cacheWriteInputTokens(), pricing.cacheWritePerMillionTokens()))
                     .setScale(COST_SCALE, RoundingMode.HALF_UP);
         }
 
@@ -57,7 +60,4 @@ public class AiCostCalculator {
         return BigDecimal.valueOf(tokens).multiply(pricePerMillion).divide(ONE_MILLION, COST_SCALE, RoundingMode.HALF_UP);
     }
 
-    private long orZero(Long value) {
-        return value == null ? 0L : value;
-    }
 }
