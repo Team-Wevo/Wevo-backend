@@ -146,9 +146,10 @@ class OpenAiEvaluationIntegrationTest {
             assertThat(written.jsonPath()).exists();
             String reportText = Files.readString(written.jsonPath())
                     + Files.readString(written.markdownPath());
-            assertThat(reportText).doesNotContain(
-                    "Authorization: Bearer", aiProperties.openai().apiKey()
-            );
+            assertThat(reportText).doesNotContain("Authorization: Bearer");
+            assertThat(reportText.contains(aiProperties.openai().apiKey()))
+                    .as("evaluation report must not contain the configured OpenAI API key")
+                    .isFalse();
             featureFixtures.forEach(fixture -> {
                 assertThat(reportText).doesNotContain(fixture.input().projectContext());
                 fixture.input().opinions().forEach(opinion ->

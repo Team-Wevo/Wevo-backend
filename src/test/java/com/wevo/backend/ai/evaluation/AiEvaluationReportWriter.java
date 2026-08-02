@@ -49,11 +49,9 @@ public final class AiEvaluationReportWriter {
                 .append("| Input / output tokens | ").append(value(metrics.inputTokens().total()))
                 .append(" / ").append(value(metrics.outputTokens().total())).append(" |\n")
                 .append("| Input tokens p50 / p95 | ")
-                .append(value(metrics.inputTokens().p50())).append(" / ")
-                .append(value(metrics.inputTokens().p95())).append(" |\n")
+                .append(tokenPercentiles(metrics.inputTokens())).append(" |\n")
                 .append("| Output tokens p50 / p95 | ")
-                .append(value(metrics.outputTokens().p50())).append(" / ")
-                .append(value(metrics.outputTokens().p95())).append(" |\n")
+                .append(tokenPercentiles(metrics.outputTokens())).append(" |\n")
                 .append("| Cache read / write tokens | ")
                 .append(value(metrics.cacheReadTokens().total())).append(" / ")
                 .append(value(metrics.cacheWriteTokens().total())).append(" |\n")
@@ -123,6 +121,12 @@ public final class AiEvaluationReportWriter {
 
     private String count(AiEvaluationMetrics.CountMetric metric) {
         return metric.value() == null ? "N/A" : metric.value().toString();
+    }
+
+    private String tokenPercentiles(AiEvaluationMetrics.NullableLongSummary summary) {
+        return value(summary.p50()) + " / " + value(summary.p95())
+                + " (`" + summary.status() + "`, "
+                + summary.measuredSamples() + "/" + summary.totalSamples() + " samples)";
     }
 
     public record WrittenReport(Path jsonPath, Path markdownPath) {

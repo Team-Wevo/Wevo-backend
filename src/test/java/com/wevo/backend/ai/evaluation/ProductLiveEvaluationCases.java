@@ -101,7 +101,7 @@ final class ProductLiveEvaluationCases {
                 return new AiEvaluationCandidate(
                         List.of(),
                         List.of(new AiEvaluationCandidate.Claim(
-                                result.content(), !evidence.isEmpty(), evidence
+                                result.content(), true, evidence
                         )),
                         Set.of(),
                         0,

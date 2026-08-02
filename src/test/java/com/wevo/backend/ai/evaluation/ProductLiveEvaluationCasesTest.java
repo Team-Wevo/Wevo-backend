@@ -2,9 +2,11 @@ package com.wevo.backend.ai.evaluation;
 
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
+import com.wevo.backend.ai.client.AiUsageMetadata;
 import com.wevo.backend.ai.client.StructuredAiProviderRequest;
 import com.wevo.backend.ai.client.StructuredOutputDefinition;
 import com.wevo.backend.ai.client.StructuredOutputSemanticException;
+import com.wevo.backend.ai.domain.AiCostSnapshot;
 import com.wevo.backend.ai.domain.AiSectionFindingType;
 import com.wevo.backend.ai.dto.model.DraftReviewOutput;
 import com.wevo.backend.ai.dto.model.DraftReviewRewriteOutput;
@@ -151,6 +153,39 @@ class ProductLiveEvaluationCasesTest {
                 ),
                 review.validationContext()
         )).isInstanceOf(StructuredOutputSemanticException.class);
+    }
+
+    @Test
+    void draftWithoutEvidenceLowersEvidenceCoverage() {
+        ProductLiveEvaluationCases cases = cases();
+        AiEvaluationFixture fixture = fixture(
+                "draft-generation", "stale-input-boundary.json"
+        );
+        AiEvaluationCandidate candidate = cases.draftGeneration().normalize(
+                fixture,
+                new DraftGenerationOutput(
+                        "근거가 연결되지 않은 초안",
+                        List.of(), List.of(), List.of(), List.of()
+                )
+        );
+        AiEvaluationSample sample = new AiEvaluationSample(
+                fixture.metadata().id(),
+                AiEvaluationOutcome.SUCCESS,
+                candidate,
+                new AiUsageMetadata("canned", "request", "model", 1L, 1L, 0L, 0L),
+                AiCostSnapshot.unpriced("none"),
+                1,
+                1,
+                List.of()
+        );
+
+        AiEvaluationMetrics metrics = new AiEvaluationMetricsCalculator().calculate(
+                List.of(fixture), List.of(sample)
+        );
+
+        assertThat(candidate.claims()).singleElement()
+                .satisfies(claim -> assertThat(claim.evidenceRequired()).isTrue());
+        assertThat(metrics.evidenceCoverage().value()).isZero();
     }
 
     private ProductLiveEvaluationCases cases() {

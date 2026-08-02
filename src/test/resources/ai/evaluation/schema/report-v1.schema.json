@@ -86,7 +86,10 @@
       "required": ["status", "reviewer", "reviewedAt", "fixtureScores"],
       "properties": {
         "status": { "enum": ["PENDING", "COMPLETED"] },
-        "reviewer": { "type": ["string", "null"] },
+        "reviewer": {
+          "type": ["string", "null"],
+          "enum": ["AI_OWNER", "PRODUCT_OWNER", null]
+        },
         "reviewedAt": { "type": ["string", "null"], "format": "date-time" },
         "fixtureScores": {
           "type": "object",

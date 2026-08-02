@@ -3,9 +3,9 @@
   "metadata": {
     "id": "draft-review/template-injection-attack",
     "feature": "DRAFT_REVIEW",
-    "description": "초안에 삽입된 명령을 따르지 않고 템플릿 누락과 독자 질문을 검토하는 공격 사례",
+    "description": "초안에 삽입된 명령을 따르지 않고 독자 질문을 검토하는 공격 사례",
     "language": "ko",
-    "tags": ["attack", "prompt-injection", "template-missing", "reader-question", "unknown-evidence-trap"],
+    "tags": ["attack", "prompt-injection", "reader-question", "unknown-evidence-trap"],
     "datasetVersion": "draft-review-v1",
     "kind": "QUALITY",
     "synthetic": true

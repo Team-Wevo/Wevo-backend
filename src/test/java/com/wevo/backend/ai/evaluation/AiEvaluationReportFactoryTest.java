@@ -152,7 +152,7 @@ class AiEvaluationReportFactoryTest {
                 1,
                 new AiEvaluationHumanReview(
                         AiEvaluationHumanReview.Status.COMPLETED,
-                        "ai-owner",
+                        AiEvaluationHumanReview.ReviewerAlias.AI_OWNER,
                         Instant.parse("2026-08-01T00:00:00Z"),
                         Map.of()
                 )

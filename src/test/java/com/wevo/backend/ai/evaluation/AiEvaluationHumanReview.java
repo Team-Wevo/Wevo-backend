@@ -6,7 +6,7 @@ import java.util.Map;
 /** 자동 gate와 독립적으로 승인자가 기록하는 fixture별 사람 평가 결과. */
 public record AiEvaluationHumanReview(
         Status status,
-        String reviewer,
+        ReviewerAlias reviewer,
         Instant reviewedAt,
         Map<String, Score> fixtureScores
 ) {
@@ -17,7 +17,7 @@ public record AiEvaluationHumanReview(
         }
         fixtureScores = fixtureScores == null ? Map.of() : Map.copyOf(fixtureScores);
         if (status == Status.COMPLETED
-                && (reviewer == null || reviewer.isBlank() || reviewedAt == null)) {
+                && (reviewer == null || reviewedAt == null)) {
             throw new IllegalArgumentException("완료된 사람 평가에는 reviewer와 reviewedAt이 필요합니다.");
         }
         if (status == Status.PENDING
@@ -48,5 +48,11 @@ public record AiEvaluationHumanReview(
     public enum Status {
         PENDING,
         COMPLETED
+    }
+
+    /** 보고서에 개인 식별자 대신 기록하는 제어된 비식별 역할 alias. */
+    public enum ReviewerAlias {
+        AI_OWNER,
+        PRODUCT_OWNER
     }
 }
