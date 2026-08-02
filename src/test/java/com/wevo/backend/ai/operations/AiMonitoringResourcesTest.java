@@ -28,6 +28,9 @@ class AiMonitoringResourcesTest {
                 "wevo_ai_end_to_end_latency_seconds_bucket",
                 "wevo_ai_tokens_sum",
                 "wevo_ai_cost_usd_sum",
+                "wevo_ai_success_cost_usd_sum",
+                "wevo_ai_cache_reads_total",
+                "wevo_ai_cache_writes_total",
                 "wevo_ai_jobs",
                 "wevo_ai_circuit_state",
                 "wevo_ai_guardrail_rejections_total");

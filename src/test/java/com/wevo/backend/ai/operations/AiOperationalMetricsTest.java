@@ -39,6 +39,12 @@ class AiOperationalMetricsTest {
         assertThat(registry.get(AiOperationalMetrics.TOKENS).summaries().stream()
                 .mapToDouble(summary -> summary.totalAmount()).sum()).isEqualTo(20);
         assertThat(registry.get(AiOperationalMetrics.COST).summary().totalAmount()).isEqualTo(0.001);
+        assertThat(registry.get(AiOperationalMetrics.SUCCESS_COST).summary().totalAmount())
+                .isEqualTo(0.001);
+        assertThat(registry.get(AiOperationalMetrics.CACHE_READS)
+                .tag("outcome", "hit").counter().count()).isEqualTo(1);
+        assertThat(registry.get(AiOperationalMetrics.CACHE_WRITES)
+                .tag("outcome", "write").counter().count()).isEqualTo(1);
         assertThat(registry.get(AiOperationalMetrics.TRANSPORT_RETRIES).counter().count()).isEqualTo(1);
         assertThat(registry.get(AiOperationalMetrics.CORRECTION_RETRIES).counter().count()).isEqualTo(2);
         assertThat(registry.getMeters()).allSatisfy(meter -> {
@@ -74,5 +80,33 @@ class AiOperationalMetricsTest {
                 .containsExactlyInAnyOrder("stale_discarded", "orphan_recovered");
         assertThat(registry.get(AiOperationalMetrics.GUARDRAIL_REJECTIONS)
                 .tag("reason", "redis_fail_closed").counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    void distinguishesUnavailableCacheMetadataFromAnExplicitMiss() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AiOperationalMetrics metrics = new AiOperationalMetrics(registry);
+
+        metrics.recordFailure(
+                AiFeature.DRAFT_REVIEW, "openai", "gpt-5.6-luna",
+                "draft-review:v1", "draft-review:v1", Duration.ZERO, 1,
+                AiErrorType.INVALID_RESPONSE,
+                new AiUsageMetadata("openai", null, "gpt-5.6-luna", 10L, 1L, null, null, 0L),
+                AiCostSnapshot.unpriced("v1"), true);
+        metrics.recordFailure(
+                AiFeature.DRAFT_REVIEW, "openai", "gpt-5.6-luna",
+                "draft-review:v1", "draft-review:v1", Duration.ZERO, 1,
+                AiErrorType.INVALID_RESPONSE,
+                new AiUsageMetadata("openai", null, "gpt-5.6-luna", 10L, 1L, 0L, 0L, 0L),
+                AiCostSnapshot.unpriced("v1"), true);
+
+        assertThat(registry.get(AiOperationalMetrics.CACHE_READS)
+                .tag("outcome", "metadata_unavailable").counter().count()).isEqualTo(1);
+        assertThat(registry.get(AiOperationalMetrics.CACHE_READS)
+                .tag("outcome", "miss").counter().count()).isEqualTo(1);
+        assertThat(registry.get(AiOperationalMetrics.CACHE_WRITES)
+                .tag("outcome", "metadata_unavailable").counter().count()).isEqualTo(1);
+        assertThat(registry.get(AiOperationalMetrics.CACHE_WRITES)
+                .tag("outcome", "no_write").counter().count()).isEqualTo(1);
     }
 }
