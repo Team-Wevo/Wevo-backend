@@ -61,8 +61,14 @@ class AiEvaluationMetricsCalculatorTest {
         assertThat(metrics.forbiddenClaimCount().value()).isEqualTo(1);
         assertThat(metrics.inputTokens().total()).isEqualTo(30L);
         assertThat(metrics.cacheReadTokens().total()).isEqualTo(5L);
+        assertThat(metrics.inputTokens().p50()).isEqualTo(10L);
+        assertThat(metrics.inputTokens().p95()).isEqualTo(20L);
+        assertThat(metrics.reasoningTokens().status())
+                .isEqualTo(AiEvaluationMetrics.MeasurementStatus.NOT_MEASURABLE);
         assertThat(metrics.cost().status()).isEqualTo(AiEvaluationMetrics.CostStatus.PRICED);
         assertThat(metrics.cost().estimatedCost()).isEqualByComparingTo("0.03");
+        assertThat(metrics.cost().successfulCostP50()).isEqualByComparingTo("0.01");
+        assertThat(metrics.cost().successfulCostP95()).isEqualByComparingTo("0.02");
         assertThat(metrics.latencyP50Millis()).isEqualTo(10L);
         assertThat(metrics.latencyP95Millis()).isEqualTo(100L);
     }

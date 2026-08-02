@@ -92,6 +92,8 @@ class NvidiaEvaluationIntegrationTest {
                         "issue-detection-v1",
                         "nvidia",
                         samples.getFirst().usage().modelId(),
+                        "chat-completions",
+                        nvidiaProviderProperties.reasoningEffort(),
                         "contract-summary:v1",
                         "evaluation-summary:v1",
                         Instant.now(),

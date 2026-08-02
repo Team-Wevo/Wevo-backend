@@ -99,7 +99,8 @@ public final class AiEvaluationMetricsCalculator {
                 tokenSummary(executed, AiUsageMetadata::outputTokens),
                 tokenSummary(executed, AiUsageMetadata::cacheReadInputTokens),
                 tokenSummary(executed, AiUsageMetadata::cacheWriteInputTokens),
-                costSummary(executed),
+                tokenSummary(executed, AiUsageMetadata::reasoningTokens),
+                costSummary(executed, successful),
                 percentile(latencies, 0.50d),
                 percentile(latencies, 0.95d),
                 Map.copyOf(errors)
@@ -221,11 +222,13 @@ public final class AiEvaluationMetricsCalculator {
     ) {
         long total = 0;
         int measured = 0;
+        List<Long> measuredValues = new java.util.ArrayList<>();
         for (AiEvaluationSample sample : samples) {
             Long value = sample.usage() == null ? null : extractor.apply(sample.usage());
             if (value != null) {
                 total += value;
                 measured++;
+                measuredValues.add(value);
             }
         }
         boolean complete = !samples.isEmpty() && measured == samples.size();
@@ -239,13 +242,18 @@ public final class AiEvaluationMetricsCalculator {
         }
         return new AiEvaluationMetrics.NullableLongSummary(
                 complete ? total : null,
+                percentile(measuredValues.stream().sorted().toList(), 0.50d),
+                percentile(measuredValues.stream().sorted().toList(), 0.95d),
                 measured,
                 samples.size(),
                 status
         );
     }
 
-    private AiEvaluationMetrics.CostSummary costSummary(List<AiEvaluationSample> samples) {
+    private AiEvaluationMetrics.CostSummary costSummary(
+            List<AiEvaluationSample> samples,
+            List<AiEvaluationSample> successfulSamples
+    ) {
         BigDecimal total = BigDecimal.ZERO;
         int priced = 0;
         boolean unpriced = false;
@@ -263,17 +271,39 @@ public final class AiEvaluationMetricsCalculator {
         }
         if (samples.isEmpty() || missing) {
             return new AiEvaluationMetrics.CostSummary(
-                    null, AiEvaluationMetrics.CostStatus.NOT_MEASURABLE, priced, samples.size()
+                    null, null, null,
+                    AiEvaluationMetrics.CostStatus.NOT_MEASURABLE, priced, samples.size()
             );
         }
         if (unpriced) {
             return new AiEvaluationMetrics.CostSummary(
-                    null, AiEvaluationMetrics.CostStatus.UNPRICED, priced, samples.size()
+                    null, null, null,
+                    AiEvaluationMetrics.CostStatus.UNPRICED, priced, samples.size()
             );
         }
+        List<BigDecimal> successfulCosts = successfulSamples.stream()
+                .map(AiEvaluationSample::cost)
+                .filter(java.util.Objects::nonNull)
+                .map(AiCostSnapshot::estimatedCost)
+                .filter(java.util.Objects::nonNull)
+                .sorted()
+                .toList();
+        boolean successfulCostComplete = !successfulSamples.isEmpty()
+                && successfulCosts.size() == successfulSamples.size();
         return new AiEvaluationMetrics.CostSummary(
-                total, AiEvaluationMetrics.CostStatus.PRICED, priced, samples.size()
+                total,
+                successfulCostComplete ? percentileDecimal(successfulCosts, 0.50d) : null,
+                successfulCostComplete ? percentileDecimal(successfulCosts, 0.95d) : null,
+                AiEvaluationMetrics.CostStatus.PRICED, priced, samples.size()
         );
+    }
+
+    private BigDecimal percentileDecimal(List<BigDecimal> sortedValues, double percentile) {
+        if (sortedValues.isEmpty()) {
+            return null;
+        }
+        int rank = (int) Math.ceil(percentile * sortedValues.size());
+        return sortedValues.get(Math.max(0, rank - 1));
     }
 
     private Long percentile(List<Long> sortedValues, double percentile) {

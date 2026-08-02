@@ -35,6 +35,7 @@ public final class AiEvaluationRunner {
         long outputTokens = 0;
         long elapsedMillis = 0;
         BigDecimal estimatedCost = BigDecimal.ZERO;
+        BigDecimal reservedEstimatedCost = BigDecimal.ZERO;
         boolean outputTokenMeasurementMissing = false;
 
         for (AiEvaluationFixture fixture : orderedFixtures) {
@@ -45,6 +46,7 @@ public final class AiEvaluationRunner {
                     outputTokens,
                     elapsedMillis,
                     estimatedCost,
+                    reservedEstimatedCost,
                     outputTokenMeasurementMissing
             )) {
                 samples.add(AiEvaluationSample.budgetExhausted(fixture.metadata().id()));
@@ -60,6 +62,11 @@ public final class AiEvaluationRunner {
             );
             samples.add(sample);
             executedFixtures++;
+            if (budget.maxEstimatedCostPerFixture() != null) {
+                reservedEstimatedCost = reservedEstimatedCost.add(
+                        budget.maxEstimatedCostPerFixture()
+                );
+            }
             providerRequests += observation.attemptCount();
             elapsedMillis += latencyMillis;
             if (observation.usage() != null && observation.usage().outputTokens() != null) {
@@ -81,16 +88,28 @@ public final class AiEvaluationRunner {
             long outputTokens,
             long elapsedMillis,
             BigDecimal estimatedCost,
+            BigDecimal reservedEstimatedCost,
             boolean outputTokenMeasurementMissing
     ) {
         if (executedFixtures >= budget.maxFixtures()
                 || providerRequests >= budget.maxProviderRequests()
+                || providerRequests > budget.maxProviderRequests()
+                - budget.maxProviderRequestsPerFixture()
                 || outputTokens >= budget.maxOutputTokens()
+                || outputTokens > budget.maxOutputTokens()
+                - budget.maxOutputTokensPerFixture()
                 || elapsedMillis >= budget.deadline().toMillis()
                 || outputTokenMeasurementMissing) {
             return true;
         }
-        return budget.maxEstimatedCost() != null
-                && estimatedCost.compareTo(budget.maxEstimatedCost()) >= 0;
+        if (budget.maxEstimatedCost() == null) {
+            return false;
+        }
+        if (estimatedCost.compareTo(budget.maxEstimatedCost()) >= 0) {
+            return true;
+        }
+        return budget.maxEstimatedCostPerFixture() != null
+                && reservedEstimatedCost.add(budget.maxEstimatedCostPerFixture())
+                .compareTo(budget.maxEstimatedCost()) > 0;
     }
 }

@@ -44,6 +44,8 @@ class AiEvaluationReportWriterTest {
                 "issue-detection-v1",
                 "nvidia",
                 "mistralai/mistral-medium-3.5-128b",
+                "chat-completions",
+                "none",
                 "issue-detection:v1",
                 "issue-detection:v1",
                 Instant.parse("2026-07-18T00:00:00Z"),
@@ -65,7 +67,14 @@ class AiEvaluationReportWriterTest {
                         new ClassPathResource("ai/evaluation/schema/report-v1.schema.json").getInputStream()
                 ));
         assertThat(reportSchema.validate(jsonMapper.readTree(firstJson))).isEmpty();
-        assertThat(markdown).contains("Schema valid rate", "PROVIDER_FAILURE", "UNPRICED");
+        AiEvaluationReport roundTripped = jsonMapper.readValue(firstJson, AiEvaluationReport.class);
+        assertThat(roundTripped.run().endpointType()).isEqualTo("chat-completions");
+        assertThat(roundTripped.humanReview().status())
+                .isEqualTo(AiEvaluationHumanReview.Status.PENDING);
+        assertThat(markdown).contains(
+                "Schema valid rate", "PROVIDER_FAILURE", "UNPRICED",
+                "Endpoint / reasoning effort", "Reasoning tokens", "Human review"
+        );
         assertThat(firstJson + markdown)
                 .doesNotContain(
                         "nvapi-secret-value",
@@ -108,7 +117,8 @@ class AiEvaluationReportWriterTest {
 
     private AiEvaluationRunMetadata metadata() {
         return new AiEvaluationRunMetadata(
-                "issue-detection-v1", "canned", "model", "prompt:v1", "schema:v1",
+                "issue-detection-v1", "canned", "model", "chat-completions", "none",
+                "prompt:v1", "schema:v1",
                 Instant.parse("2026-07-18T00:00:00Z"), 0.0d, 128, "abc123"
         );
     }

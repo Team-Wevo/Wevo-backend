@@ -26,6 +26,7 @@ public record AiEvaluationMetrics(
         NullableLongSummary outputTokens,
         NullableLongSummary cacheReadTokens,
         NullableLongSummary cacheWriteTokens,
+        NullableLongSummary reasoningTokens,
         CostSummary cost,
         Long latencyP50Millis,
         Long latencyP95Millis,
@@ -52,6 +53,8 @@ public record AiEvaluationMetrics(
 
     public record NullableLongSummary(
             Long total,
+            Long p50,
+            Long p95,
             int measuredSamples,
             int totalSamples,
             MeasurementStatus status
@@ -81,6 +84,8 @@ public record AiEvaluationMetrics(
 
     public record CostSummary(
             BigDecimal estimatedCost,
+            BigDecimal successfulCostP50,
+            BigDecimal successfulCostP95,
             CostStatus status,
             int pricedSamples,
             int totalSamples

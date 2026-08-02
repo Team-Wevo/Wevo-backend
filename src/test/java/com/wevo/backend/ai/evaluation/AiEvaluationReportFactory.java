@@ -33,8 +33,23 @@ public final class AiEvaluationReportFactory {
             AiEvaluationReport baseline,
             int minimumSamples
     ) {
+        return create(
+                run, fixtures, samples, baseline, minimumSamples,
+                AiEvaluationHumanReview.pending()
+        );
+    }
+
+    public AiEvaluationReport create(
+            AiEvaluationRunMetadata run,
+            List<AiEvaluationFixture> fixtures,
+            List<AiEvaluationSample> samples,
+            AiEvaluationReport baseline,
+            int minimumSamples,
+            AiEvaluationHumanReview humanReview
+    ) {
         validateDatasetVersion(run, fixtures);
         validateBaselineCompatibility(run, fixtures, baseline);
+        validateHumanReview(fixtures, humanReview);
         AiEvaluationMetrics metrics = metricsCalculator.calculate(fixtures, samples);
         List<AiEvaluationReport.Failure> failures = samples.stream()
                 .filter(sample -> sample.outcome() != AiEvaluationOutcome.SUCCESS)
@@ -50,10 +65,31 @@ public final class AiEvaluationReportFactory {
                 run,
                 metrics,
                 gate.evaluate(metrics, minimumSamples),
+                humanReview,
                 deltas(metrics, baseline),
                 fixtureResults,
                 failures
         );
+    }
+
+    private void validateHumanReview(
+            List<AiEvaluationFixture> fixtures,
+            AiEvaluationHumanReview humanReview
+    ) {
+        if (humanReview == null) {
+            throw new IllegalArgumentException("사람 평가 결과는 필수입니다.");
+        }
+        Set<String> qualityFixtureIds = fixtures.stream()
+                .filter(fixture -> fixture.metadata().kind() == AiEvaluationFixture.Kind.QUALITY)
+                .map(fixture -> fixture.metadata().id())
+                .collect(Collectors.toUnmodifiableSet());
+        if (!qualityFixtureIds.containsAll(humanReview.fixtureScores().keySet())) {
+            throw new IllegalArgumentException("사람 평가는 현재 QUALITY fixture에만 기록할 수 있습니다.");
+        }
+        if (humanReview.status() == AiEvaluationHumanReview.Status.COMPLETED
+                && !humanReview.fixtureScores().keySet().equals(qualityFixtureIds)) {
+            throw new IllegalArgumentException("완료된 사람 평가는 모든 QUALITY fixture 점수가 필요합니다.");
+        }
     }
 
     private AiEvaluationReport.FixtureResult fixtureResult(AiEvaluationSample sample) {
@@ -79,6 +115,7 @@ public final class AiEvaluationReportFactory {
                 usage == null ? null : usage.outputTokens(),
                 usage == null ? null : usage.cacheReadInputTokens(),
                 usage == null ? null : usage.cacheWriteInputTokens(),
+                usage == null ? null : usage.reasoningTokens(),
                 cost == null ? null : cost.estimatedCost(),
                 costStatus
         );

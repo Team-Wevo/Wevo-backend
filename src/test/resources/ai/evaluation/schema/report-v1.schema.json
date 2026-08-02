@@ -14,10 +14,12 @@
         "datasetVersion": { "type": "string" },
         "providerId": { "type": "string" },
         "modelId": { "type": "string" },
+        "endpointType": { "type": "string" },
+        "reasoningEffort": { "type": "string" },
         "promptVersion": { "type": "string" },
         "schemaVersion": { "type": "string" },
         "executedAt": { "type": "string", "format": "date-time" },
-        "temperature": { "type": "number" },
+        "temperature": { "type": ["number", "null"] },
         "maxOutputTokens": { "type": "integer", "minimum": 1 },
         "gitCommit": { "type": "string" }
       }
@@ -58,6 +60,7 @@
         "outputTokens": { "$ref": "#/$defs/nullableLongSummary" },
         "cacheReadTokens": { "$ref": "#/$defs/nullableLongSummary" },
         "cacheWriteTokens": { "$ref": "#/$defs/nullableLongSummary" },
+        "reasoningTokens": { "$ref": "#/$defs/nullableLongSummary" },
         "cost": { "$ref": "#/$defs/costSummary" },
         "latencyP50Millis": { "type": ["integer", "null"], "minimum": 0 },
         "latencyP95Millis": { "type": ["integer", "null"], "minimum": 0 },
@@ -75,6 +78,30 @@
         "automaticStatus": { "enum": ["PASS", "FAIL", "INSUFFICIENT_SAMPLES"] },
         "overallStatus": { "enum": ["PASS", "FAIL", "REVIEW_REQUIRED"] },
         "reasons": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "humanReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reviewer", "reviewedAt", "fixtureScores"],
+      "properties": {
+        "status": { "enum": ["PENDING", "COMPLETED"] },
+        "reviewer": { "type": ["string", "null"] },
+        "reviewedAt": { "type": ["string", "null"], "format": "date-time" },
+        "fixtureScores": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["accuracy", "grounding", "neutrality", "clarity"],
+            "properties": {
+              "accuracy": { "type": "integer", "minimum": 1, "maximum": 5 },
+              "grounding": { "type": "integer", "minimum": 1, "maximum": 5 },
+              "neutrality": { "type": "integer", "minimum": 1, "maximum": 5 },
+              "clarity": { "type": "integer", "minimum": 1, "maximum": 5 }
+            }
+          }
+        }
       }
     },
     "baselineDeltas": {
@@ -99,6 +126,7 @@
           "outputTokens": { "type": ["integer", "null"], "minimum": 0 },
           "cacheReadTokens": { "type": ["integer", "null"], "minimum": 0 },
           "cacheWriteTokens": { "type": ["integer", "null"], "minimum": 0 },
+          "reasoningTokens": { "type": ["integer", "null"], "minimum": 0 },
           "estimatedCost": { "type": ["number", "null"], "minimum": 0 },
           "costStatus": { "enum": ["PRICED", "UNPRICED", "NOT_MEASURABLE"] }
         }
@@ -146,6 +174,8 @@
       "required": ["total", "measuredSamples", "totalSamples", "status"],
       "properties": {
         "total": { "type": ["integer", "null"], "minimum": 0 },
+        "p50": { "type": ["integer", "null"], "minimum": 0 },
+        "p95": { "type": ["integer", "null"], "minimum": 0 },
         "measuredSamples": { "type": "integer", "minimum": 0 },
         "totalSamples": { "type": "integer", "minimum": 0 },
         "status": { "$ref": "#/$defs/measurementStatus" }
@@ -157,6 +187,8 @@
       "required": ["estimatedCost", "status", "pricedSamples", "totalSamples"],
       "properties": {
         "estimatedCost": { "type": ["number", "null"], "minimum": 0 },
+        "successfulCostP50": { "type": ["number", "null"], "minimum": 0 },
+        "successfulCostP95": { "type": ["number", "null"], "minimum": 0 },
         "status": { "enum": ["PRICED", "UNPRICED", "NOT_MEASURABLE"] },
         "pricedSamples": { "type": "integer", "minimum": 0 },
         "totalSamples": { "type": "integer", "minimum": 0 }
