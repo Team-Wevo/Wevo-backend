@@ -15,8 +15,29 @@ public record AiJobCreateCommand(
         String promptVersion,
         String schemaVersion,
         String modelId,
-        Integer maxOutputTokens
+        Integer maxOutputTokens,
+        String rolloutId,
+        String reasoningEffort,
+        String pricingVersion,
+        String policyVersion
 ) {
+
+    public AiJobCreateCommand(
+            Project project,
+            ProjectSection projectSection,
+            User requestedBy,
+            AiFeature feature,
+            String inputSnapshotHash,
+            String sourceVersion,
+            String promptVersion,
+            String schemaVersion,
+            String modelId,
+            Integer maxOutputTokens
+    ) {
+        this(project, projectSection, requestedBy, feature, inputSnapshotHash, sourceVersion,
+                promptVersion, schemaVersion, modelId, maxOutputTokens,
+                "baseline", "none", "unpriced", "guardrails-disabled");
+    }
 
     public AiJobCreateCommand {
         if (project == null || requestedBy == null || feature == null) {
@@ -40,7 +61,11 @@ public record AiJobCreateCommand(
                 promptVersion,
                 schemaVersion,
                 modelId,
-                maxOutputTokens
+                maxOutputTokens,
+                rolloutId,
+                reasoningEffort,
+                pricingVersion,
+                policyVersion
         );
     }
 
@@ -54,7 +79,11 @@ public record AiJobCreateCommand(
                 promptVersion,
                 schemaVersion,
                 modelId,
-                maxOutputTokens
+                maxOutputTokens,
+                rolloutId,
+                reasoningEffort,
+                pricingVersion,
+                policyVersion
         );
     }
 }

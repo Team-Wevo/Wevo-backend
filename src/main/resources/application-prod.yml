@@ -82,6 +82,12 @@ wevo:
         daily-budget-usd: ${AI_PROJECT_DAILY_COST_BUDGET_USD:50.000000}
         monthly-budget-usd: ${AI_PROJECT_MONTHLY_COST_BUDGET_USD:1000.000000}
         max-estimated-job-cost-usd: ${AI_MAX_ESTIMATED_JOB_COST_USD:10.000000}
+    operations:
+      enabled: ${AI_OPERATIONS_ENABLED:true}
+      circuit-breaker:
+        failure-threshold: ${AI_CIRCUIT_FAILURE_THRESHOLD:5}
+        open-duration: ${AI_CIRCUIT_OPEN_DURATION:30s}
+        half-open-max-calls: ${AI_CIRCUIT_HALF_OPEN_MAX_CALLS:1}
 
 springdoc:
   api-docs:
@@ -101,11 +107,15 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
   endpoint:
     health:
       show-components: never
       show-details: never
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 jwt:
   secret: ${JWT_SECRET}

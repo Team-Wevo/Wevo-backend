@@ -74,6 +74,11 @@ class AiJobIdempotencyKeyGeneratorTest {
                 AiFeature.OPINION_SYNTHESIS, 1L, 2L, SNAPSHOT,
                 "source:v1", "prompt:v1", "schema:v1", "model-a", 2048
         ))).isNotEqualTo(baseKey);
+        AiJobIdempotencyInput differentReasoning = new AiJobIdempotencyInput(
+                AiFeature.OPINION_SYNTHESIS, 1L, 2L, SNAPSHOT,
+                "source:v1", "prompt:v1", "schema:v1", "model-a", 4096,
+                "baseline", "high", "unpriced", "guardrails-disabled");
+        assertThat(generator.generate(differentReasoning)).isNotEqualTo(baseKey);
     }
 
     @Test

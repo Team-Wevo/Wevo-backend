@@ -46,8 +46,8 @@ public class ProjectFlowReviewer {
         }
         ProjectFlowReviewPromptContext full = ProjectFlowReviewPromptContext.full(context);
         if (budgetEstimator.estimate(AiFeature.PROJECT_FLOW_REVIEW,
-                promptFactory.tokenBudgetInput(full)).withinBudget()) {
-            return invoke(job, promptFactory.providerRequest(full));
+                promptFactory.tokenBudgetInput(full, job.getPromptVersion())).withinBudget()) {
+            return invoke(job, promptFactory.providerRequest(full, job.getPromptVersion()));
         }
         return pairwise(job, context);
     }
@@ -59,9 +59,9 @@ public class ProjectFlowReviewer {
                 ProjectFlowReviewPromptContext pair = ProjectFlowReviewPromptContext.pair(
                         context, context.sections().get(left), context.sections().get(right));
                 budgetEstimator.requireWithinBudget(AiFeature.PROJECT_FLOW_REVIEW,
-                        promptFactory.tokenBudgetInput(pair));
+                        promptFactory.tokenBudgetInput(pair, job.getPromptVersion()));
                 for (ProjectFlowFindingOutput finding :
-                        invoke(job, promptFactory.providerRequest(pair)).findings()) {
+                        invoke(job, promptFactory.providerRequest(pair, job.getPromptVersion())).findings()) {
                     merged.putIfAbsent(identity(finding), finding);
                 }
             }

@@ -26,7 +26,7 @@ public class AuthorIntentExtractor {
 
     public AuthorIntentExtractionOutput extract(AiJob job, AuthorIntentContext context) {
         StructuredAiProviderRequest<AuthorIntentExtractionOutput> request =
-                promptFactory.providerRequest(context);
+                promptFactory.providerRequest(context, job.getPromptVersion());
         AiUsageStartCommand usage = new AiUsageStartCommand(
                 job,
                 job.getProject(),

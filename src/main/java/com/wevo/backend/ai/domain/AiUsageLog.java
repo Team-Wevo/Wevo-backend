@@ -74,6 +74,15 @@ public class AiUsageLog extends BaseTimeEntity {
     @Column(name = "prompt_version", nullable = false, length = 100)
     private String promptVersion;
 
+    @Column(name = "rollout_id", length = 100)
+    private String rolloutId;
+
+    @Column(name = "reasoning_effort", length = 30)
+    private String reasoningEffort;
+
+    @Column(name = "policy_version", length = 100)
+    private String policyVersion;
+
     @Column(name = "input_snapshot_hash", nullable = false, length = 64)
     private String inputSnapshotHash;
 
@@ -161,6 +170,11 @@ public class AiUsageLog extends BaseTimeEntity {
         }
         this.modelId = requireText(modelId, "modelId");
         this.promptVersion = requireText(promptVersion, "promptVersion");
+        if (aiJob != null) {
+            this.rolloutId = aiJob.getRolloutId();
+            this.reasoningEffort = aiJob.getReasoningEffort();
+            this.policyVersion = aiJob.getPolicyVersion();
+        }
         this.inputSnapshotHash = requireText(inputSnapshotHash, "inputSnapshotHash");
         this.startedAt = Objects.requireNonNull(startedAt, "startedAt는 필수입니다.");
         this.requestStatus = AiRequestStatus.REQUESTED;

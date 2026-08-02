@@ -28,4 +28,12 @@ public class PromptRegistry {
         }
         return definition;
     }
+
+    public PromptDefinition get(PromptTemplateId expectedFamily, String trackingVersion) {
+        PromptTemplateId selected = PromptTemplateId.parseTrackingValue(trackingVersion);
+        if (!expectedFamily.promptName().equals(selected.promptName())) {
+            throw new PromptException(ErrorCode.AI_PROMPT_INVALID);
+        }
+        return get(selected);
+    }
 }

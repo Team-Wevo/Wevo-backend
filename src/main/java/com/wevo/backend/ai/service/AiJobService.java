@@ -5,6 +5,10 @@ import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiJobStatus;
 import com.wevo.backend.ai.repository.AiJobRepository;
+import com.wevo.backend.ai.operations.AiExecutionControl;
+import com.wevo.backend.ai.operations.AiOperationalMetrics;
+import com.wevo.backend.ai.rollout.AiRolloutSelection;
+import com.wevo.backend.ai.rollout.AiRolloutService;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.user.domain.User;
@@ -18,6 +22,7 @@ import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class AiJobService {
@@ -29,6 +34,9 @@ public class AiJobService {
     private final AiErrorMessageSanitizer sanitizer;
     private final AiGuardrailService guardrailService;
     private final Clock clock;
+    private AiRolloutService rolloutService;
+    private AiExecutionControl executionControl;
+    private AiOperationalMetrics metrics;
 
     public AiJobService(
             AiJobRepository repository,
@@ -54,10 +62,16 @@ public class AiJobService {
      */
     public AiJobCreateResult createOrGet(AiJobCreateCommand command) {
         Objects.requireNonNull(command, "command는 필수입니다.");
-        String idempotencyKey = keyGenerator.generate(command.idempotencyInput());
-        return repository.findTopByIdempotencyKeyOrderByExecutionSequenceDesc(idempotencyKey)
+        command = applyRollout(command);
+        AiJobIdempotencyInput identity = command.idempotencyInput();
+        String idempotencyKey = keyGenerator.generate(identity);
+        AiJobCreateCommand selected = command;
+        return findExisting(identity, idempotencyKey)
                 .map(job -> AiJobCreateResult.from(job, false))
-                .orElseGet(() -> createInitial(command, idempotencyKey));
+                .orElseGet(() -> {
+                    requireSubmissionAllowed(selected.feature());
+                    return createInitial(selected, idempotencyKey);
+                });
     }
 
     /**
@@ -67,8 +81,9 @@ public class AiJobService {
      */
     public Optional<AiJobCreateResult> findLatest(AiJobIdempotencyInput idempotencyInput) {
         Objects.requireNonNull(idempotencyInput, "idempotencyInput은 필수입니다.");
-        String idempotencyKey = keyGenerator.generate(idempotencyInput);
-        return repository.findTopByIdempotencyKeyOrderByExecutionSequenceDesc(idempotencyKey)
+        AiJobIdempotencyInput selected = applyRollout(idempotencyInput);
+        String idempotencyKey = keyGenerator.generate(selected);
+        return findExisting(selected, idempotencyKey)
                 .map(job -> AiJobCreateResult.from(job, false));
     }
 
@@ -83,6 +98,7 @@ public class AiJobService {
         }
         AiJob requested = repository.findByRequestId(requestId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.AI_JOB_NOT_FOUND));
+        requireSubmissionAllowed(requested.getFeature());
         AiJob latestBeforeReservation = repository
                 .findTopByIdempotencyKeyOrderByExecutionSequenceDesc(requested.getIdempotencyKey())
                 .orElse(requested);
@@ -119,6 +135,15 @@ public class AiJobService {
     public AiJobStartResult start(UUID requestId, String currentSnapshotHash) {
         requireSnapshotHash(currentSnapshotHash);
         AiJobStartResult result = persistenceService.start(requestId, currentSnapshotHash, now());
+        repository.findByRequestId(requestId).ifPresent(job -> {
+            if (result.claimed() && metrics != null) {
+                metrics.recordQueueLatency(job.getFeature(), job.getModelId(),
+                        java.time.Duration.between(job.getQueuedAt(), job.getStartedAt()));
+            }
+            if (result.status() == AiJobStatus.STALE && metrics != null) {
+                metrics.recordJobEvent(job.getFeature(), "stale_discarded");
+            }
+        });
         if (result.status() == AiJobStatus.STALE) {
             settleWithRetry(requestId);
         }
@@ -143,6 +168,10 @@ public class AiJobService {
                 () -> requireSnapshotHash(snapshotProbe.currentSnapshotHash()),
                 resultWriter,
                 now());
+        if (result.status() == AiJobStatus.STALE && metrics != null) {
+            repository.findByRequestId(requestId)
+                    .ifPresent(job -> metrics.recordJobEvent(job.getFeature(), "stale_discarded"));
+        }
         settleWithRetry(requestId);
         return result;
     }
@@ -166,6 +195,10 @@ public class AiJobService {
 
     public void markStale(UUID requestId) {
         persistenceService.markStale(requestId, now());
+        if (metrics != null) {
+            repository.findByRequestId(requestId)
+                    .ifPresent(job -> metrics.recordJobEvent(job.getFeature(), "stale_discarded"));
+        }
         settleWithRetry(requestId);
     }
 
@@ -189,6 +222,10 @@ public class AiJobService {
         Objects.requireNonNull(threshold, "threshold는 필수입니다.");
         boolean recovered = persistenceService.failIfHeartbeatStale(requestId, threshold, now());
         if (recovered) {
+            if (metrics != null) {
+                repository.findByRequestId(requestId)
+                        .ifPresent(job -> metrics.recordJobEvent(job.getFeature(), "heartbeat_recovered"));
+            }
             settleWithRetry(requestId);
         }
         return recovered;
@@ -248,6 +285,10 @@ public class AiJobService {
                 command.schemaVersion(),
                 command.modelId(),
                 command.maxOutputTokens(),
+                command.rolloutId(),
+                command.reasoningEffort(),
+                command.pricingVersion(),
+                command.policyVersion(),
                 idempotencyKey,
                 now()
         );
@@ -313,5 +354,63 @@ public class AiJobService {
             throw new IllegalArgumentException("currentSnapshotHash는 64자리 소문자 SHA-256 hex여야 합니다.");
         }
         return snapshotHash;
+    }
+
+    @Autowired(required = false)
+    void setRolloutService(AiRolloutService rolloutService) {
+        this.rolloutService = rolloutService;
+    }
+
+    @Autowired(required = false)
+    void setExecutionControl(AiExecutionControl executionControl) {
+        this.executionControl = executionControl;
+    }
+
+    @Autowired(required = false)
+    void setMetrics(AiOperationalMetrics metrics) {
+        this.metrics = metrics;
+    }
+
+    private AiJobCreateCommand applyRollout(AiJobCreateCommand command) {
+        if (rolloutService == null) {
+            return command;
+        }
+        AiRolloutSelection selection = rolloutService.select(command.idempotencyInput());
+        return new AiJobCreateCommand(
+                command.project(), command.projectSection(), command.requestedBy(), command.feature(),
+                command.inputSnapshotHash(), command.sourceVersion(), selection.promptVersion(),
+                selection.schemaVersion(), selection.modelId(), command.maxOutputTokens(),
+                selection.rolloutId(), selection.reasoningEffort(), selection.pricingVersion(),
+                selection.policyVersion());
+    }
+
+    private AiJobIdempotencyInput applyRollout(AiJobIdempotencyInput input) {
+        if (rolloutService == null) {
+            return input;
+        }
+        AiRolloutSelection selection = rolloutService.select(input);
+        return new AiJobIdempotencyInput(
+                input.feature(), input.projectId(), input.projectSectionId(), input.inputSnapshotHash(),
+                input.sourceVersion(), selection.promptVersion(), selection.schemaVersion(),
+                selection.modelId(), input.maxOutputTokens(), selection.rolloutId(),
+                selection.reasoningEffort(), selection.pricingVersion(), selection.policyVersion());
+    }
+
+    private void requireSubmissionAllowed(AiFeature feature) {
+        if (executionControl != null) {
+            executionControl.requireSubmissionAllowed(feature);
+        }
+    }
+
+    private Optional<AiJob> findExisting(AiJobIdempotencyInput identity, String currentKey) {
+        Optional<AiJob> current = repository
+                .findTopByIdempotencyKeyOrderByExecutionSequenceDesc(currentKey);
+        if (current.isPresent() || rolloutService == null || !"baseline".equals(identity.rolloutId())) {
+            return current;
+        }
+        String legacyKey = keyGenerator.generateLegacy(identity);
+        return repository.findTopByIdempotencyKeyOrderByExecutionSequenceDesc(legacyKey)
+                .filter(job -> job.getReasoningEffort() == null
+                        || job.getReasoningEffort().equals(identity.reasoningEffort()));
     }
 }

@@ -131,3 +131,9 @@ is stored as a source of truth; freshness is derived from the current canonical 
 expanded AI feature checks are added as `NOT VALID`; `V15__validate_project_flow_review_feature_constraints.sql`
 validates existing AI history rows after V14 commits so the table scan does not retain V14's
 stronger lock. Dedicated section-reference indexes support foreign-key checks from `project_sections`.
+
+`V16__add_ai_rollout_snapshots.sql` adds the immutable rollout, reasoning, pricing, and guardrail
+policy selection to AI jobs and copies the operational selection identifiers into usage logs. Legacy
+rows receive explicit conservative snapshot values during migration; new rows must always provide
+the full selection. Feature/rollout indexes support model rollout comparison without using project,
+section, user, or request identifiers as metric labels.

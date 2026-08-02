@@ -40,11 +40,18 @@ public class DraftReviewPromptFactory {
     public StructuredAiProviderRequest<DraftReviewOutput> providerRequest(
             DraftReviewContext context
     ) {
+        return providerRequest(context, PROMPT_ID.trackingValue());
+    }
+
+    public StructuredAiProviderRequest<DraftReviewOutput> providerRequest(
+            DraftReviewContext context,
+            String promptVersion
+    ) {
         if (context == null) {
             throw new IllegalArgumentException("사전 검토 context는 필수입니다.");
         }
         RenderedPrompt prompt = promptRenderer.render(
-                promptRegistry.get(PROMPT_ID),
+                promptRegistry.get(PROMPT_ID, promptVersion),
                 Map.of(
                         "currentDraft", serialize(new CurrentDraftData(
                                 context.project(),

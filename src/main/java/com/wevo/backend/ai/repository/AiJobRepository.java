@@ -17,6 +17,10 @@ import org.springframework.data.repository.query.Param;
 
 public interface AiJobRepository extends JpaRepository<AiJob, Long> {
 
+    long countByStatus(AiJobStatus status);
+
+    Optional<AiJob> findFirstByStatusOrderByStartedAtAsc(AiJobStatus status);
+
     Optional<AiJob> findByRequestId(UUID requestId);
 
     @Query("""

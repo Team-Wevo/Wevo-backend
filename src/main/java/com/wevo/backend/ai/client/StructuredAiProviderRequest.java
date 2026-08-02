@@ -7,8 +7,18 @@ public record StructuredAiProviderRequest<T>(
         AiFeature feature,
         RenderedPrompt prompt,
         StructuredOutputDefinition<T> outputDefinition,
-        StructuredOutputValidationContext validationContext
+        StructuredOutputValidationContext validationContext,
+        AiProviderExecutionPolicy executionPolicy
 ) {
+
+    public StructuredAiProviderRequest(
+            AiFeature feature,
+            RenderedPrompt prompt,
+            StructuredOutputDefinition<T> outputDefinition,
+            StructuredOutputValidationContext validationContext
+    ) {
+        this(feature, prompt, outputDefinition, validationContext, null);
+    }
 
     public StructuredAiProviderRequest {
         if (feature == null || prompt == null || outputDefinition == null) {
@@ -17,5 +27,10 @@ public record StructuredAiProviderRequest<T>(
         validationContext = validationContext == null
                 ? StructuredOutputValidationContext.empty()
                 : validationContext;
+    }
+
+    public StructuredAiProviderRequest<T> withExecutionPolicy(AiProviderExecutionPolicy policy) {
+        return new StructuredAiProviderRequest<>(
+                feature, prompt, outputDefinition, validationContext, policy);
     }
 }

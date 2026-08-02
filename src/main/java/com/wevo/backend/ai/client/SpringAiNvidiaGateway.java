@@ -99,7 +99,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
 
     @Override
     public AiProviderResponse generate(AiProviderRequest request) {
-        AiProperties.ModelOptions options = properties.optionsFor(request.feature());
+        AiProperties.ModelOptions options = options(request.feature(), request.executionPolicy());
         int attempts = 0;
 
         while (true) {
@@ -124,7 +124,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
 
     @Override
     public <T> StructuredAiProviderResponse<T> generateStructured(StructuredAiProviderRequest<T> request) {
-        AiProperties.ModelOptions options = properties.optionsFor(request.feature());
+        AiProperties.ModelOptions options = options(request.feature(), request.executionPolicy());
         UsageAccumulator usageAccumulator = new UsageAccumulator();
         AttemptCounter attemptCounter = new AttemptCounter();
         StructuredConversionFailure previousFailure = null;
@@ -162,7 +162,9 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
                         request.outputDefinition().schemaId(),
                         usageAccumulator.snapshot(),
                         providerResponse.finishReason(),
-                        attemptCounter.value()
+                        attemptCounter.value(),
+                        Math.max(0, attemptCounter.value() - correctionAttempt - 1),
+                        correctionAttempt
                 );
             }
 
@@ -266,7 +268,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
                         new SystemMessage(request.prompt().systemPrompt()),
                         new UserMessage(userPrompt)
                 ))
-                .options(structuredProviderOptions(options, request.outputDefinition()))
+                .options(structuredProviderOptions(options, request.outputDefinition(), reasoning(request.executionPolicy())))
                 .call()
                 .responseEntity(converter);
     }
@@ -451,7 +453,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
     private ChatResponse callProvider(AiProviderRequest request, AiProperties.ModelOptions options) {
         ChatResponse response = chatClient.prompt()
                 .messages(toSpringMessages(request.messages()))
-                .options(providerOptions(options))
+                .options(providerOptions(options, reasoning(request.executionPolicy())))
                 .call()
                 .chatResponse();
 
@@ -475,11 +477,11 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
                 .toList();
     }
 
-    private OpenAiChatOptions.Builder providerOptions(AiProperties.ModelOptions options) {
+    private OpenAiChatOptions.Builder providerOptions(AiProperties.ModelOptions options, String reasoningEffort) {
         OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder()
                 .model(options.model())
                 .n(1)
-                .reasoningEffort(runtimeOptions.reasoningEffort())
+                .reasoningEffort(reasoningEffort)
                 .timeout(options.timeout())
                 .customHeaders(Map.of("Accept", "application/json"))
                 .maxRetries(0);
@@ -496,7 +498,8 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
 
     private OpenAiChatOptions.Builder structuredProviderOptions(
             AiProperties.ModelOptions options,
-            StructuredOutputDefinition<?> outputDefinition
+            StructuredOutputDefinition<?> outputDefinition,
+            String reasoningEffort
     ) {
         OpenAiChatModel.ResponseFormat.Builder responseFormat = OpenAiChatModel.ResponseFormat.builder();
         if (runtimeOptions.nativeStrictSchema()) {
@@ -504,7 +507,21 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
         } else {
             responseFormat.type(OpenAiChatModel.ResponseFormat.Type.JSON_OBJECT);
         }
-        return providerOptions(options).responseFormat(responseFormat.build());
+        return providerOptions(options, reasoningEffort).responseFormat(responseFormat.build());
+    }
+
+    private AiProperties.ModelOptions options(
+            com.wevo.backend.ai.domain.AiFeature feature,
+            AiProviderExecutionPolicy policy
+    ) {
+        AiProperties.ModelOptions configured = properties.optionsFor(feature);
+        return policy == null
+                ? configured
+                : configured.withExecutionSnapshot(policy.modelId(), policy.maxOutputTokens());
+    }
+
+    private String reasoning(AiProviderExecutionPolicy policy) {
+        return policy == null ? runtimeOptions.reasoningEffort() : policy.reasoningEffort();
     }
 
     private AiProviderResponse toResponse(ChatResponse response, String requestedModel) {

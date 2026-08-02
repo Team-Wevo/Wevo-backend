@@ -12,6 +12,8 @@ import com.wevo.backend.global.exception.ErrorCode;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.wevo.backend.ai.operations.AiOperationalMetrics;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -77,7 +79,7 @@ public class AiGuardrailService {
               'state', 'RESERVED', 'reserved', estimated, 'actual', 0, 'actual_count', 0,
               'provider_started', 0, 'unmeasured', 0, 'day_key', KEYS[8], 'month_key', KEYS[9])
             redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[21]))
-            return {10, 0}
+            return {10, daily + estimated}
             """);
 
     private static final DefaultRedisScript<Long> ROLLBACK_SCRIPT = scriptLong("""
@@ -155,6 +157,7 @@ public class AiGuardrailService {
     private final AiProperties aiProperties;
     private final AiPricingProperties pricingProperties;
     private final Clock clock;
+    private AiOperationalMetrics metrics;
 
     public AiGuardrailService(
             StringRedisTemplate redisTemplate,
@@ -172,6 +175,17 @@ public class AiGuardrailService {
 
     public AiGuardrailReservation reserve(AiGuardrailReservationCommand command) {
         Objects.requireNonNull(command, "command는 필수입니다.");
+        try {
+            return reserveInternal(command);
+        } catch (BusinessException exception) {
+            if (metrics != null) {
+                metrics.recordGuardrailRejection(command.feature(), guardrailReason(exception.getErrorCode()));
+            }
+            throw exception;
+        }
+    }
+
+    private AiGuardrailReservation reserveInternal(AiGuardrailReservationCommand command) {
         if (!properties.isEnabled()) {
             return AiGuardrailReservation.disabled();
         }
@@ -227,6 +241,11 @@ public class AiGuardrailService {
         if (code != 10 && code != 11) {
             throw unavailable();
         }
+        if (code == 10 && metrics != null) {
+            metrics.recordBudgetUtilization(
+                    ((Number) result.get(1)).doubleValue()
+                            / Math.max(1.0d, toMicros(properties.cost().dailyBudgetUsd())));
+        }
         return new AiGuardrailReservation(code == 10, keys.getFirst(), keys.subList(1, keys.size()));
     }
 
@@ -262,11 +281,19 @@ public class AiGuardrailService {
                 ? "UNMEASURED"
                 : Long.toString(toMicros(cost.estimatedCost()));
         String usageField = "usage:" + hash(usageRequestId.toString());
-        Long result = execute(
-                RECORD_USAGE_SCRIPT,
-                List.of(ledgerKey(job)),
-                List.of(usageField, value)
-        );
+        Long result;
+        try {
+            result = execute(
+                    RECORD_USAGE_SCRIPT,
+                    List.of(ledgerKey(job)),
+                    List.of(usageField, value)
+            );
+        } catch (RuntimeException exception) {
+            if (metrics != null) {
+                metrics.recordGuardrailRejection(job.getFeature(), "usage_record_error");
+            }
+            throw exception;
+        }
         if (result == null || result < 0) {
             throw unavailable();
         }
@@ -284,6 +311,9 @@ public class AiGuardrailService {
             budgetKeys = redisTemplate.opsForHash().multiGet(
                     ledgerKey, List.of("day_key", "month_key"));
         } catch (RuntimeException exception) {
+            if (metrics != null) {
+                metrics.recordGuardrailRejection(job.getFeature(), "settlement_error");
+            }
             throw unavailable();
         }
         if (budgetKeys == null || budgetKeys.size() != 2
@@ -305,11 +335,8 @@ public class AiGuardrailService {
         if (pricing == null || pricingProperties.version() == null) {
             throw new BusinessException(ErrorCode.AI_PRICING_NOT_CONFIGURED);
         }
-        AiProperties.ModelOptions options = aiProperties.optionsFor(command.feature());
-        if (!options.model().equals(command.modelId())
-                || !options.maxOutputTokens().equals(command.maxOutputTokens())) {
-            throw new IllegalArgumentException("AiJob과 guardrail의 model 실행 정책이 일치해야 합니다.");
-        }
+        AiProperties.ModelOptions options = aiProperties.optionsFor(command.feature())
+                .withExecutionSnapshot(command.modelId(), command.maxOutputTokens());
 
         BigDecimal inputRate = pricing.inputPerMillionTokens()
                 .max(pricing.cacheReadPerMillionTokens())
@@ -416,6 +443,22 @@ public class AiGuardrailService {
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", exception);
         }
+    }
+
+    @Autowired(required = false)
+    void setMetrics(AiOperationalMetrics metrics) {
+        this.metrics = metrics;
+    }
+
+    private String guardrailReason(ErrorCode errorCode) {
+        return switch (errorCode) {
+            case AI_REQUEST_QUOTA_EXCEEDED -> "request_quota";
+            case AI_PROJECT_QUOTA_EXCEEDED -> "project_quota";
+            case AI_PROJECT_COST_BUDGET_EXCEEDED -> "budget";
+            case AI_PRICING_NOT_CONFIGURED -> "pricing_missing";
+            case AI_GUARDRAIL_UNAVAILABLE -> "redis_fail_closed";
+            default -> "reservation_error";
+        };
     }
 
     private record Window(

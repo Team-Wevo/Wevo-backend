@@ -102,6 +102,18 @@ public class AiJob extends BaseTimeEntity {
     @Column(name = "max_output_tokens", nullable = false)
     private Integer maxOutputTokens;
 
+    @Column(name = "rollout_id", nullable = false, length = 100)
+    private String rolloutId;
+
+    @Column(name = "reasoning_effort", nullable = false, length = 30)
+    private String reasoningEffort;
+
+    @Column(name = "pricing_version", nullable = false, length = 100)
+    private String pricingVersion;
+
+    @Column(name = "policy_version", nullable = false, length = 100)
+    private String policyVersion;
+
     @Column(name = "idempotency_key", nullable = false, length = 64, updatable = false)
     private String idempotencyKey;
 
@@ -155,6 +167,10 @@ public class AiJob extends BaseTimeEntity {
             String schemaVersion,
             String modelId,
             int maxOutputTokens,
+            String rolloutId,
+            String reasoningEffort,
+            String pricingVersion,
+            String policyVersion,
             String idempotencyKey,
             int executionSequence,
             AiJob retryOf,
@@ -174,6 +190,10 @@ public class AiJob extends BaseTimeEntity {
             throw new IllegalArgumentException("maxOutputTokens는 1 이상이어야 합니다.");
         }
         this.maxOutputTokens = maxOutputTokens;
+        this.rolloutId = requireText(rolloutId, "rolloutId", 100);
+        this.reasoningEffort = requireText(reasoningEffort, "reasoningEffort", 30);
+        this.pricingVersion = requireText(pricingVersion, "pricingVersion", 100);
+        this.policyVersion = requireText(policyVersion, "policyVersion", 100);
         this.idempotencyKey = requireSha256(idempotencyKey, "idempotencyKey");
         if (executionSequence <= 0) {
             throw new IllegalArgumentException("executionSequence는 1 이상이어야 합니다.");
@@ -197,14 +217,39 @@ public class AiJob extends BaseTimeEntity {
             String schemaVersion,
             String modelId,
             int maxOutputTokens,
+            String rolloutId,
+            String reasoningEffort,
+            String pricingVersion,
+            String policyVersion,
             String idempotencyKey,
             LocalDateTime queuedAt
     ) {
         return new AiJob(
                 requestId, project, projectSection, requestedBy, feature, inputSnapshotHash,
                 sourceVersion, promptVersion, schemaVersion, modelId, maxOutputTokens,
+                rolloutId, reasoningEffort, pricingVersion, policyVersion,
                 idempotencyKey, 1, null, queuedAt
         );
+    }
+
+    public static AiJob queue(
+            UUID requestId,
+            Project project,
+            ProjectSection projectSection,
+            User requestedBy,
+            AiFeature feature,
+            String inputSnapshotHash,
+            String sourceVersion,
+            String promptVersion,
+            String schemaVersion,
+            String modelId,
+            int maxOutputTokens,
+            String idempotencyKey,
+            LocalDateTime queuedAt
+    ) {
+        return queue(requestId, project, projectSection, requestedBy, feature, inputSnapshotHash,
+                sourceVersion, promptVersion, schemaVersion, modelId, maxOutputTokens,
+                "baseline", "none", "unpriced", "guardrails-disabled", idempotencyKey, queuedAt);
     }
 
     public static AiJob retry(UUID requestId, AiJob previous, User requestedBy, LocalDateTime queuedAt) {
@@ -224,6 +269,10 @@ public class AiJob extends BaseTimeEntity {
                 previous.schemaVersion,
                 previous.modelId,
                 previous.maxOutputTokens,
+                previous.rolloutId,
+                previous.reasoningEffort,
+                previous.pricingVersion,
+                previous.policyVersion,
                 previous.idempotencyKey,
                 previous.executionSequence + 1,
                 previous,
