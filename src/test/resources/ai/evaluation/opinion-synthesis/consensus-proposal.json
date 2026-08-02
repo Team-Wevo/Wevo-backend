@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "opinion-synthesis/consensus-proposal",
+    "feature": "OPINION_SYNTHESIS",
+    "description": "합의된 일정과 대상의 근거 coverage를 보존하는 정상 합성 사례",
+    "language": "ko",
+    "tags": ["normal", "agreement", "evidence-coverage", "schema-contract"],
+    "datasetVersion": "opinion-synthesis-v1",
+    "kind": "CONTRACT",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PROPOSAL",
+    "projectContext": "가상 지역 도서 교환 행사를 기획한다.",
+    "sectionContext": "일정과 참여 대상을 정리한다.",
+    "labels": ["합의", "근거"],
+    "opinions": [
+      {"id": "opinion-date", "content": "행사는 10월 둘째 주 토요일에 열자.", "submitted": true, "deleted": false},
+      {"id": "opinion-audience", "content": "지역 주민 누구나 참여할 수 있게 하자.", "submitted": true, "deleted": false}
+    ],
+    "parentConfirmedContent": null
+  },
+  "expected": {
+    "requiredFacts": ["10월", "지역 주민"],
+    "expectedIssues": [],
+    "expectedEvidenceIds": ["opinion-date", "opinion-audience"],
+    "forbiddenClaims": ["참가비 1만원"],
+    "goldReviewIssueIds": []
+  }
+}

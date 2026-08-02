@@ -58,13 +58,41 @@ class AiEvaluationFixtureLoaderTest {
                 "ai/evaluation/draft-generation/dataset-v1.index.json"
         );
 
-        assertThat(fixtures).singleElement().satisfies(fixture -> {
+        assertThat(fixtures).hasSize(4);
+        assertThat(fixtures).filteredOn(fixture ->
+                fixture.metadata().id().equals("draft-generation/unanswered-gap-proposal"))
+                .singleElement().satisfies(fixture -> {
             assertThat(fixture.metadata().feature())
                     .isEqualTo(com.wevo.backend.ai.domain.AiFeature.DRAFT_GENERATION);
             assertThat(fixture.metadata().synthetic()).isTrue();
             assertThat(fixture.expected().forbiddenClaims())
                     .contains("운영 예산은 500만원으로 확정", "예산이 승인되었다");
         });
+    }
+
+    @Test
+    void everyProductDatasetHasNormalBoundaryErrorAndAttackCoverageUsingOnlySyntheticIds() {
+        List<String> datasets = List.of(
+                "ai/evaluation/issue-detection/dataset-v1.index.json",
+                "ai/evaluation/opinion-synthesis/dataset-v1.index.json",
+                "ai/evaluation/draft-generation/dataset-v1.index.json",
+                "ai/evaluation/draft-review/dataset-v1.index.json"
+        );
+
+        for (String dataset : datasets) {
+            List<AiEvaluationFixture> fixtures = loader.loadDataset(dataset);
+            assertThat(fixtures).hasSizeGreaterThanOrEqualTo(4);
+            assertThat(fixtures).allSatisfy(fixture -> {
+                assertThat(fixture.metadata().synthetic()).isTrue();
+                assertThat(fixture.metadata().id()).doesNotContain("user", "real");
+                assertThat(fixture.input().opinions()).allSatisfy(opinion ->
+                        assertThat(opinion.id()).startsWith("opinion-"));
+            });
+            assertThat(fixtures).flatExtracting(fixture -> fixture.metadata().tags())
+                    .contains("attack");
+            assertThat(fixtures).flatExtracting(fixture -> fixture.metadata().tags())
+                    .contains("normal", "boundary", "error-path", "attack");
+        }
     }
 
     @Test

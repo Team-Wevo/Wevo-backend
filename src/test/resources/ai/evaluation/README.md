@@ -86,6 +86,35 @@ override하고 report metadata가 실제 실행 설정과 일치하는지 확인
 budget을 추가한다. 현재 integration scaffold는 synthetic fixture 1개, 최대 Provider 시도 3회,
 출력 token 256개, deadline 60초로 제한한다.
 
+OpenAI 다건 평가는 smoke opt-in과 분리된 `OPENAI_EVALUATION_ENABLED=true`가 필요하다. 먼저
+`medium` 기준선을 만들고, 같은 git commit·model·dataset·prompt·schema·max output token 조건에서
+reasoning effort만 `low`로 바꿔 challenger를 실행한다.
+
+```bash
+OPENAI_API_KEY=... \
+OPENAI_EVALUATION_ENABLED=true \
+OPENAI_API_REASONING_EFFORT=medium \
+GIT_COMMIT=$(git rev-parse HEAD) \
+./gradlew openAiEvaluationTest
+
+OPENAI_API_KEY=... \
+OPENAI_EVALUATION_ENABLED=true \
+OPENAI_API_REASONING_EFFORT=low \
+GIT_COMMIT=$(git rev-parse HEAD) \
+./gradlew openAiEvaluationTest
+```
+
+실행기는 네 dataset 전체에 하나의 전역 fixture/request/output-token/deadline/cost budget을 적용한다.
+한 fixture의 최악 재시도 횟수와 출력 token을 다음 호출 전에 예약하므로 남은 budget으로 완료할 수 없는
+fixture는 Provider 호출을 시작하지 않고 `BUDGET_EXHAUSTED`로 기록한다. 기본 상한은 `.env.example`의
+`OPENAI_EVALUATION_*`가 정본이다. `OPENAI_INTEGRATION_ENABLED`만으로는 이 task가 실행되지 않는다.
+
+report는 `build/reports/ai-evaluation/openai/{medium|low}/`에 기능별 JSON/Markdown으로 생성된다.
+`low` 실행은 같은 위치의 `medium` report가 있고 report schema, dataset, output schema, fixture 수와 ID
+집합이 모두 같을 때만 delta를 계산한다. 자동 gate와 사람 평가는 각각 `gate`, `humanReview`로 분리하며,
+live 생성 직후 사람 평가는 `PENDING`이다. 승인자는 QUALITY fixture의 정확성·근거성·중립성·명확성을
+각 1~5점으로 모두 기록한 뒤에만 `COMPLETED`로 바꿀 수 있다.
+
 report는 `build/reports/ai-evaluation/` 아래 JSON과 Markdown으로 생성하며 Git에 포함하지 않는다.
 JSON은 `schema/report-v1.schema.json`의 machine-readable schema version `1.0`을 갖고 Markdown은 리뷰 요약이다. report에는 fixture ID와
 정규화된 실패 유형만 포함하며 prompt, completion, 의견 전문, Provider error body, Authorization header,

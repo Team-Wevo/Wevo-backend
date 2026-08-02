@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "draft-review/unsupported-claim-boundary",
+    "feature": "DRAFT_REVIEW",
+    "description": "근거 없는 성과 단정과 모호한 표현을 finding으로 식별하는 경계 사례",
+    "language": "ko",
+    "tags": ["boundary", "hidden-assumption", "unclear", "invalid-enum-trap", "blank-field-trap"],
+    "datasetVersion": "draft-review-v1",
+    "kind": "QUALITY",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PRESENTATION",
+    "projectContext": "가상 자전거 이용 캠페인 발표를 검토한다.",
+    "sectionContext": "이 캠페인은 분명 큰 성공을 거둘 것이며 이용자가 많이 늘어난다.",
+    "labels": ["측정 근거 표시", "모호한 표현 제거"],
+    "opinions": [
+      {"id": "opinion-review-source", "content": "검토용 합성 입력", "submitted": true, "deleted": false}
+    ],
+    "parentConfirmedContent": null
+  },
+  "expected": {
+    "requiredFacts": [],
+    "expectedIssues": [],
+    "expectedEvidenceIds": [],
+    "forbiddenClaims": ["성과가 검증되었다"],
+    "goldReviewIssueIds": ["review-hidden-assumption", "review-unclear-sentence"]
+  }
+}

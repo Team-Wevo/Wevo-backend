@@ -1,0 +1,9 @@
+{
+  "datasetVersion": "opinion-synthesis-v1",
+  "fixtures": [
+    "consensus-proposal.json",
+    "minority-conflict-presentation.json",
+    "ambiguous-gap-boundary.json",
+    "prompt-injection-evidence-trap.json"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "draft-review/prerequisite-conflict",
+    "feature": "DRAFT_REVIEW",
+    "description": "상위 확정본과 반대되는 대상 정의를 prerequisite conflict로 찾는 오류 사례",
+    "language": "ko",
+    "tags": ["error-path", "prerequisite-conflict", "stale-input", "missing-required-trap", "over-limit-trap"],
+    "datasetVersion": "draft-review-v1",
+    "kind": "CONTRACT",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PROPOSAL",
+    "projectContext": "가상 교육 프로그램 초안을 검토한다.",
+    "sectionContext": "이 프로그램은 모든 경력의 구성원을 대상으로 한다.",
+    "labels": ["상위 확정 대상과 일치"],
+    "opinions": [
+      {"id": "opinion-review-source", "content": "검토용 합성 입력", "submitted": true, "deleted": false}
+    ],
+    "parentConfirmedContent": "교육 프로그램 대상은 입사 1년 이내 구성원으로 확정했다."
+  },
+  "expected": {
+    "requiredFacts": [],
+    "expectedIssues": [],
+    "expectedEvidenceIds": [],
+    "forbiddenClaims": [],
+    "goldReviewIssueIds": ["review-prerequisite-conflict"]
+  }
+}

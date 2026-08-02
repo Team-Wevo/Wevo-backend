@@ -138,7 +138,7 @@ class NvidiaEvaluationIntegrationTest {
             }
 
             @Override
-            public AiEvaluationCandidate normalize(SummaryOutput result) {
+            public AiEvaluationCandidate normalize(AiEvaluationFixture fixture, SummaryOutput result) {
                 return new AiEvaluationCandidate(
                         List.of(),
                         List.of(new AiEvaluationCandidate.Claim(result.summary(), false, Set.of())),

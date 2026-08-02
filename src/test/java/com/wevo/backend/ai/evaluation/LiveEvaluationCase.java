@@ -6,5 +6,5 @@ public interface LiveEvaluationCase<T> {
 
     StructuredAiProviderRequest<T> requestFor(AiEvaluationFixture fixture);
 
-    AiEvaluationCandidate normalize(T result);
+    AiEvaluationCandidate normalize(AiEvaluationFixture fixture, T result);
 }

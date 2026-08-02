@@ -5,7 +5,7 @@
     "feature": "ISSUE_DETECTION",
     "description": "장문 의견에서 앞뒤의 핵심 조건을 모두 보존하는 token budget 경계 시나리오",
     "language": "ko",
-    "tags": ["long-input", "presentation", "token-boundary"],
+    "tags": ["boundary", "long-input", "presentation", "token-boundary", "over-limit-trap"],
     "datasetVersion": "issue-detection-v1",
     "kind": "QUALITY",
     "synthetic": true

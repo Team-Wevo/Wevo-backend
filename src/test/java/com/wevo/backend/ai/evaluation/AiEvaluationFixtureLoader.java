@@ -69,12 +69,16 @@ public final class AiEvaluationFixtureLoader {
                 .map(path -> load(basePath + path))
                 .toList();
         Set<String> ids = new HashSet<>();
+        com.wevo.backend.ai.domain.AiFeature datasetFeature = fixtures.getFirst().metadata().feature();
         for (AiEvaluationFixture fixture : fixtures) {
             if (!ids.add(fixture.metadata().id())) {
                 throw new AiEvaluationFixtureException("평가 dataset에 중복 fixture ID가 있습니다.");
             }
             if (!fixture.metadata().datasetVersion().equals(index.datasetVersion())) {
                 throw new AiEvaluationFixtureException("fixture와 dataset index의 version이 일치하지 않습니다.");
+            }
+            if (fixture.metadata().feature() != datasetFeature) {
+                throw new AiEvaluationFixtureException("하나의 dataset에는 한 AI 기능 fixture만 둘 수 있습니다.");
             }
         }
         return fixtures;
@@ -112,6 +116,9 @@ public final class AiEvaluationFixtureLoader {
     private void validateSemantics(AiEvaluationFixture fixture) {
         if (fixture.schemaVersion() != 1) {
             throw new AiEvaluationFixtureException("지원하지 않는 fixture schema version입니다.");
+        }
+        if (!fixture.metadata().id().startsWith(fixture.metadata().feature().configKey() + "/")) {
+            throw new AiEvaluationFixtureException("fixture ID prefix와 AI 기능이 일치하지 않습니다.");
         }
         Set<String> opinionIds = new HashSet<>();
         for (AiEvaluationFixture.Opinion opinion : fixture.input().opinions()) {
