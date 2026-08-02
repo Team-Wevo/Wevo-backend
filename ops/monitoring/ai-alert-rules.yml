@@ -1,0 +1,94 @@
+groups:
+  - name: wevo-ai
+    interval: 30s
+    rules:
+      - alert: WevoAiProviderAuthenticationError
+        expr: sum(increase(wevo_ai_requests_total{error_type=~"provider_authentication|provider_permission"}[5m])) > 0
+        for: 1m
+        labels: { severity: critical, owner: ai-backend }
+        annotations:
+          summary: "AI Provider 인증 또는 권한 오류"
+          runbook: "ops/monitoring/README.md#provider-인증권한"
+
+      - alert: WevoAiRateLimitSpike
+        expr: sum(increase(wevo_ai_requests_total{error_type="rate_limited"}[5m])) >= 5
+        for: 2m
+        labels: { severity: warning, owner: ai-backend }
+        annotations:
+          summary: "upstream 429가 5분 동안 5건 이상 발생"
+          runbook: "ops/monitoring/README.md#4295xxtimeout"
+
+      - alert: WevoAiProviderFailureRateHigh
+        expr: |
+          sum(rate(wevo_ai_requests_total{error_type=~"provider_timeout|provider_overloaded|provider_unavailable"}[10m]))
+          / sum(rate(wevo_ai_requests_total[10m])) > 0.10
+          and sum(increase(wevo_ai_requests_total[10m])) >= 20
+        for: 5m
+        labels: { severity: critical, owner: ai-backend }
+        annotations:
+          summary: "AI Provider 5xx/timeout 실패율이 10% 초과"
+          runbook: "ops/monitoring/README.md#4295xxtimeout"
+
+      - alert: WevoAiSchemaValidRateLow
+        expr: |
+          sum(increase(wevo_ai_schema_results_total{outcome="invalid"}[15m]))
+          / sum(increase(wevo_ai_schema_results_total[15m])) > 0.01
+          and sum(increase(wevo_ai_schema_results_total[15m])) >= 30
+        for: 10m
+        labels: { severity: warning, owner: ai-backend }
+        annotations:
+          summary: "구조화 출력 valid rate가 AI-12R gate 99% 미만"
+          runbook: "ops/monitoring/README.md#schema품질-회귀"
+
+      - alert: WevoAiLatencyP95Regression
+        expr: |
+          histogram_quantile(0.95, sum by (le, feature) (rate(wevo_ai_end_to_end_latency_seconds_bucket[15m]))) > 12
+          and sum(increase(wevo_ai_requests_total[15m])) >= 30
+        for: 10m
+        labels: { severity: warning, owner: ai-backend }
+        annotations:
+          summary: "AI end-to-end p95가 초기 최대 기준선에 25% 여유를 더한 12초 초과"
+          runbook: "ops/monitoring/README.md#latency비용-회귀"
+
+      - alert: WevoAiCostSpike
+        expr: |
+          sum(rate(wevo_ai_cost_usd_sum[15m]))
+          > 2 * avg_over_time(sum(rate(wevo_ai_cost_usd_sum[15m]))[6h:15m])
+          and sum(increase(wevo_ai_requests_total{outcome="success"}[15m])) >= 20
+        for: 15m
+        labels: { severity: warning, owner: ai-backend }
+        annotations:
+          summary: "AI 비용 소진 속도가 최근 6시간 기준의 2배 초과"
+          runbook: "ops/monitoring/README.md#latency비용-회귀"
+
+      - alert: WevoAiGuardrailUnavailable
+        expr: sum(increase(wevo_ai_guardrail_rejections_total{reason=~"redis_fail_closed|settlement_error|usage_record_error"}[5m])) > 0
+        for: 1m
+        labels: { severity: critical, owner: ai-backend }
+        annotations:
+          summary: "AI quota Redis 또는 비용 정산 장애"
+          runbook: "ops/monitoring/README.md#quota예산redis"
+
+      - alert: WevoAiQuotaRejectionsHigh
+        expr: sum(increase(wevo_ai_guardrail_rejections_total{reason=~"request_quota|project_quota|budget"}[10m])) >= 10
+        for: 5m
+        labels: { severity: warning, owner: ai-backend }
+        annotations:
+          summary: "AI quota 또는 프로젝트 예산 거절 급증"
+          runbook: "ops/monitoring/README.md#quota예산redis"
+
+      - alert: WevoAiQueueBacklog
+        expr: wevo_ai_jobs{status="queued"} > 20 or wevo_ai_jobs_oldest_running_age_seconds > 180
+        for: 5m
+        labels: { severity: warning, owner: ai-backend }
+        annotations:
+          summary: "AI queue backlog 또는 오래된 RUNNING job"
+          runbook: "ops/monitoring/README.md#queueworker"
+
+      - alert: WevoAiCircuitOpen
+        expr: wevo_ai_circuit_state >= 1
+        for: 1m
+        labels: { severity: critical, owner: ai-backend }
+        annotations:
+          summary: "AI Provider circuit이 OPEN 또는 HALF_OPEN 상태"
+          runbook: "ops/monitoring/README.md#4295xxtimeout"

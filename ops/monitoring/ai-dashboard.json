@@ -1,0 +1,62 @@
+{
+  "title": "Wevo AI Operations",
+  "uid": "wevo-ai-operations",
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      { "name": "feature", "type": "query", "query": "label_values(wevo_ai_requests_total, feature)", "includeAll": true },
+      { "name": "model", "type": "query", "query": "label_values(wevo_ai_requests_total, model_family)", "includeAll": true }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "호출량 / 성공률",
+      "targets": [
+        { "refId": "A", "expr": "sum by (feature, model_family) (rate(wevo_ai_requests_total{feature=~\"$feature\",model_family=~\"$model\"}[5m]))" },
+        { "refId": "B", "expr": "sum(rate(wevo_ai_requests_total{outcome=\"success\",feature=~\"$feature\",model_family=~\"$model\"}[5m])) / sum(rate(wevo_ai_requests_total{feature=~\"$feature\",model_family=~\"$model\"}[5m]))" }
+      ], "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "오류 / schema 실패율",
+      "targets": [
+        { "refId": "A", "expr": "sum by (error_type) (rate(wevo_ai_requests_total{outcome=\"failure\",feature=~\"$feature\",model_family=~\"$model\"}[5m]))" },
+        { "refId": "B", "expr": "sum(rate(wevo_ai_schema_results_total{outcome=\"invalid\",feature=~\"$feature\",model_family=~\"$model\"}[5m])) / sum(rate(wevo_ai_schema_results_total{feature=~\"$feature\",model_family=~\"$model\"}[5m]))" }
+      ], "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Provider / end-to-end latency p50·p95",
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le, feature) (rate(wevo_ai_provider_latency_seconds_bucket{feature=~\"$feature\",model_family=~\"$model\"}[5m])))" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le, feature) (rate(wevo_ai_provider_latency_seconds_bucket{feature=~\"$feature\",model_family=~\"$model\"}[5m])))" },
+        { "refId": "C", "expr": "histogram_quantile(0.95, sum by (le, feature) (rate(wevo_ai_end_to_end_latency_seconds_bucket{feature=~\"$feature\",model_family=~\"$model\"}[5m])))" }
+      ], "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Token / 비용 / 예산 소진율",
+      "targets": [
+        { "refId": "A", "expr": "sum by (token_type) (rate(wevo_ai_tokens_sum{feature=~\"$feature\",model_family=~\"$model\"}[5m]))" },
+        { "refId": "B", "expr": "sum(rate(wevo_ai_cost_usd_sum{feature=~\"$feature\",model_family=~\"$model\"}[5m])) / sum(rate(wevo_ai_requests_total{outcome=\"success\",feature=~\"$feature\",model_family=~\"$model\"}[5m]))" },
+        { "refId": "C", "expr": "wevo_ai_guardrail_budget_utilization_sum / wevo_ai_guardrail_budget_utilization_count" }
+      ], "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Queue / 오래된 RUNNING / stale·orphan",
+      "targets": [
+        { "refId": "A", "expr": "wevo_ai_jobs" },
+        { "refId": "B", "expr": "wevo_ai_jobs_oldest_running_age_seconds" },
+        { "refId": "C", "expr": "sum by (event) (increase(wevo_ai_job_events_total[15m]))" },
+        { "refId": "D", "expr": "wevo_ai_circuit_state" },
+        { "refId": "E", "expr": "wevo_ai_execution_enabled" }
+      ], "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 }
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Quota / budget / Redis fail-closed",
+      "targets": [
+        { "refId": "A", "expr": "sum by (reason) (increase(wevo_ai_guardrail_rejections_total[15m]))" },
+        { "refId": "B", "expr": "sum by (feature, model_family) (rate(wevo_ai_cost_usd_sum[5m]))" }
+      ], "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 }
+    }
+  ]
+}
