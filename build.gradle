@@ -73,7 +73,7 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform {
-        excludeTags 'nvidia-integration', 'nvidia-evaluation', 'openai-integration', 'postgres-schema'
+        excludeTags 'nvidia-integration', 'nvidia-evaluation', 'openai-integration', 'openai-evaluation', 'postgres-schema'
 	}
 }
 
@@ -117,6 +117,17 @@ tasks.register('openAiIntegrationTest', Test) {
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform {
         includeTags 'openai-integration'
+    }
+    shouldRunAfter tasks.named('test')
+}
+
+tasks.register('openAiEvaluationTest', Test) {
+    description = 'Runs budgeted opt-in OpenAI live quality evaluation.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'openai-evaluation'
     }
     shouldRunAfter tasks.named('test')
 }
