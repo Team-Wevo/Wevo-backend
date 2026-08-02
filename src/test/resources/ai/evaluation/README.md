@@ -121,8 +121,11 @@ GIT_COMMIT=$(git rev-parse HEAD) \
 fixture는 Provider 호출을 시작하지 않고 `BUDGET_EXHAUSTED`로 기록한다. 기본 상한은 `.env.example`의
 `OPENAI_EVALUATION_*`가 정본이다. `OPENAI_INTEGRATION_ENABLED`만으로는 이 task가 실행되지 않는다.
 
-report는 `build/reports/ai-evaluation/openai/{medium|low}/`에 기능별 JSON/Markdown으로 생성된다.
-`low` 실행은 같은 위치의 `medium` report가 있고 report schema, dataset, output schema, fixture 수와 ID
+report는
+`build/reports/ai-evaluation/openai/{medium|low}/{implicit-baseline|implicit-key-candidate|explicit-candidate}/`
+에 기능별 JSON/Markdown으로 생성된다. cache profile이 달라지면 artifact를 덮어쓰지 않으며 caching
+option 비교와 prompt 변경 비교를 같은 실행에 섞지 않는다. `low` 실행은 같은 cache profile의
+`medium` report가 있고 report schema, dataset, output schema, fixture 수와 ID
 집합이 모두 같을 때만 delta를 계산한다. 자동 gate와 사람 평가는 각각 `gate`, `humanReview`로 분리하며,
 live 생성 직후 사람 평가는 `PENDING`이다. 승인자는 QUALITY fixture의 정확성·근거성·중립성·명확성을
 각 1~5점으로 모두 기록한 뒤에만 `COMPLETED`로 바꿀 수 있다.

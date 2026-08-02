@@ -23,7 +23,8 @@ public class SpringAiOpenAiGateway extends SpringAiNvidiaGateway {
             ExecutorService providerRequestExecutor,
             AiUsageExtractor usageExtractor,
             AiRetrySleeper retrySleeper,
-            AiTokenBudgetEstimator tokenBudgetEstimator
+            AiTokenBudgetEstimator tokenBudgetEstimator,
+            OpenAiPromptCachePolicy promptCachePolicy
     ) {
         super(
                 chatClient,
@@ -33,7 +34,8 @@ public class SpringAiOpenAiGateway extends SpringAiNvidiaGateway {
                         properties.openai().reasoningEffort(),
                         null,
                         true,
-                        true
+                        true,
+                        promptCachePolicy
                 ),
                 exceptionTranslator,
                 providerRequestExecutor,

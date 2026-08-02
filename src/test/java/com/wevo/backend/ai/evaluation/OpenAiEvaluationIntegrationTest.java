@@ -3,6 +3,7 @@ package com.wevo.backend.ai.evaluation;
 import com.wevo.backend.ai.client.AiProviderGateway;
 import com.wevo.backend.ai.config.AiProperties;
 import com.wevo.backend.ai.config.AiPricingProperties;
+import com.wevo.backend.ai.config.OpenAiPromptCacheProperties;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.prompt.DraftGenerationPromptFactory;
 import com.wevo.backend.ai.prompt.DraftReviewPromptFactory;
@@ -83,6 +84,9 @@ class OpenAiEvaluationIntegrationTest {
     private AiPricingProperties aiPricingProperties;
 
     @Autowired
+    private OpenAiPromptCacheProperties promptCacheProperties;
+
+    @Autowired
     private IssueDetectionPromptFactory issueDetectionPromptFactory;
 
     @Autowired
@@ -125,7 +129,9 @@ class OpenAiEvaluationIntegrationTest {
                 .isLessThanOrEqualTo(budget.maxProviderRequests());
 
         String effort = aiProperties.openai().reasoningEffort();
-        Path reportDirectory = Path.of("build/reports/ai-evaluation/openai", effort);
+        Path reportDirectory = Path.of(
+                "build/reports/ai-evaluation/openai", effort,
+                promptCacheProperties.profileId());
         AiEvaluationReportWriter writer = new AiEvaluationReportWriter();
         for (Map.Entry<AiFeature, List<AiEvaluationFixture>> entry : fixturesByFeature.entrySet()) {
             List<AiEvaluationFixture> featureFixtures = entry.getValue();
@@ -222,6 +228,7 @@ class OpenAiEvaluationIntegrationTest {
         }
         Path baselinePath = Path.of(
                 "build/reports/ai-evaluation/openai/medium",
+                promptCacheProperties.profileId(),
                 feature.configKey() + "-medium.json"
         );
         if (!Files.isRegularFile(baselinePath)) {
