@@ -1,7 +1,10 @@
 package com.wevo.backend.auth.controller;
 
+import com.wevo.backend.auth.domain.AuthProvider;
 import com.wevo.backend.auth.dto.response.TokenResponse;
 import com.wevo.backend.auth.service.AuthService;
+import com.wevo.backend.global.exception.BusinessException;
+import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.global.security.AuthPrincipal;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,6 +49,29 @@ class AuthControllerWebMvcTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("A006"))
                 .andExpect(jsonPath("$.message").value("지원하지 않는 로그인 제공자입니다."))
+                .andExpect(jsonPath("$.timestamp").exists());
+    }
+
+    @Test
+    @DisplayName("이미 다른 소셜 계정으로 가입된 이메일이면 409 U002 를 반환한다")
+    void login_withDuplicateEmail_returns409U002() throws Exception {
+        // 서비스가 던진 DUPLICATE_EMAIL 이 HTTP 계약(409 U002)으로 나가는지 확인한다. (API_SPEC §3.1.1)
+        given(authService.login(AuthProvider.GOOGLE, "code", "http://localhost:3000/oauth/callback"))
+                .willThrow(new BusinessException(ErrorCode.DUPLICATE_EMAIL));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "provider": "GOOGLE",
+                                  "code": "code",
+                                  "redirectUri": "http://localhost:3000/oauth/callback"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("U002"))
+                .andExpect(jsonPath("$.message").value("이미 다른 방식으로 가입된 이메일입니다."))
                 .andExpect(jsonPath("$.timestamp").exists());
     }
 

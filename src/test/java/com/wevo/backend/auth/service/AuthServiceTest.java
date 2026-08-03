@@ -227,6 +227,52 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("이메일 제약이 아닌 무결성 위반은 DUPLICATE_EMAIL 로 바꾸지 않고 그대로 전파한다")
+    void login_nonEmailConstraintViolation_isNotTranslated() {
+        // 예: 소셜 제공자가 닉네임을 주지 않아 name NOT NULL 이 깨진 경우.
+        // 이것까지 U002 로 삼키면 "이미 다른 방식으로 가입된 이메일입니다"가 잘못 표시된다.
+        OAuthUserInfo userInfo = new OAuthUserInfo(
+                AuthProvider.KAKAO, "kakao-noname", "noname@wevo.com", null, null);
+
+        given(oAuthClientRouter.getClient(AuthProvider.KAKAO)).willReturn(oAuthClient);
+        given(oAuthClient.fetchUserInfo("code", "uri")).willReturn(userInfo);
+        given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.KAKAO, "kakao-noname"))
+                .willReturn(Optional.empty());
+        given(userRepository.findByEmail("noname@wevo.com")).willReturn(Optional.empty());
+        given(userRepository.saveAndFlush(any(User.class))).willThrow(
+                new DataIntegrityViolationException(
+                        "null value in column \"name\" violates not-null constraint"));
+
+        assertThrows(DataIntegrityViolationException.class,
+                () -> authService.login(AuthProvider.KAKAO, "code", "uri"));
+
+        verify(authAccountRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("제약 이름이 원인 예외에만 있어도 이메일 중복으로 판별한다")
+    void login_constraintNameInCause_translatesToDuplicateEmail() {
+        OAuthUserInfo userInfo = new OAuthUserInfo(
+                AuthProvider.GOOGLE, "google-nested", "nested@wevo.com", "홍길동", null);
+
+        given(oAuthClientRouter.getClient(AuthProvider.GOOGLE)).willReturn(oAuthClient);
+        given(oAuthClient.fetchUserInfo("code", "uri")).willReturn(userInfo);
+        given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.GOOGLE, "google-nested"))
+                .willReturn(Optional.empty());
+        given(userRepository.findByEmail("nested@wevo.com")).willReturn(Optional.empty());
+        given(userRepository.saveAndFlush(any(User.class))).willThrow(
+                new DataIntegrityViolationException(
+                        "could not execute statement",
+                        new IllegalStateException("ERROR: duplicate key value violates unique "
+                                + "constraint \"UK_USERS_EMAIL\"")));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> authService.login(AuthProvider.GOOGLE, "code", "uri"));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_EMAIL);
+    }
+
+    @Test
     @DisplayName("저장된 토큰과 일치하는 Refresh Token 으로 재발급하면 새 토큰을 반환한다")
     void reissue_validToken_returnsNewTokens() {
         given(jwtProvider.parseUserId("refresh", TokenType.REFRESH)).willReturn(3L);

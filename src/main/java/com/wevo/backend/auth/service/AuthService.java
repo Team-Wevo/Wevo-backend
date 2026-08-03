@@ -30,6 +30,9 @@ import java.util.Objects;
 @Service
 public class AuthService {
 
+    /** users 테이블의 이메일 유니크 제약 이름. (V1 마이그레이션) 소문자 비교용. */
+    private static final String EMAIL_UNIQUE_CONSTRAINT = "uk_users_email";
+
     private final OAuthClientRouter oAuthClientRouter;
     private final UserRepository userRepository;
     private final AuthAccountRepository authAccountRepository;
@@ -112,6 +115,11 @@ public class AuthService {
      * 신규 사용자를 저장한다. 사전 검사를 통과했더라도 동시 요청이 같은 이메일로 함께 들어오면
      * DB 유니크 제약에서 걸리므로, 그 경우도 계약된 {@code U002} 로 변환한다.
      * (사전 검사만으로 무결성을 보장하지 않는다 — {@code CLAUDE.md §5.8})
+     *
+     * <p>변환 대상은 <b>이메일 유니크 제약 위반뿐</b>이다. {@code name NOT NULL}·
+     * {@code chk_users_status} 같은 다른 무결성 위반까지 삼키면, 예를 들어 소셜 제공자가 닉네임을
+     * 주지 않아 저장이 실패한 경우에도 "이미 다른 방식으로 가입된 이메일입니다"가 표시된다.
+     * 이메일 제약이 아닌 위반은 그대로 던져 전역 예외 처리에 맡긴다.
      */
     private User saveNewUser(OAuthUserInfo info, String email) {
         try {
@@ -122,8 +130,28 @@ public class AuthService {
                     .status(UserStatus.ACTIVE)
                     .build());
         } catch (DataIntegrityViolationException exception) {
-            throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
+            if (isEmailUniqueViolation(exception)) {
+                throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
+            }
+            throw exception;
         }
+    }
+
+    /**
+     * 이메일 유니크 제약({@code uk_users_email}) 위반인지 판별한다.
+     *
+     * <p>드라이버·DB 구현에 따라 제약 이름이 최상위 메시지에 없고 원인 예외 체인에만 담기므로
+     * 전체 메시지를 확인한다. 이름 비교는 대소문자를 구분하지 않는다.
+     */
+    private boolean isEmailUniqueViolation(DataIntegrityViolationException exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            String message = cause.getMessage();
+            if (message != null
+                    && message.toLowerCase(Locale.ROOT).contains(EMAIL_UNIQUE_CONSTRAINT)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
