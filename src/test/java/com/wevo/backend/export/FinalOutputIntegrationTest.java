@@ -1,11 +1,15 @@
 package com.wevo.backend.export;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wevo.backend.global.persistence.PostgresTestContainerConfig;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.project.domain.OutputType;
@@ -31,6 +35,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -50,6 +55,8 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @Transactional
 class FinalOutputIntegrationTest {
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
     private MockMvc mockMvc;
@@ -344,6 +351,193 @@ class FinalOutputIntegrationTest {
                 .andExpect(jsonPath("$.code").value("P001"));
     }
 
+    @Test
+    @DisplayName("전 섹션 확정 시 일반 텍스트 파일로 다운로드된다")
+    void downloadsAsPlainTextFile() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        ProjectSection second = persistSection(project, "해결 방안", 2, ProjectSectionStatus.CONFIRMED, 1);
+        ProjectSection first = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 1);
+        persistDraft(second, "해결 방안 확정본", 1, owner);
+        persistDraft(first, "문제 정의 확정본", 1, owner);
+        flushAndClear();
+
+        // 복사본(§3.6.2)과 완전히 같은 본문이어야 한다 — 조립 규칙이 갈리면 여기서 깨진다.
+        getDownload(project.getId(), owner, "plain-text")
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("text/plain;charset=UTF-8"))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"final-output.txt\"; "
+                                + "filename*=UTF-8''%EC%9C%84%EB%B3%B4%20%EA%B8%B0%ED%9A%8D.txt"))
+                .andExpect(content().string("""
+                        위보 기획
+
+                        01. 문제 정의
+
+                        문제 정의 확정본
+
+                        02. 해결 방안
+
+                        해결 방안 확정본"""));
+    }
+
+    @Test
+    @DisplayName("전 섹션 확정 시 마크다운 파일로 다운로드된다")
+    void downloadsAsMarkdownFile() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        ProjectSection first = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 1);
+        persistDraft(first, "문제 정의 확정본", 1, owner);
+        flushAndClear();
+
+        getDownload(project.getId(), owner, "markdown")
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("text/markdown;charset=UTF-8"))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"final-output.md\"; "
+                                + "filename*=UTF-8''%EC%9C%84%EB%B3%B4%20%EA%B8%B0%ED%9A%8D.md"))
+                .andExpect(content().string("""
+                        # 위보 기획
+
+                        ## 01. 문제 정의
+
+                        문제 정의 확정본"""));
+    }
+
+    @Test
+    @DisplayName("fileName 을 지정하면 프로젝트 제목 대신 그 이름으로 내려받는다")
+    void downloadsWithRequestedFileName() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        ProjectSection first = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 1);
+        persistDraft(first, "문제 정의 확정본", 1, owner);
+        flushAndClear();
+
+        mockMvc.perform(get("/api/projects/{id}/final-output/download/plain-text", project.getId())
+                        .param("fileName", "최종 제안서")
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"final-output.txt\"; "
+                                + "filename*=UTF-8''%EC%B5%9C%EC%A2%85%20%EC%A0%9C%EC%95%88%EC%84%9C.txt"))
+                // 파일명만 바뀌고 본문은 그대로다
+                .andExpect(content().string(containsString("문제 정의 확정본")));
+    }
+
+    @Test
+    @DisplayName("쓸 수 없는 fileName 이 와도 거부하지 않고 안전한 이름으로 바꿔 내려받는다")
+    void unusableRequestedFileNameIsSanitizedNotRejected() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        ProjectSection first = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 1);
+        persistDraft(first, "문제 정의 확정본", 1, owner);
+        flushAndClear();
+
+        // 경로 탈출·헤더 주입 시도가 헤더에 그대로 실리지 않아야 한다.
+        mockMvc.perform(get("/api/projects/{id}/final-output/download/markdown", project.getId())
+                        .param("fileName", "../../etc/passwd")
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"etc passwd.md\"; "
+                                + "filename*=UTF-8''etc%20passwd.md"));
+    }
+
+    @Test
+    @DisplayName("같은 형식이면 복사 API 와 다운로드 API 의 본문이 완전히 같다")
+    void copyAndDownloadShareTheSameBody() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        ProjectSection second = persistSection(project, "해결 방안", 2, ProjectSectionStatus.CONFIRMED, 1);
+        ProjectSection first = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 1);
+        persistDraft(second, "해결 방안 확정본\n둘째 문단", 1, owner);
+        persistDraft(first, "문제 정의 확정본", 1, owner);
+        flushAndClear();
+
+        // 두 경로가 조립 로직을 공유한다는 계약을 실제 응답으로 못 박는다.
+        for (String format : new String[]{"plain-text", "markdown"}) {
+            String copied = objectMapper
+                    .readTree(getCopy(project.getId(), owner, format)
+                            .andExpect(status().isOk())
+                            .andReturn().getResponse().getContentAsString())
+                    .path("data").path("content").asText();
+            String downloaded = getDownload(project.getId(), owner, format)
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+
+            assertThat(downloaded)
+                    .as("%s: 복사본과 다운로드 본문이 갈리면 안 된다", format)
+                    .isEqualTo(copied);
+        }
+    }
+
+    @Test
+    @DisplayName("미확정 섹션이 있으면 파일 대신 409(C003) JSON 으로 거절한다")
+    void partiallyConfirmedIsRejectedForDownload() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        ProjectSection confirmed = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 1);
+        persistSection(project, "해결 방안", 2, ProjectSectionStatus.REVIEWING, 0);
+        persistDraft(confirmed, "문제 정의 확정본", 1, owner);
+        flushAndClear();
+
+        // 성공은 파일, 실패는 JSON 인 혼합 계약 (CLAUDE.md §5.3)
+        for (String format : new String[]{"plain-text", "markdown"}) {
+            getDownload(project.getId(), owner, format)
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.success").value(false))
+                    .andExpect(jsonPath("$.code").value("C003"))
+                    .andExpect(header().doesNotExist(HttpHeaders.CONTENT_DISPOSITION));
+        }
+    }
+
+    @Test
+    @DisplayName("팀원(MEMBER)도 완성본을 다운로드할 수 있다")
+    void memberCanDownload() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        User member = persistUser("member@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        persistMember(project, member, ProjectMemberRole.MEMBER);
+
+        ProjectSection first = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 1);
+        persistDraft(first, "문제 정의 확정본", 1, owner);
+        flushAndClear();
+
+        getDownload(project.getId(), member, "plain-text")
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("문제 정의 확정본")));
+    }
+
+    @Test
+    @DisplayName("프로젝트 멤버가 아니면 다운로드도 404(P001) — 프로젝트 존재를 숨긴다")
+    void nonMemberCannotDownload() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        User stranger = persistUser("stranger@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        ProjectSection first = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 1);
+        persistDraft(first, "문제 정의 확정본", 1, owner);
+        flushAndClear();
+
+        getDownload(project.getId(), stranger, "markdown")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("P001"));
+    }
+
     // --- 헬퍼 ---
 
     private ResultActions getFinalOutput(Long projectId, User user) throws Exception {
@@ -354,6 +548,12 @@ class FinalOutputIntegrationTest {
     private ResultActions getCopy(Long projectId, User user, String format) throws Exception {
         return mockMvc.perform(get("/api/projects/{id}/final-output/{format}", projectId, format)
                 .with(authentication(authOf(user))));
+    }
+
+    private ResultActions getDownload(Long projectId, User user, String format) throws Exception {
+        return mockMvc.perform(
+                get("/api/projects/{id}/final-output/download/{format}", projectId, format)
+                        .with(authentication(authOf(user))));
     }
 
     private UsernamePasswordAuthenticationToken authOf(User user) {
