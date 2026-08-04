@@ -120,7 +120,9 @@ public class FinalOutputController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "P001 — 프로젝트 없음 또는 비멤버 (존재 숨김)"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "409", description = "C003 — 미확정 섹션이 있음")
+                    responseCode = "409", description = "C003 — 미확정 섹션이 있음"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "500", description = "E001 — 확정 섹션 수와 확정본 수 불일치 (조립 실패)")
     })
     @GetMapping("/{projectId}/final-output/download/plain-text")
     public ResponseEntity<String> downloadPlainText(
@@ -149,7 +151,9 @@ public class FinalOutputController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "P001 — 프로젝트 없음 또는 비멤버 (존재 숨김)"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "409", description = "C003 — 미확정 섹션이 있음")
+                    responseCode = "409", description = "C003 — 미확정 섹션이 있음"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "500", description = "E001 — 확정 섹션 수와 확정본 수 불일치 (조립 실패)")
     })
     @GetMapping("/{projectId}/final-output/download/markdown")
     public ResponseEntity<String> downloadMarkdown(

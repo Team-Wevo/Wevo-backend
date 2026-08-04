@@ -504,6 +504,30 @@ class FinalOutputIntegrationTest {
     }
 
     @Test
+    @DisplayName("확정본 정합성이 깨지면 파일 대신 500(E001) JSON 으로 실패한다")
+    void integrityMismatchFailsDownloadAsServerError() throws Exception {
+        User owner = persistUser("owner@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        // 확정 버전은 2 인데 이력에는 1 밖에 없는 정합성 붕괴 상태 (§3.6.1 과 같은 조건)
+        ProjectSection section = persistSection(project, "문제 정의", 1, ProjectSectionStatus.CONFIRMED, 2);
+        persistDraft(section, "1차 초안", 1, owner);
+        flushAndClear();
+
+        // 일부가 빠진 결과물을 파일로 내보내지 않는다 — 실패는 파일이 아니라 JSON 이어야 한다.
+        for (String format : new String[]{"plain-text", "markdown"}) {
+            getDownload(project.getId(), owner, format)
+                    .andExpect(status().isInternalServerError())
+                    .andExpect(content().contentTypeCompatibleWith("application/json"))
+                    .andExpect(jsonPath("$.success").value(false))
+                    .andExpect(jsonPath("$.code").value("E001"))
+                    .andExpect(jsonPath("$.data").doesNotExist())
+                    .andExpect(header().doesNotExist(HttpHeaders.CONTENT_DISPOSITION));
+        }
+    }
+
+    @Test
     @DisplayName("팀원(MEMBER)도 완성본을 다운로드할 수 있다")
     void memberCanDownload() throws Exception {
         User owner = persistUser("owner@wevo.com");
