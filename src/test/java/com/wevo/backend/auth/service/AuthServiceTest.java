@@ -21,6 +21,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
@@ -90,7 +91,7 @@ class AuthServiceTest {
 
         assertThat(response.accessToken()).isEqualTo("access");
         assertThat(response.refreshToken()).isEqualTo("refresh");
-        verify(userRepository, never()).save(any());
+        verify(userRepository, never()).saveAndFlush(any());
         verify(refreshTokenService).save(userId, "refresh", 1_000L);
     }
 
@@ -106,7 +107,7 @@ class AuthServiceTest {
         given(oAuthClient.fetchUserInfo("code", "uri")).willReturn(userInfo);
         given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.KAKAO, "kakao-999"))
                 .willReturn(Optional.empty());
-        given(userRepository.save(any(User.class))).willAnswer(invocation -> {
+        given(userRepository.saveAndFlush(any(User.class))).willAnswer(invocation -> {
             User saved = invocation.getArgument(0);
             ReflectionTestUtils.setField(saved, "id", newUserId);
             return saved;
@@ -120,7 +121,7 @@ class AuthServiceTest {
         assertThat(response.accessToken()).isEqualTo("access");
 
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(userCaptor.capture());
+        verify(userRepository).saveAndFlush(userCaptor.capture());
         assertThat(userCaptor.getValue().getStatus()).isEqualTo(UserStatus.ACTIVE);
         assertThat(userCaptor.getValue().getEmail()).isNull();
 
@@ -150,6 +151,125 @@ class AuthServiceTest {
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_EMAIL);
         verify(userRepository, never()).save(any());
         verify(authAccountRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("대소문자·공백만 다른 이메일도 중복으로 보고 DUPLICATE_EMAIL 을 던진다")
+    void login_existingEmailWithDifferentCase_throwsDuplicateEmail() {
+        // provider 가 " DUP@Wevo.com " 처럼 내려줘도 저장된 소문자 이메일과 같은 계정으로 본다.
+        OAuthUserInfo userInfo = new OAuthUserInfo(
+                AuthProvider.KAKAO, "kakao-new", "  DUP@Wevo.com  ", "홍길동", null);
+
+        given(oAuthClientRouter.getClient(AuthProvider.KAKAO)).willReturn(oAuthClient);
+        given(oAuthClient.fetchUserInfo("code", "uri")).willReturn(userInfo);
+        given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.KAKAO, "kakao-new"))
+                .willReturn(Optional.empty());
+        given(userRepository.findByEmail("dup@wevo.com")).willReturn(
+                Optional.of(User.builder().email("dup@wevo.com").status(UserStatus.ACTIVE).build()));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> authService.login(AuthProvider.KAKAO, "code", "uri"));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_EMAIL);
+        verify(userRepository, never()).saveAndFlush(any());
+        verify(authAccountRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("신규 가입 시 이메일을 소문자·공백 제거 형태로 저장한다")
+    void login_newAccount_normalizesEmailBeforeSaving() {
+        Long newUserId = 77L;
+        OAuthUserInfo userInfo = new OAuthUserInfo(
+                AuthProvider.GOOGLE, "google-fresh", " New.User@Wevo.COM ", "홍길동", null);
+
+        given(oAuthClientRouter.getClient(AuthProvider.GOOGLE)).willReturn(oAuthClient);
+        given(oAuthClient.fetchUserInfo("code", "uri")).willReturn(userInfo);
+        given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.GOOGLE, "google-fresh"))
+                .willReturn(Optional.empty());
+        given(userRepository.findByEmail("new.user@wevo.com")).willReturn(Optional.empty());
+        given(userRepository.saveAndFlush(any(User.class))).willAnswer(invocation -> {
+            User saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", newUserId);
+            return saved;
+        });
+        given(jwtProvider.createAccessToken(newUserId)).willReturn("access");
+        given(jwtProvider.createRefreshToken(newUserId)).willReturn("refresh");
+        given(jwtProvider.getRefreshTokenValidityMs()).willReturn(2_000L);
+
+        authService.login(AuthProvider.GOOGLE, "code", "uri");
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(userCaptor.capture());
+        assertThat(userCaptor.getValue().getEmail()).isEqualTo("new.user@wevo.com");
+    }
+
+    @Test
+    @DisplayName("동시 요청으로 이메일 유니크 제약이 깨지면 C003 이 아니라 DUPLICATE_EMAIL 로 변환한다")
+    void login_concurrentDuplicateEmail_translatesConstraintViolation() {
+        // 사전 검사를 통과한 뒤 다른 요청이 먼저 같은 이메일을 저장한 상황.
+        // 변환하지 않으면 DataIntegrityViolationException 이 전역 핸들러에서 C003 으로 나간다.
+        OAuthUserInfo userInfo = new OAuthUserInfo(
+                AuthProvider.GOOGLE, "google-race", "race@wevo.com", "홍길동", null);
+
+        given(oAuthClientRouter.getClient(AuthProvider.GOOGLE)).willReturn(oAuthClient);
+        given(oAuthClient.fetchUserInfo("code", "uri")).willReturn(userInfo);
+        given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.GOOGLE, "google-race"))
+                .willReturn(Optional.empty());
+        given(userRepository.findByEmail("race@wevo.com")).willReturn(Optional.empty());
+        given(userRepository.saveAndFlush(any(User.class)))
+                .willThrow(new DataIntegrityViolationException("uk_users_email"));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> authService.login(AuthProvider.GOOGLE, "code", "uri"));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_EMAIL);
+        verify(authAccountRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("이메일 제약이 아닌 무결성 위반은 DUPLICATE_EMAIL 로 바꾸지 않고 그대로 전파한다")
+    void login_nonEmailConstraintViolation_isNotTranslated() {
+        // 예: 소셜 제공자가 닉네임을 주지 않아 name NOT NULL 이 깨진 경우.
+        // 이것까지 U002 로 삼키면 "이미 다른 방식으로 가입된 이메일입니다"가 잘못 표시된다.
+        OAuthUserInfo userInfo = new OAuthUserInfo(
+                AuthProvider.KAKAO, "kakao-noname", "noname@wevo.com", null, null);
+
+        given(oAuthClientRouter.getClient(AuthProvider.KAKAO)).willReturn(oAuthClient);
+        given(oAuthClient.fetchUserInfo("code", "uri")).willReturn(userInfo);
+        given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.KAKAO, "kakao-noname"))
+                .willReturn(Optional.empty());
+        given(userRepository.findByEmail("noname@wevo.com")).willReturn(Optional.empty());
+        given(userRepository.saveAndFlush(any(User.class))).willThrow(
+                new DataIntegrityViolationException(
+                        "null value in column \"name\" violates not-null constraint"));
+
+        assertThrows(DataIntegrityViolationException.class,
+                () -> authService.login(AuthProvider.KAKAO, "code", "uri"));
+
+        verify(authAccountRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("제약 이름이 원인 예외에만 있어도 이메일 중복으로 판별한다")
+    void login_constraintNameInCause_translatesToDuplicateEmail() {
+        OAuthUserInfo userInfo = new OAuthUserInfo(
+                AuthProvider.GOOGLE, "google-nested", "nested@wevo.com", "홍길동", null);
+
+        given(oAuthClientRouter.getClient(AuthProvider.GOOGLE)).willReturn(oAuthClient);
+        given(oAuthClient.fetchUserInfo("code", "uri")).willReturn(userInfo);
+        given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.GOOGLE, "google-nested"))
+                .willReturn(Optional.empty());
+        given(userRepository.findByEmail("nested@wevo.com")).willReturn(Optional.empty());
+        given(userRepository.saveAndFlush(any(User.class))).willThrow(
+                new DataIntegrityViolationException(
+                        "could not execute statement",
+                        new IllegalStateException("ERROR: duplicate key value violates unique "
+                                + "constraint \"UK_USERS_EMAIL\"")));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> authService.login(AuthProvider.GOOGLE, "code", "uri"));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_EMAIL);
     }
 
     @Test
