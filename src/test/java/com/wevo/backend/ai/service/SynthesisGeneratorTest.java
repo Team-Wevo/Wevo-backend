@@ -70,7 +70,7 @@ class SynthesisGeneratorTest {
         @SuppressWarnings("unchecked")
         StructuredAiProviderRequest<SynthesisAiOutput> request =
                 mock(StructuredAiProviderRequest.class);
-        given(promptFactory.providerRequest(any(), any())).willReturn(request);
+        given(promptFactory.providerRequest(any(), any(), any())).willReturn(request);
 
         SynthesisAiOutput first = output("부분 1", List.of(1L));
         SynthesisAiOutput second = output("부분 2", List.of(2L));
@@ -88,7 +88,7 @@ class SynthesisGeneratorTest {
         ArgumentCaptor<SynthesisPromptContext> contexts =
                 ArgumentCaptor.forClass(SynthesisPromptContext.class);
         verify(promptFactory, org.mockito.Mockito.times(3))
-                .providerRequest(contexts.capture(), any());
+                .providerRequest(contexts.capture(), any(), eq(SynthesisContract.PROMPT_VERSION));
         assertThat(contexts.getAllValues())
                 .extracting(SynthesisPromptContext::mode)
                 .containsExactly(
@@ -109,7 +109,7 @@ class SynthesisGeneratorTest {
         @SuppressWarnings("unchecked")
         StructuredAiProviderRequest<SynthesisAiOutput> request =
                 mock(StructuredAiProviderRequest.class);
-        given(promptFactory.providerRequest(any(), any())).willReturn(request);
+        given(promptFactory.providerRequest(any(), any(), any())).willReturn(request);
         given(invocationService.invokeStructured(any(), eq(request), any()))
                 .willReturn(new AiInvocationResult<>(
                         output("부분 1", List.of(1L)), 1L, UUID.randomUUID()))
@@ -119,7 +119,7 @@ class SynthesisGeneratorTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("두 번째 chunk 실패");
 
-        verify(promptFactory, org.mockito.Mockito.times(2)).providerRequest(any(), any());
+        verify(promptFactory, org.mockito.Mockito.times(2)).providerRequest(any(), any(), any());
     }
 
     @Test
@@ -130,7 +130,7 @@ class SynthesisGeneratorTest {
         @SuppressWarnings("unchecked")
         StructuredAiProviderRequest<SynthesisAiOutput> request =
                 mock(StructuredAiProviderRequest.class);
-        given(promptFactory.providerRequest(any(), any())).willReturn(request);
+        given(promptFactory.providerRequest(any(), any(), any())).willReturn(request);
         given(invocationService.invokeStructured(any(), eq(request), any()))
                 .willReturn(
                         new AiInvocationResult<>(
@@ -144,7 +144,7 @@ class SynthesisGeneratorTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("최종 병합 실패");
 
-        verify(promptFactory, org.mockito.Mockito.times(3)).providerRequest(any(), any());
+        verify(promptFactory, org.mockito.Mockito.times(3)).providerRequest(any(), any(), any());
     }
 
     @Test

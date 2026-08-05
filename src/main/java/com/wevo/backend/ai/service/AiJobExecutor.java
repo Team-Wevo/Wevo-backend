@@ -14,6 +14,8 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.wevo.backend.ai.operations.AiExecutionControl;
 
 /**
  * QUEUED AI 작업을 <b>동시 실행 상한 안에서</b> 가상 스레드로 실행하는 실행기.
@@ -32,6 +34,7 @@ public class AiJobExecutor {
     private final AiJobRepository aiJobRepository;
     private final Map<AiFeature, AiJobHandler> handlers;
     private final Semaphore slots;
+    private AiExecutionControl executionControl;
 
     public AiJobExecutor(ExecutorService providerRequestExecutor,
                          AiJobRepository aiJobRepository,
@@ -65,6 +68,10 @@ public class AiJobExecutor {
         try {
             AiJobHandler handler = resolveHandler(requestId);
             if (handler == null) {
+                slots.release();
+                return;
+            }
+            if (!executionAllowed(handler.feature())) {
                 slots.release();
                 return;
             }
@@ -106,6 +113,23 @@ public class AiJobExecutor {
                     requestId, exception.getClass().getSimpleName());
         } finally {
             slots.release();
+        }
+    }
+
+    @Autowired(required = false)
+    void setExecutionControl(AiExecutionControl executionControl) {
+        this.executionControl = executionControl;
+    }
+
+    private boolean executionAllowed(AiFeature feature) {
+        if (executionControl == null) {
+            return true;
+        }
+        try {
+            executionControl.requireDispatchAllowed(feature);
+            return true;
+        } catch (RuntimeException ignored) {
+            return false;
         }
     }
 }

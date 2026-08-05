@@ -7,12 +7,15 @@ import com.wevo.backend.ai.domain.AiErrorType;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiUsageLog;
 import com.wevo.backend.ai.exception.AiAuditPersistenceException;
+import com.wevo.backend.ai.operations.AiOperationalMetrics;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.UUID;
 
 @Service
@@ -27,6 +30,7 @@ public class AiUsageService {
     private final AiErrorMessageSanitizer sanitizer;
     private final AiGuardrailService guardrailService;
     private final Clock clock;
+    private AiOperationalMetrics metrics;
 
     public AiUsageService(
             AiUsagePersistenceService persistenceService,
@@ -48,12 +52,8 @@ public class AiUsageService {
 
     public AiUsageHandle startRequest(AiUsageStartCommand command) {
         AiProperties.ModelOptions modelOptions = aiProperties.optionsFor(command.feature());
-        String modelId = modelOptions.model();
-        if (command.aiJob() != null
-                && (!command.aiJob().getModelId().equals(modelId)
-                || !command.aiJob().getMaxOutputTokens().equals(modelOptions.maxOutputTokens()))) {
-            throw new IllegalArgumentException("AiJob과 감사 로그의 model 실행 정책이 일치해야 합니다.");
-        }
+        String modelId = command.aiJob() == null ? modelOptions.model() : command.aiJob().getModelId();
+        LocalDateTime startedAt = LocalDateTime.now(clock);
         AiUsageLog usageLog = AiUsageLog.start(
                 UUID.randomUUID(),
                 command.aiJob(),
@@ -65,10 +65,14 @@ public class AiUsageService {
                 modelId,
                 command.promptVersion(),
                 command.inputSnapshotHash(),
-                LocalDateTime.now(clock)
+                startedAt
         );
         try {
-            AiUsageHandle handle = persistenceService.start(usageLog);
+            AiUsageHandle persisted = persistenceService.start(usageLog);
+            AiUsageHandle handle = new AiUsageHandle(
+                    persisted.logId(), persisted.requestId(), command.aiJob(), command.feature(),
+                    aiProperties.provider(), modelId, command.promptVersion(),
+                    command.aiJob() == null ? "none" : command.aiJob().getSchemaVersion(), startedAt);
             guardrailService.markProviderStarted(command.aiJob());
             return handle;
         } catch (RuntimeException exception) {
@@ -83,11 +87,14 @@ public class AiUsageService {
             Long resultId
     ) {
         AiCostSnapshot cost = costCalculator.calculate(usage);
+        LocalDateTime completedAt = LocalDateTime.now(clock);
         try {
             persistenceService.completeSuccess(
-                    handle.requestId(), usage, cost, attemptCount, resultId, LocalDateTime.now(clock)
+                    handle.requestId(), usage, cost, attemptCount, resultId, completedAt
             );
             recordUsageWithRetry(handle.aiJob(), handle.requestId(), cost);
+            recordSuccessMetric(handle, usage, cost, attemptCount, completedAt);
+            logCompletion(handle, usage, attemptCount, "SUCCEEDED", null, completedAt);
         } catch (RuntimeException exception) {
             throw persistenceFailure(handle.requestId(), exception);
         }
@@ -102,10 +109,13 @@ public class AiUsageService {
         AiCostSnapshot cost = costCalculator.calculate(usage);
         AiErrorType errorType = errorClassifier.classify(throwable);
         String safeMessage = sanitizer.sanitize(errorClassifier.safeMessage(throwable));
+        LocalDateTime completedAt = LocalDateTime.now(clock);
         completeFailure(
                 handle.requestId(), handle.aiJob(), usage, cost, attemptCount,
-                errorType, safeMessage, LocalDateTime.now(clock)
+                errorType, safeMessage, completedAt
         );
+        recordFailureMetric(handle, usage, cost, attemptCount, errorType, completedAt);
+        logCompletion(handle, usage, attemptCount, "FAILED", errorType, completedAt);
     }
 
     public void markOrphaned(UUID requestId, LocalDateTime completedAt) {
@@ -120,6 +130,9 @@ public class AiUsageService {
                 message,
                 completedAt
         );
+        if (metrics != null) {
+            metrics.recordJobEvent(null, "orphan_recovered");
+        }
     }
 
     private void completeFailure(
@@ -169,5 +182,78 @@ public class AiUsageService {
             }
         }
         throw lastFailure;
+    }
+
+    @Autowired(required = false)
+    void setMetrics(AiOperationalMetrics metrics) {
+        this.metrics = metrics;
+    }
+
+    private void recordSuccessMetric(
+            AiUsageHandle handle,
+            AiUsageMetadata usage,
+            AiCostSnapshot cost,
+            int attemptCount,
+            LocalDateTime completedAt
+    ) {
+        if (metrics == null || handle.feature() == null) {
+            return;
+        }
+        metrics.recordSuccess(
+                handle.feature(), provider(handle, usage), model(handle, usage),
+                handle.promptVersion(), handle.schemaVersion(), duration(handle, completedAt),
+                attemptCount, usage, cost, handle.aiJob() != null);
+    }
+
+    private void recordFailureMetric(
+            AiUsageHandle handle,
+            AiUsageMetadata usage,
+            AiCostSnapshot cost,
+            Integer attemptCount,
+            AiErrorType errorType,
+            LocalDateTime completedAt
+    ) {
+        if (metrics == null || handle.feature() == null) {
+            return;
+        }
+        metrics.recordFailure(
+                handle.feature(), provider(handle, usage), model(handle, usage),
+                handle.promptVersion(), handle.schemaVersion(), duration(handle, completedAt),
+                attemptCount, errorType, usage, cost, handle.aiJob() != null);
+    }
+
+    private void logCompletion(
+            AiUsageHandle handle,
+            AiUsageMetadata usage,
+            Integer attempts,
+            String status,
+            AiErrorType errorType,
+            LocalDateTime completedAt
+    ) {
+        log.atInfo()
+                .addKeyValue("requestId", handle.requestId())
+                .addKeyValue("aiJobRequestId", handle.aiJob() == null ? null : handle.aiJob().getRequestId())
+                .addKeyValue("providerRequestId", usage == null ? null : usage.providerRequestId())
+                .addKeyValue("feature", handle.feature())
+                .addKeyValue("status", status)
+                .addKeyValue("errorType", errorType)
+                .addKeyValue("model", model(handle, usage))
+                .addKeyValue("promptVersion", handle.promptVersion())
+                .addKeyValue("schemaVersion", handle.schemaVersion())
+                .addKeyValue("latencyMs", duration(handle, completedAt).toMillis())
+                .addKeyValue("attempt", attempts)
+                .log("AI invocation completed");
+    }
+
+    private String provider(AiUsageHandle handle, AiUsageMetadata usage) {
+        return usage != null && usage.providerId() != null ? usage.providerId() : handle.provider();
+    }
+
+    private String model(AiUsageHandle handle, AiUsageMetadata usage) {
+        return usage != null && usage.modelId() != null ? usage.modelId() : handle.modelId();
+    }
+
+    private Duration duration(AiUsageHandle handle, LocalDateTime completedAt) {
+        return handle.startedAt() == null ? Duration.ZERO : Duration.between(handle.startedAt(), completedAt);
     }
 }

@@ -42,8 +42,16 @@ public class OpinionClusteringPromptFactory {
             OpinionClusteringPromptContext context,
             Set<Long> allowedOpinionIds
     ) {
+        return providerRequest(context, allowedOpinionIds, PROMPT_ID.trackingValue());
+    }
+
+    public StructuredAiProviderRequest<OpinionClusteringOutput> providerRequest(
+            OpinionClusteringPromptContext context,
+            Set<Long> allowedOpinionIds,
+            String promptVersion
+    ) {
         RenderedPrompt prompt = promptRenderer.render(
-                promptRegistry.get(PROMPT_ID),
+                promptRegistry.get(PROMPT_ID, promptVersion),
                 Map.of("clusteringContext", serialize(context))
         );
         return new StructuredAiProviderRequest<>(
@@ -58,8 +66,16 @@ public class OpinionClusteringPromptFactory {
             OpinionClusteringPromptContext context,
             Set<Long> allowedOpinionIds
     ) {
+        return tokenBudgetInput(context, allowedOpinionIds, PROMPT_ID.trackingValue());
+    }
+
+    public AiTokenBudgetInput tokenBudgetInput(
+            OpinionClusteringPromptContext context,
+            Set<Long> allowedOpinionIds,
+            String promptVersion
+    ) {
         StructuredAiProviderRequest<OpinionClusteringOutput> request =
-                providerRequest(context, allowedOpinionIds);
+                providerRequest(context, allowedOpinionIds, promptVersion);
         return AiTokenBudgetInput.of(
                 request.prompt().systemPrompt(),
                 StructuredPromptFormatter.initialUserPrompt(request)

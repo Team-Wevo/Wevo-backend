@@ -51,13 +51,15 @@ public class IssueDetector {
         ContextChunkPlan plan = chunkPlanner.plan(
                 AiFeature.ISSUE_DETECTION,
                 fullContext.opinions(),
-                opinions -> promptFactory.tokenBudgetInput(withOpinions(fullContext, opinions))
+                opinions -> promptFactory.tokenBudgetInput(
+                        withOpinions(fullContext, opinions), usageStartCommand.promptVersion())
         );
 
         List<IssueDetectionOutput> outputs = new ArrayList<>();
         for (var chunk : plan.chunks()) {
             StructuredAiProviderRequest<IssueDetectionOutput> request =
-                    promptFactory.providerRequest(withOpinions(fullContext, chunk.opinions()));
+                    promptFactory.providerRequest(
+                            withOpinions(fullContext, chunk.opinions()), usageStartCommand.promptVersion());
             AiInvocationResult<IssueDetectionOutput> invocation = invocationService.invokeStructured(
                     usageStartCommand,
                     request,
@@ -76,8 +78,9 @@ public class IssueDetector {
             throw new IllegalArgumentException("조립된 context와 AI 감사 시작 정보는 필수입니다.");
         }
         if (usageStartCommand.feature() != AiFeature.ISSUE_DETECTION
-                || !usageStartCommand.promptVersion().equals(
-                        IssueDetectionPromptFactory.PROMPT_ID.trackingValue())
+                || !com.wevo.backend.ai.prompt.PromptTemplateId
+                        .parseTrackingValue(usageStartCommand.promptVersion()).promptName()
+                        .equals(IssueDetectionPromptFactory.PROMPT_ID.promptName())
                 || !usageStartCommand.inputSnapshotHash().equals(
                         assembled.snapshot().inputSnapshotHash())
                 || assembled.context().section().status() != ProjectSectionStatus.SYNTHESIZING) {

@@ -9,14 +9,19 @@ import java.util.List;
  */
 public record AiProviderRequest(
         AiFeature feature,
-        List<AiChatMessage> messages
+        List<AiChatMessage> messages,
+        AiProviderExecutionPolicy executionPolicy
 ) {
+
+    public AiProviderRequest(AiFeature feature, List<AiChatMessage> messages) {
+        this(feature, messages, null);
+    }
 
     public AiProviderRequest(AiFeature feature, String systemPrompt, String userPrompt) {
         this(feature, List.of(
                 new AiChatMessage(AiChatMessage.Role.SYSTEM, systemPrompt),
                 new AiChatMessage(AiChatMessage.Role.USER, userPrompt)
-        ));
+        ), null);
     }
 
     public AiProviderRequest {
@@ -30,5 +35,9 @@ public record AiProviderRequest(
             throw new IllegalArgumentException("messages에는 null을 포함할 수 없습니다.");
         }
         messages = List.copyOf(messages);
+    }
+
+    public AiProviderRequest withExecutionPolicy(AiProviderExecutionPolicy policy) {
+        return new AiProviderRequest(feature, messages, policy);
     }
 }

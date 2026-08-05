@@ -34,7 +34,12 @@ public class ProjectFlowReviewPromptFactory {
 
     public StructuredAiProviderRequest<ProjectFlowReviewOutput> providerRequest(
             ProjectFlowReviewPromptContext context) {
-        RenderedPrompt prompt = renderer.render(registry.get(PROMPT_ID),
+        return providerRequest(context, PROMPT_ID.trackingValue());
+    }
+
+    public StructuredAiProviderRequest<ProjectFlowReviewOutput> providerRequest(
+            ProjectFlowReviewPromptContext context, String promptVersion) {
+        RenderedPrompt prompt = renderer.render(registry.get(PROMPT_ID, promptVersion),
                 Map.of("reviewContext", serialize(context)));
         Map<Long, String> contents = context.sections().stream().collect(Collectors.toUnmodifiableMap(
                 section -> section.sectionId(), section -> section.content()));
@@ -43,7 +48,12 @@ public class ProjectFlowReviewPromptFactory {
     }
 
     public AiTokenBudgetInput tokenBudgetInput(ProjectFlowReviewPromptContext context) {
-        var request = providerRequest(context);
+        return tokenBudgetInput(context, PROMPT_ID.trackingValue());
+    }
+
+    public AiTokenBudgetInput tokenBudgetInput(
+            ProjectFlowReviewPromptContext context, String promptVersion) {
+        var request = providerRequest(context, promptVersion);
         return AiTokenBudgetInput.of(request.prompt().systemPrompt(),
                 StructuredPromptFormatter.initialUserPrompt(request));
     }

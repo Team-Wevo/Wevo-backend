@@ -30,7 +30,7 @@ public class SectionDraftReviewer {
             throw new IllegalArgumentException("AI 작업과 사전 검토 context는 필수입니다.");
         }
         StructuredAiProviderRequest<DraftReviewOutput> request =
-                promptFactory.providerRequest(context);
+                promptFactory.providerRequest(context, job.getPromptVersion());
         AiUsageStartCommand usage = new AiUsageStartCommand(
                 job,
                 job.getProject(),

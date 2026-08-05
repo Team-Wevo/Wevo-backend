@@ -41,8 +41,16 @@ public class SynthesisPromptFactory {
             SynthesisPromptContext context,
             Set<Long> allowedOpinionIds
     ) {
+        return providerRequest(context, allowedOpinionIds, PROMPT_ID.trackingValue());
+    }
+
+    public StructuredAiProviderRequest<SynthesisAiOutput> providerRequest(
+            SynthesisPromptContext context,
+            Set<Long> allowedOpinionIds,
+            String promptVersion
+    ) {
         RenderedPrompt prompt = promptRenderer.render(
-                promptRegistry.get(PROMPT_ID),
+                promptRegistry.get(PROMPT_ID, promptVersion),
                 Map.of("synthesisContext", serialize(context))
         );
         return new StructuredAiProviderRequest<>(
@@ -57,8 +65,16 @@ public class SynthesisPromptFactory {
             SynthesisPromptContext context,
             Set<Long> allowedOpinionIds
     ) {
+        return tokenBudgetInput(context, allowedOpinionIds, PROMPT_ID.trackingValue());
+    }
+
+    public AiTokenBudgetInput tokenBudgetInput(
+            SynthesisPromptContext context,
+            Set<Long> allowedOpinionIds,
+            String promptVersion
+    ) {
         StructuredAiProviderRequest<SynthesisAiOutput> request =
-                providerRequest(context, allowedOpinionIds);
+                providerRequest(context, allowedOpinionIds, promptVersion);
         return AiTokenBudgetInput.of(
                 request.prompt().systemPrompt(),
                 StructuredPromptFormatter.initialUserPrompt(request)

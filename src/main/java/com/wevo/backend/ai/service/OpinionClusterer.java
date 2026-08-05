@@ -50,7 +50,7 @@ public class OpinionClusterer {
                 AiFeature.OPINION_CLUSTERING,
                 context.opinions(),
                 opinions -> promptFactory.tokenBudgetInput(
-                        partialContext(context, opinions), ids(opinions))
+                        partialContext(context, opinions), ids(opinions), job.getPromptVersion())
         );
         AiUsageStartCommand usage = new AiUsageStartCommand(
                 job,
@@ -68,7 +68,8 @@ public class OpinionClusterer {
                     usage,
                     promptFactory.providerRequest(
                             partialContext(context, chunk.opinions()),
-                            Set.copyOf(chunk.opinionIds())
+                            Set.copyOf(chunk.opinionIds()),
+                            job.getPromptVersion()
                     )
             );
             partials.add(new OpinionClusteringPromptContext.PartialClustering(
@@ -90,8 +91,8 @@ public class OpinionClusterer {
         Set<Long> allIds = Set.copyOf(plan.eligibleOpinionIds());
         budgetEstimator.requireWithinBudget(
                 AiFeature.OPINION_CLUSTERING,
-                promptFactory.tokenBudgetInput(merge, allIds));
-        return invoke(usage, promptFactory.providerRequest(merge, allIds));
+                promptFactory.tokenBudgetInput(merge, allIds, job.getPromptVersion()));
+        return invoke(usage, promptFactory.providerRequest(merge, allIds, job.getPromptVersion()));
     }
 
     private OpinionClusteringOutput invoke(

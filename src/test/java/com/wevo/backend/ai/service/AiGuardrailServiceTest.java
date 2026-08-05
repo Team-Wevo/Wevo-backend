@@ -4,6 +4,8 @@ import com.wevo.backend.ai.config.AiGuardrailProperties;
 import com.wevo.backend.ai.config.AiPricingProperties;
 import com.wevo.backend.ai.config.AiProperties;
 import com.wevo.backend.ai.domain.AiFeature;
+import com.wevo.backend.ai.operations.AiOperationalMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
@@ -33,13 +35,17 @@ class AiGuardrailServiceTest {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         when(redis.execute(any(), anyList(), any(Object[].class)))
                 .thenThrow(new IllegalStateException("redis://internal-host:6379 secret"));
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AiGuardrailService service = service(redis, pricing(), new BigDecimal("100"));
+        service.setMetrics(new AiOperationalMetrics(registry));
 
-        assertThatThrownBy(() -> service(redis, pricing(), new BigDecimal("100"))
-                .reserve(command()))
+        assertThatThrownBy(() -> service.reserve(command()))
                 .isInstanceOfSatisfying(BusinessException.class, exception -> {
                     assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_GUARDRAIL_UNAVAILABLE);
                     assertThat(exception.getMessage()).doesNotContain("redis", "secret", "6379");
                 });
+        assertThat(registry.get(AiOperationalMetrics.GUARDRAIL_REJECTIONS)
+                .tag("reason", "redis_fail_closed").counter().count()).isEqualTo(1);
     }
 
     @Test
