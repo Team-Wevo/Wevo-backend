@@ -25,6 +25,7 @@ public class AiJobService {
     private final AiJobIdempotencyKeyGenerator keyGenerator;
     private final AiErrorClassifier errorClassifier;
     private final AiErrorMessageSanitizer sanitizer;
+    private final AiExecutionAvailabilityGuard availabilityGuard;
     private final Clock clock;
 
     public AiJobService(
@@ -33,6 +34,7 @@ public class AiJobService {
             AiJobIdempotencyKeyGenerator keyGenerator,
             AiErrorClassifier errorClassifier,
             AiErrorMessageSanitizer sanitizer,
+            AiExecutionAvailabilityGuard availabilityGuard,
             Clock clock
     ) {
         this.repository = repository;
@@ -40,6 +42,7 @@ public class AiJobService {
         this.keyGenerator = keyGenerator;
         this.errorClassifier = errorClassifier;
         this.sanitizer = sanitizer;
+        this.availabilityGuard = availabilityGuard;
         this.clock = clock;
     }
 
@@ -52,7 +55,10 @@ public class AiJobService {
         String idempotencyKey = keyGenerator.generate(command.idempotencyInput());
         return repository.findTopByIdempotencyKeyOrderByExecutionSequenceDesc(idempotencyKey)
                 .map(job -> AiJobCreateResult.from(job, false))
-                .orElseGet(() -> createInitial(command, idempotencyKey));
+                .orElseGet(() -> {
+                    availabilityGuard.requireAvailable();
+                    return createInitial(command, idempotencyKey);
+                });
     }
 
     /**
@@ -76,6 +82,7 @@ public class AiJobService {
         if (requestedBy == null || requestedBy.getId() == null) {
             throw new IllegalArgumentException("영속화된 requestedBy가 필요합니다.");
         }
+        availabilityGuard.requireAvailable();
         try {
             AiJobPersistenceService.RetryResult result = persistenceService.retry(
                     requestId, requestedBy, UUID.randomUUID(), now()

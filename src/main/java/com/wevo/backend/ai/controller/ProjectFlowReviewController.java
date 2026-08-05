@@ -7,6 +7,7 @@ import com.wevo.backend.ai.service.ProjectFlowReviewRequestService;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -30,6 +31,12 @@ public class ProjectFlowReviewController {
     }
     @PostMapping("/{projectId}/flow-check")
     @Operation(summary = "최종 결과물 전체 흐름 점검 실행")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "202", description = "PROJECT_FLOW_REVIEW_REQUESTED"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "503", description = "AI008 — AI Provider 비활성·연결 불가")
+    })
     public ResponseEntity<ApiResponse<AiJobAcceptedResponse>> request(
             @PathVariable Long projectId, @AuthenticationPrincipal AuthPrincipal principal) {
         UUID requestId = requestService.requestReview(projectId, principal.userId());

@@ -16,6 +16,7 @@ import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiJobStatus;
 import com.wevo.backend.ai.dto.model.IssueDetectionIssueOutput;
+import com.wevo.backend.ai.exception.AiProviderUnavailableException;
 import com.wevo.backend.ai.repository.AiJobRepository;
 import com.wevo.backend.issue.domain.IssueType;
 import com.wevo.backend.issue.service.GapAnswerInputView;
@@ -257,14 +258,14 @@ class SynthesisJobHandlerTest {
     }
 
     @Test
-    @DisplayName("AI provider가 없으면 작업을 실패로 종료한다")
-    void providerMissing_failsJob() {
+    @DisplayName("AI provider가 없으면 AI008로 분류 가능한 예외로 작업을 실패시킨다")
+    void providerMissing_failsJobAsProviderUnavailable() {
         givenClaimed();
         given(synthesisGeneratorProvider.getIfAvailable()).willReturn(null);
 
         handler.run(REQUEST_ID);
 
-        verify(aiJobService).fail(eq(REQUEST_ID), any(IllegalStateException.class));
+        verify(aiJobService).fail(eq(REQUEST_ID), any(AiProviderUnavailableException.class));
         verify(synthesisResultWriteService, never()).persist(any());
     }
 

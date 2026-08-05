@@ -6,6 +6,7 @@ import com.wevo.backend.ai.context.ProjectFlowReviewContext;
 import com.wevo.backend.ai.context.ProjectFlowReviewContextAssembler;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
+import com.wevo.backend.ai.exception.AiProviderUnavailableException;
 import com.wevo.backend.ai.dto.model.ProjectFlowReviewOutput;
 import com.wevo.backend.ai.repository.AiJobRepository;
 import com.wevo.backend.project.service.ProjectAccessGuard;
@@ -82,7 +83,7 @@ public class ProjectFlowReviewJobHandler implements AiJobHandler {
             return;
         }
         ProjectFlowReviewer reviewer = reviewerProvider.getIfAvailable();
-        if (reviewer == null) throw new IllegalStateException("AI provider가 구성되지 않았습니다.");
+        if (reviewer == null) throw new AiProviderUnavailableException();
         ProjectFlowReviewOutput output = reviewer.review(job, assembled.context());
         jobService.succeed(job.getRequestId(), () -> completionHash(job), () -> {
             Long resultId = resultWriter.persist(

@@ -56,7 +56,9 @@ public class SynthesisController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "409", description = "S002 — 실행할 수 없는 섹션 상태")
+                    responseCode = "409", description = "S002 — 실행할 수 없는 섹션 상태"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "503", description = "AI008 — AI Provider 비활성·연결 불가")
     })
     @PostMapping("/{sectionId}/synthesis")
     public ResponseEntity<ApiResponse<SynthesisAcceptedResponse>> requestSynthesis(

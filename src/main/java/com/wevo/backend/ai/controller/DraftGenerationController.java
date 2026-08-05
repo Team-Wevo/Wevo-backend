@@ -44,7 +44,9 @@ public class DraftGenerationController {
                     responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409",
-                    description = "S002, I002 또는 C003 — 상태·쟁점·snapshot 충돌")
+                    description = "S002, I002, AI030 또는 C003 — 상태·선행 결과·쟁점·snapshot 충돌"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "503", description = "AI008 — AI Provider 비활성·연결 불가")
     })
     @PostMapping("/{sectionId}/draft/generate")
     public ResponseEntity<ApiResponse<AiJobAcceptedResponse>> requestDraftGeneration(

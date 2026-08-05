@@ -130,6 +130,28 @@ class DraftGenerationControllerWebMvcTest {
                 .andExpect(jsonPath("$.code").value("C003"));
     }
 
+    @Test
+    @DisplayName("성공한 의견 정리 결과가 없으면 409 AI030이다")
+    void missingSynthesisResult_returnsAI030() throws Exception {
+        given(requestService.requestDraftGeneration(10L, 7L))
+                .willThrow(new BusinessException(ErrorCode.AI_SYNTHESIS_RESULT_REQUIRED));
+
+        mockMvc.perform(post(URL).with(authenticatedUser()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("AI030"));
+    }
+
+    @Test
+    @DisplayName("AI Provider가 비활성 상태면 503 AI008이다")
+    void providerUnavailable_returnsAI008() throws Exception {
+        given(requestService.requestDraftGeneration(10L, 7L))
+                .willThrow(new BusinessException(ErrorCode.AI_PROVIDER_UNAVAILABLE));
+
+        mockMvc.perform(post(URL).with(authenticatedUser()))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("AI008"));
+    }
+
     private RequestPostProcessor authenticatedUser() {
         return authentication(new UsernamePasswordAuthenticationToken(
                 new AuthPrincipal(7L), null, AuthorityUtils.NO_AUTHORITIES));

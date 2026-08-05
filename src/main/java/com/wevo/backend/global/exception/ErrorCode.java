@@ -75,6 +75,7 @@ public enum ErrorCode {
     AI_JOB_INVALID_STATE_TRANSITION(HttpStatus.CONFLICT, "AI022", "허용되지 않은 AI 작업 상태 전이입니다."),
     AI_JOB_RETRY_LIMIT_EXCEEDED(HttpStatus.UNPROCESSABLE_ENTITY, "AI023", "AI 작업 재실행 한도를 초과했습니다."),
     AI_JOB_INPUT_CHANGED(HttpStatus.CONFLICT, "AI024", "입력이 변경되어 결과를 폐기했습니다."),
+    AI_SYNTHESIS_RESULT_REQUIRED(HttpStatus.CONFLICT, "AI030", "AI 의견 정리 결과가 필요합니다."),
     AI_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "AI999", "AI 처리 중 오류가 발생했습니다."),
 
     // Review

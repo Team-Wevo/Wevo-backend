@@ -50,7 +50,9 @@ public class AuthorIntentController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401", description = "A001 — 인증 필요"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)")
+                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "503", description = "AI008 — AI Provider 비활성·연결 불가")
     })
     @PostMapping("/{sectionId}/author-intent/extractions")
     public ResponseEntity<ApiResponse<AiJobAcceptedResponse>> extract(

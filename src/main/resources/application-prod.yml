@@ -77,7 +77,8 @@ app:
 
 wevo:
   ai:
-    provider: ${AI_PROVIDER:none}
+    # 운영에서는 누락과 의도적 비활성화(AI_PROVIDER=none)를 구분한다.
+    provider: ${AI_PROVIDER}
 
 logging:
   level:
