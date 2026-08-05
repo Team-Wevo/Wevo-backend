@@ -131,12 +131,13 @@ class FinalOutputFileNamerTest {
     }
 
     @Test
-    @DisplayName("파일명이 길면 100자로 자르고, 잘린 끝의 공백도 털어낸다")
+    @DisplayName("파일명이 길면 바이트 예산에 맞춰 자르고, 잘린 끝의 공백도 털어낸다")
     void limitsLength() {
-        String longTitle = "가".repeat(99) + "  꼬리";
+        // 한글은 글자당 3바이트 — `.txt`(4바이트)를 뺀 251바이트 예산에 83글자(249바이트)까지 들어간다.
+        String longTitle = "가".repeat(83) + "  꼬리";
 
         assertThat(fileName(longTitle, FinalOutputFormat.PLAIN_TEXT))
-                .isEqualTo("가".repeat(99) + ".txt");
+                .isEqualTo("가".repeat(83) + ".txt");
     }
 
     @Test
@@ -161,13 +162,17 @@ class FinalOutputFileNamerTest {
                 .isEqualTo("secret plan.txt");
     }
 
-    @ParameterizedTest(name = "[{index}] {0}")
+    // 아래 문자들은 반드시 유니코드 이스케이프로 적는다. 소스에 실제 문자를 넣으면 git 이 이 파일을
+    // 바이너리로 판정해 diff·리뷰가 불가능해지고, RLO 는 소스 자체를 실제와 다르게 보이게 만든다
+    // (trojan source, CVE-2021-42574). 이스케이프는 어휘 분석 단계에서 처리되므로 값은 동일하다.
+    // 케이스 이름에도 값을 넣지 않는다 — 리포트·콘솔 출력이 같은 이유로 흐트러진다.
+    @ParameterizedTest(name = "[{index}]")
     @DisplayName("눈에 보이지 않는 서식 문자를 제거한다 — 표시 이름 위조를 막는다")
     @ValueSource(strings = {
-            "제안‮서",  // RLO — 뒤 글자를 거꾸로 보이게 해 확장자를 위조한다
-            "제안​서",  // ZWSP
-            "제안‍서",  // ZWJ
-            "제안﻿서"   // BOM
+            "제안\u202E서",  // RLO — 뒤 글자를 거꾸로 보이게 해 확장자를 위조한다
+            "제안\u200B서",  // ZWSP
+            "제안\u200D서",  // ZWJ
+            "제안\uFEFF서"   // BOM
     })
     void removesInvisibleFormatCharacters(String title) {
         String fileName = fileName(title, FinalOutputFormat.PLAIN_TEXT);
@@ -179,10 +184,11 @@ class FinalOutputFileNamerTest {
     }
 
     @Test
-    @DisplayName("길이 제한은 글자(코드포인트) 단위다 — 이모지가 반토막 나지 않는다")
+    @DisplayName("바이트로 세도 자르는 위치는 코드포인트 경계다 — 이모지가 반토막 나지 않는다")
     void limitsLengthByCodePointNotChar() {
-        // char 기준 121, 코드포인트 기준 61 — char 기준으로 100에서 자르면 이모지 한가운데가 잘린다.
-        String emojiTitle = "가" + "🎉".repeat(60);
+        // 이모지는 UTF-8 4바이트짜리 글자라 70개면 280바이트로 예산(251)을 넘긴다.
+        // 바이트 위치에서 그냥 끊으면 글자 한가운데가 잘려 짝 없는 서로게이트가 남는다.
+        String emojiTitle = "🎉".repeat(70);
 
         String fileName = fileName(emojiTitle, FinalOutputFormat.PLAIN_TEXT);
 
@@ -197,12 +203,65 @@ class FinalOutputFileNamerTest {
     }
 
     @Test
-    @DisplayName("101글자는 100글자로 자르고 100글자는 그대로 둔다")
+    @DisplayName("한글 84자는 잘리고 83자는 그대로 둔다 — 경계는 글자 수가 아니라 바이트다")
     void lengthBoundary() {
-        assertThat(fileName("가".repeat(100), FinalOutputFormat.PLAIN_TEXT))
-                .isEqualTo("가".repeat(100) + ".txt");
-        assertThat(fileName("가".repeat(101), FinalOutputFormat.PLAIN_TEXT))
-                .isEqualTo("가".repeat(100) + ".txt");
+        // `.txt` 4바이트를 뺀 251바이트 예산 = 한글 83자(249바이트). 84자는 252바이트로 넘친다.
+        assertThat(fileName("가".repeat(83), FinalOutputFormat.PLAIN_TEXT))
+                .isEqualTo("가".repeat(83) + ".txt");
+        assertThat(fileName("가".repeat(84), FinalOutputFormat.PLAIN_TEXT))
+                .isEqualTo("가".repeat(83) + ".txt");
+    }
+
+    @ParameterizedTest(name = "[{index}] {0}")
+    @DisplayName("어떤 이름이 와도 파일 시스템 상한(255바이트) 안에 들어간다")
+    @ValueSource(strings = {"가", "🎉", "a", "제안서 "})
+    void neverExceedsFileSystemByteLimit(String unit) {
+        // 한글 100자를 글자 수로만 세면 300바이트라 macOS APFS·리눅스 ext4 에서 저장이 실패한다.
+        // `fileName` 파라미터에는 길이 검증이 없어 아무 길이나 들어올 수 있으므로 여기서 막아야 한다.
+        String longTitle = unit.repeat(500);
+
+        for (FinalOutputFormat format : FinalOutputFormat.values()) {
+            assertThat(fileName(longTitle, format).getBytes(UTF_8).length)
+                    .as("%s 형식의 파일명 바이트 수", format)
+                    .isLessThanOrEqualTo(255);
+        }
+    }
+
+    @Test
+    @DisplayName("예산에서 확장자 몫을 빼므로 확장자가 짧으면 이름이 그만큼 더 들어간다")
+    void byteBudgetExcludesExtension() {
+        String longTitle = "a".repeat(500);
+
+        // 어느 쪽이든 확장자까지 더해 정확히 상한을 채운다 — 251+4 = 252+3 = 255.
+        assertThat(fileName(longTitle, FinalOutputFormat.PLAIN_TEXT)).isEqualTo("a".repeat(251) + ".txt");
+        assertThat(fileName(longTitle, FinalOutputFormat.MARKDOWN)).isEqualTo("a".repeat(252) + ".md");
+    }
+
+    @ParameterizedTest(name = "[{index}] {0}")
+    @DisplayName("윈도우 예약 장치명은 대체 이름으로 바꾼다 — 금지 문자가 없어도 저장할 수 없다")
+    @ValueSource(strings = {"CON", "con", "NUL", "PRN", "AUX", "COM1", "lpt9", "CON.docx", "  con.  "})
+    void replacesWindowsReservedDeviceNames(String requested) {
+        // 확장자를 붙여도 예약이 풀리지 않는다 — `CON.txt` 도 윈도우에서는 만들 수 없다.
+        assertThat(namer.fileName(requested, null, FinalOutputFormat.PLAIN_TEXT))
+                .isEqualTo("final-output.txt");
+    }
+
+    @ParameterizedTest(name = "[{index}] {0}")
+    @DisplayName("장치명과 비슷하기만 한 이름은 그대로 쓴다 — 과하게 막지 않는다")
+    @ValueSource(strings = {"CONTRACT", "COM0", "LPT10", "CON 기획", "제안서 CON"})
+    void keepsNamesThatOnlyLookReserved(String requested) {
+        assertThat(namer.fileName(requested, null, FinalOutputFormat.PLAIN_TEXT))
+                .isEqualTo(requested + ".txt");
+    }
+
+    @Test
+    @DisplayName("ASCII 대체 파일명이 예약 장치명이 되면 그쪽도 대체 이름으로 떨어진다")
+    void asciiFileNameNeverBecomesReservedDeviceName() {
+        // 표시 이름은 `CON기획`이라 예약이 아니지만, 비 ASCII 를 떼어내면 `CON` 만 남는다.
+        assertThat(namer.fileName("CON기획", null, FinalOutputFormat.PLAIN_TEXT))
+                .isEqualTo("CON기획.txt");
+        assertThat(namer.asciiFileName("CON기획", null, FinalOutputFormat.PLAIN_TEXT))
+                .isEqualTo("final-output.txt");
     }
 
     @ParameterizedTest(name = "[{index}] \"{0}\" -> \"{1}\"")
@@ -221,7 +280,7 @@ class FinalOutputFileNamerTest {
     @Test
     @DisplayName("NUL 문자를 제거한다")
     void removesNulCharacter() {
-        assertThat(fileName("제안 서", FinalOutputFormat.PLAIN_TEXT)).isEqualTo("제안 서.txt");
+        assertThat(fileName("제안\u0000서", FinalOutputFormat.PLAIN_TEXT)).isEqualTo("제안 서.txt");
     }
 
     @ParameterizedTest

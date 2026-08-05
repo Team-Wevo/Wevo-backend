@@ -1,5 +1,8 @@
 package com.wevo.backend.export.service;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
@@ -20,7 +23,9 @@ import org.springframework.stereotype.Component;
  *   <li>앞의 마침표는 없앤다 — 유닉스에서 숨김 파일이 된다</li>
  *   <li>뒤의 마침표·공백은 없앤다 — 윈도우에서 허용되지 않는다</li>
  *   <li>이미 해당 형식의 확장자로 끝나면 떼어낸다 — {@code 제안서.txt.txt} 방지</li>
- *   <li>길이는 {@value #MAX_BASE_LENGTH} 자로 제한한다 (파일 시스템의 파일명 길이 상한 대비)</li>
+ *   <li>길이는 확장자를 포함해 {@value #MAX_FILE_NAME_BYTES} <b>바이트</b>(UTF-8)로 제한한다
+ *       — 파일 시스템의 파일명 길이 상한이 바이트 기준이다</li>
+ *   <li>윈도우 예약 장치명({@code CON}, {@code NUL}, {@code COM1} …)이면 대체 이름으로 바꾼다</li>
  *   <li>남는 것이 없으면 {@value #FALLBACK_BASE_NAME} 을 쓴다</li>
  * </ul>
  *
@@ -50,11 +55,30 @@ public class FinalOutputFileNamer {
     /** ASCII 대체 파일명에 남길 문자 외 전부. */
     private static final Pattern NON_ASCII_SAFE = Pattern.compile("[^A-Za-z0-9 ._-]");
 
+    /**
+     * 윈도우가 <b>이름 자체를 금지</b>하는 예약 장치명. (대소문자 무시)
+     *
+     * <p>금지 문자를 다 걸러내도 {@code CON}·{@code NUL} 같은 이름은 윈도우에서 저장이 되지 않는다.
+     * 확장자를 붙여도 마찬가지라 {@code CON.txt} 도 만들 수 없다 — 첫 마침표 앞부분이 장치명이면
+     * 전부 해당한다.
+     */
+    private static final Set<String> WINDOWS_RESERVED_DEVICE_NAMES = Set.of(
+            "CON", "PRN", "AUX", "NUL",
+            "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9");
+
     /** 정제 후 남는 글자가 없을 때 쓰는 이름. */
     private static final String FALLBACK_BASE_NAME = "final-output";
 
-    /** 확장자를 제외한 파일명 길이 상한. (글자 수 = 코드포인트 기준) */
-    private static final int MAX_BASE_LENGTH = 100;
+    /**
+     * 확장자를 <b>포함한</b> 파일명 길이 상한. (UTF-8 바이트)
+     *
+     * <p>주요 파일 시스템의 상한은 글자 수가 아니라 바이트다 — macOS APFS·리눅스 ext4 모두
+     * 255바이트다. 글자 수로 세면 한글(글자당 3바이트)·이모지(4바이트) 이름이 상한을 훌쩍 넘겨
+     * 저장이 실패한다. (윈도우 NTFS 는 255 UTF-16 단위인데, 어떤 문자든 UTF-16 단위 수가 UTF-8
+     * 바이트 수를 넘지 않으므로 이 예산이 NTFS 도 함께 만족시킨다)
+     */
+    private static final int MAX_FILE_NAME_BYTES = 255;
 
     /**
      * 사용자에게 보일 파일명을 만든다. (한글 등 비 ASCII 문자 포함 가능)
@@ -75,7 +99,8 @@ public class FinalOutputFileNamer {
     public String asciiFileName(String requestedName, String projectTitle, FinalOutputFormat format) {
         String ascii = trimEdges(collapseWhitespace(NON_ASCII_SAFE
                 .matcher(baseName(requestedName, projectTitle, format)).replaceAll(" ")));
-        return withExtension(ascii.isEmpty() ? FALLBACK_BASE_NAME : ascii, format);
+        // 비 ASCII 를 떼어내다 예약 장치명이 새로 만들어질 수 있다. (`CON기획` → `CON`)
+        return withExtension(isUnusableBaseName(ascii) ? FALLBACK_BASE_NAME : ascii, format);
     }
 
     private String withExtension(String baseName, FinalOutputFormat format) {
@@ -94,25 +119,73 @@ public class FinalOutputFileNamer {
 
         String cleaned = limitLength(stripDuplicateExtension(
                 trimEdges(collapseWhitespace(ILLEGAL_CHARACTERS.matcher(source).replaceAll(" "))),
-                format));
+                format), format);
 
-        return cleaned.isEmpty() ? FALLBACK_BASE_NAME : cleaned;
+        return isUnusableBaseName(cleaned) ? FALLBACK_BASE_NAME : cleaned;
+    }
+
+    /** 정제 결과를 그대로 쓸 수 없는 경우 — 남는 글자가 없거나, 윈도우 예약 장치명이다. */
+    private boolean isUnusableBaseName(String baseName) {
+        return baseName.isEmpty() || isReservedDeviceName(baseName);
     }
 
     /**
-     * 파일명을 {@value #MAX_BASE_LENGTH} <b>글자</b>로 제한한다.
+     * 윈도우 예약 장치명인지 본다. (대소문자 무시)
      *
-     * <p><b>{@code char} 가 아니라 코드포인트 단위로 센다.</b> {@code String.length()} 기준으로 자르면
-     * 이모지처럼 {@code char} 두 개로 이뤄진 글자의 한가운데가 잘려, 짝 없는 서로게이트가 남는다.
-     * 그 값은 UTF-8 로 옮길 때 {@code ?} 가 되어 파일명이 깨진다.
+     * <p>확장자를 붙여도 예약이 풀리지 않으므로 <b>첫 마침표 앞부분</b>으로 판단한다 —
+     * {@code CON.docx} 는 우리가 {@code CON.docx.txt} 로 만들어도 윈도우에서 저장되지 않는다.
+     * 로케일에 따라 대문자 변환 결과가 달라지지 않도록 {@link Locale#ROOT} 로 비교한다.
      */
-    private String limitLength(String value) {
-        if (value.codePointCount(0, value.length()) <= MAX_BASE_LENGTH) {
+    private boolean isReservedDeviceName(String baseName) {
+        int dot = baseName.indexOf('.');
+        String deviceCandidate = dot < 0 ? baseName : baseName.substring(0, dot);
+        return WINDOWS_RESERVED_DEVICE_NAMES.contains(deviceCandidate.toUpperCase(Locale.ROOT));
+    }
+
+    /**
+     * 확장자까지 더한 파일명이 {@value #MAX_FILE_NAME_BYTES} 바이트를 넘지 않도록 자른다.
+     *
+     * <p><b>길이는 UTF-8 바이트로 세고, 자르는 위치는 코드포인트 경계에 맞춘다.</b>
+     * 파일 시스템 상한이 바이트 기준이라 글자 수로 세면 한글·이모지 이름이 상한을 넘는다.
+     * 반대로 바이트 위치에서 그냥 끊으면 글자 한가운데가 잘려 이름이 깨지므로, 한 코드포인트씩
+     * 예산을 채워가다 넘치기 직전에 멈춘다. (이모지는 {@code char} 두 개짜리 글자라 이 경계를
+     * 지켜야 짝 없는 서로게이트가 남지 않는다)
+     */
+    private String limitLength(String value, FinalOutputFormat format) {
+        int budget = MAX_FILE_NAME_BYTES - utf8Length("." + format.getFileExtension());
+        if (utf8Length(value) <= budget) {
             return value;
         }
 
+        int end = 0;
+        int used = 0;
+        while (end < value.length()) {
+            int codePoint = value.codePointAt(end);
+            int size = utf8Length(codePoint);
+            if (used + size > budget) {
+                break;
+            }
+            used += size;
+            end += Character.charCount(codePoint);
+        }
+
         // 자르고 나서 끝에 남은 공백·마침표를 다시 제거한다.
-        return trimEdges(value.substring(0, value.offsetByCodePoints(0, MAX_BASE_LENGTH)));
+        return trimEdges(value.substring(0, end));
+    }
+
+    private int utf8Length(String value) {
+        return value.getBytes(StandardCharsets.UTF_8).length;
+    }
+
+    /** 코드포인트 하나의 UTF-8 바이트 수. */
+    private int utf8Length(int codePoint) {
+        if (codePoint < 0x80) {
+            return 1;
+        }
+        if (codePoint < 0x800) {
+            return 2;
+        }
+        return codePoint < 0x10000 ? 3 : 4;
     }
 
     /**
