@@ -85,4 +85,31 @@ public class Project extends BaseTimeEntity {
     public boolean isArchived() {
         return this.status == ProjectStatus.ARCHIVED;
     }
+
+    /**
+     * 프로젝트 이름을 바꾼다. (API_SPEC §3.2.10)
+     *
+     * <p>생성 시 이름을 받지 않아 서버 기본값이 저장되므로(§3.2.1) 이 메서드가 유일한 개명 수단이다.
+     * 이름은 목록·상세 화면에 항상 노출되는 값이라 빈 값으로 만들 수 없다 — 호출측이 공백을 걸러
+     * 넘긴다고 가정하지 않고 여기서도 무시한다.
+     */
+    public void rename(String title) {
+        if (title == null || title.isBlank()) {
+            return;
+        }
+        this.title = title.trim();
+    }
+
+    /**
+     * 프로젝트 설명을 바꾼다. (API_SPEC §3.2.10)
+     *
+     * <p>이름과 달리 <b>빈 값을 허용</b>한다 — 설명은 없어도 되는 값이라 지우기가 정상 동작이다.
+     * 공백뿐인 문자열은 {@code null} 로 정규화해, 저장된 값이 "없음"인지 "공백"인지 갈리지 않게 한다.
+     * (§1.4 — {@code null} 필드는 응답에서 생략된다)
+     */
+    public void changeDescription(String description) {
+        this.description = (description == null || description.isBlank())
+                ? null
+                : description.trim();
+    }
 }
