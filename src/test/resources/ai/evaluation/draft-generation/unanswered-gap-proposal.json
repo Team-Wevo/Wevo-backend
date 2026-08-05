@@ -5,7 +5,7 @@
     "feature": "DRAFT_GENERATION",
     "description": "답변 없는 예산 GAP을 임의 수치로 채우지 않고 미확인으로 남기는 합성 시나리오",
     "language": "ko",
-    "tags": ["gap", "unverified-fact", "proposal"],
+    "tags": ["normal", "gap", "unresolved-gap", "unverified-fact", "proposal", "schema-contract"],
     "datasetVersion": "draft-generation-v1",
     "kind": "QUALITY",
     "synthetic": true

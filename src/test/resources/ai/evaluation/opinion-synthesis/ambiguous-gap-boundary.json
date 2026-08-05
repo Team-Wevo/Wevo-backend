@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "opinion-synthesis/ambiguous-gap-boundary",
+    "feature": "OPINION_SYNTHESIS",
+    "description": "한국어 중의성과 상충 근거에서 누락 정보 GAP을 식별하는 경계 사례",
+    "language": "ko",
+    "tags": ["error-path", "gap", "korean-ambiguity", "conflicting-evidence", "missing-required-trap", "blank-field-trap", "long-input"],
+    "datasetVersion": "opinion-synthesis-v1",
+    "kind": "QUALITY",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PROPOSAL",
+    "projectContext": "가상의 야간 학습 공간 운영안을 만든다.",
+    "sectionContext": "늦게까지 운영하자는 표현은 있으나 종료 시각과 안전 담당이 없다.",
+    "labels": ["운영 시간", "안전", "누락값"],
+    "opinions": [
+      {"id": "opinion-late", "content": "시험 기간에는 늦게까지 열자.", "submitted": true, "deleted": false},
+      {"id": "opinion-safety", "content": "안전 담당자가 있는 시간까지만 운영해야 한다.", "submitted": true, "deleted": false}
+    ],
+    "parentConfirmedContent": null
+  },
+  "expected": {
+    "requiredFacts": ["종료 시각", "안전 담당"],
+    "expectedIssues": [
+      {"type": "GAP", "evidenceIds": ["opinion-late", "opinion-safety"]}
+    ],
+    "expectedEvidenceIds": ["opinion-late", "opinion-safety"],
+    "forbiddenClaims": ["자정에 종료한다", "안전 담당자가 배정되었다"],
+    "goldReviewIssueIds": []
+  }
+}

@@ -111,7 +111,7 @@ class LiveAiFixtureEvaluatorTest {
         }
 
         @Override
-        public AiEvaluationCandidate normalize(TestOutput result) {
+        public AiEvaluationCandidate normalize(AiEvaluationFixture fixture, TestOutput result) {
             return new AiEvaluationCandidate(
                     List.of(),
                     List.of(new AiEvaluationCandidate.Claim(result.summary(), false, java.util.Set.of())),

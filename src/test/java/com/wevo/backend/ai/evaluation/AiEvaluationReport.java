@@ -8,6 +8,7 @@ public record AiEvaluationReport(
         AiEvaluationRunMetadata run,
         AiEvaluationMetrics metrics,
         AiEvaluationGate.Result gate,
+        AiEvaluationHumanReview humanReview,
         Map<String, Double> baselineDeltas,
         List<FixtureResult> fixtureResults,
         List<Failure> failures
@@ -25,6 +26,7 @@ public record AiEvaluationReport(
             Long outputTokens,
             Long cacheReadTokens,
             Long cacheWriteTokens,
+            Long reasoningTokens,
             java.math.BigDecimal estimatedCost,
             AiEvaluationMetrics.CostStatus costStatus
     ) {

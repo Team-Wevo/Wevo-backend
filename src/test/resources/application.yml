@@ -57,6 +57,12 @@ wevo:
       dispatch-enabled: false
     pricing:
       version: test-v1
+      models:
+        "[gpt-5.6-luna]":
+          input-per-million-tokens: 0.20
+          cache-read-per-million-tokens: 0.02
+          cache-write-per-million-tokens: 0.25
+          output-per-million-tokens: 1.20
     audit:
       recovery-enabled: false
       recovery-interval: 60s

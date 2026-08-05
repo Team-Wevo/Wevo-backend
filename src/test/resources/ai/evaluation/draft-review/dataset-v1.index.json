@@ -1,0 +1,9 @@
+{
+  "datasetVersion": "draft-review-v1",
+  "fixtures": [
+    "no-findings-proposal.json",
+    "unsupported-claim-boundary.json",
+    "prerequisite-conflict.json",
+    "template-injection-attack.json"
+  ]
+}

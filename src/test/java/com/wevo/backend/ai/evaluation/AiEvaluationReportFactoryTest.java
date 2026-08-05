@@ -5,6 +5,7 @@ import com.wevo.backend.ai.domain.AiCostSnapshot;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,6 +45,7 @@ class AiEvaluationReportFactoryTest {
                 baseline.run(),
                 baseline.metrics(),
                 baseline.gate(),
+                baseline.humanReview(),
                 baseline.baselineDeltas(),
                 baseline.fixtureResults(),
                 baseline.failures()
@@ -126,6 +128,38 @@ class AiEvaluationReportFactoryTest {
         );
     }
 
+    @Test
+    void keepsPendingHumanReviewSeparateAndRequiresEveryQualityScoreBeforeCompletion() {
+        AiEvaluationFixture fixture = fixture("all-agreed-proposal.json");
+        AiEvaluationRunMetadata run = metadata(
+                fixture.metadata().datasetVersion(), "issue-detection:v1"
+        );
+        AiEvaluationReport pending = factory.create(
+                run,
+                List.of(fixture),
+                List.of(sample(fixture, AiEvaluationOutcome.SUCCESS)),
+                null,
+                1
+        );
+
+        assertThat(pending.humanReview().status())
+                .isEqualTo(AiEvaluationHumanReview.Status.PENDING);
+        assertThatThrownBy(() -> factory.create(
+                run,
+                List.of(fixture),
+                List.of(sample(fixture, AiEvaluationOutcome.SUCCESS)),
+                null,
+                1,
+                new AiEvaluationHumanReview(
+                        AiEvaluationHumanReview.Status.COMPLETED,
+                        AiEvaluationHumanReview.ReviewerAlias.AI_OWNER,
+                        Instant.parse("2026-08-01T00:00:00Z"),
+                        Map.of()
+                )
+        )).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("모든 QUALITY fixture");
+    }
+
     private void assertIncompatible(
             AiEvaluationRunMetadata run,
             List<AiEvaluationFixture> fixtures,
@@ -153,6 +187,8 @@ class AiEvaluationReportFactoryTest {
                 datasetVersion,
                 "canned",
                 "model",
+                "chat-completions",
+                "none",
                 "issue-detection:v1",
                 schemaVersion,
                 Instant.parse("2026-07-18T00:00:00Z"),

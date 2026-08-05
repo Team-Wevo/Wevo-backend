@@ -56,6 +56,25 @@ class AiEvaluationLiveGuardTest {
                 .hasMessageContaining("synthetic");
     }
 
+    @Test
+    void openAiEvaluationRequiresItsOwnOptInAndDoesNotReuseSmokeFlag() {
+        AiEvaluationLiveGuard smokeOnly = guard(Map.of(
+                "OPENAI_API_KEY", "sk-test-secret",
+                "OPENAI_INTEGRATION_ENABLED", "true"
+        ));
+
+        assertThatThrownBy(() -> smokeOnly.assertAllowed("openai", List.of(synthetic)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageNotContaining("sk-test-secret");
+
+        AiEvaluationLiveGuard evaluationEnabled = guard(Map.of(
+                "OPENAI_API_KEY", "sk-test-secret",
+                "OPENAI_EVALUATION_ENABLED", "true"
+        ));
+        assertThatCode(() -> evaluationEnabled.assertAllowed("openai", List.of(synthetic)))
+                .doesNotThrowAnyException();
+    }
+
     private AiEvaluationLiveGuard guard(Map<String, String> environment) {
         return new AiEvaluationLiveGuard(environment::get);
     }

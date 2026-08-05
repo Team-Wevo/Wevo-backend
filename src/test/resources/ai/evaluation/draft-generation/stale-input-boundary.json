@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "draft-generation/stale-input-boundary",
+    "feature": "DRAFT_GENERATION",
+    "description": "기존 초안 이후 입력이 변경된 stale 상황에서 최신 근거만 사용하는 경계 사례",
+    "language": "ko",
+    "tags": ["error-path", "stale-input", "input-change", "missing-required-trap", "blank-field-trap", "over-limit-trap"],
+    "datasetVersion": "draft-generation-v1",
+    "kind": "CONTRACT",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PROPOSAL",
+    "projectContext": "가상 사내 멘토링 프로그램을 제안한다.",
+    "sectionContext": "이전 초안은 오프라인만 가정했지만 최신 의견은 온라인 병행이다.",
+    "labels": ["최신 입력", "stale", "근거 전체"],
+    "opinions": [
+      {"id": "opinion-hybrid", "content": "원격 구성원을 위해 온라인 세션을 병행하자.", "submitted": true, "deleted": false},
+      {"id": "opinion-monthly", "content": "세션은 월 1회 진행하자.", "submitted": true, "deleted": false}
+    ],
+    "parentConfirmedContent": "프로그램 대상은 입사 1년 이내 구성원이다."
+  },
+  "expected": {
+    "requiredFacts": ["온라인", "월 1회", "입사 1년 이내"],
+    "expectedIssues": [],
+    "expectedEvidenceIds": ["opinion-hybrid", "opinion-monthly"],
+    "forbiddenClaims": ["오프라인으로만 진행한다"],
+    "goldReviewIssueIds": []
+  }
+}

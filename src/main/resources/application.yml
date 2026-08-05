@@ -76,7 +76,7 @@ wevo:
     pricing:
       version: ${AI_PRICING_VERSION:openai-2026-07-31-standard}
       models:
-        gpt-5.6-luna:
+        "[gpt-5.6-luna]":
           input-per-million-tokens: 0.20
           cache-read-per-million-tokens: 0.02
           cache-write-per-million-tokens: 0.25

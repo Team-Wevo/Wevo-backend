@@ -38,7 +38,7 @@ public final class LiveAiFixtureEvaluator<T> implements AiFixtureEvaluator {
             );
             AiCostSnapshot cost = costCalculator.calculate(response.usageMetadata());
             return AiEvaluationObservation.success(
-                    evaluationCase.normalize(response.result()),
+                    evaluationCase.normalize(fixture, response.result()),
                     response.usageMetadata(),
                     cost,
                     response.attemptCount()

@@ -1,6 +1,9 @@
 {
   "datasetVersion": "draft-generation-v1",
   "fixtures": [
-    "unanswered-gap-proposal.json"
+    "unanswered-gap-proposal.json",
+    "presentation-parent-decision.json",
+    "stale-input-boundary.json",
+    "prompt-injection-forbidden-fact.json"
   ]
 }
