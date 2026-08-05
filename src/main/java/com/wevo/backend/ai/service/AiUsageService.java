@@ -4,6 +4,7 @@ import com.wevo.backend.ai.client.AiUsageMetadata;
 import com.wevo.backend.ai.config.AiProperties;
 import com.wevo.backend.ai.domain.AiCostSnapshot;
 import com.wevo.backend.ai.domain.AiErrorType;
+import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiUsageLog;
 import com.wevo.backend.ai.exception.AiAuditPersistenceException;
 import org.slf4j.Logger;
@@ -24,6 +25,7 @@ public class AiUsageService {
     private final AiCostCalculator costCalculator;
     private final AiErrorClassifier errorClassifier;
     private final AiErrorMessageSanitizer sanitizer;
+    private final AiGuardrailService guardrailService;
     private final Clock clock;
 
     public AiUsageService(
@@ -32,6 +34,7 @@ public class AiUsageService {
             AiCostCalculator costCalculator,
             AiErrorClassifier errorClassifier,
             AiErrorMessageSanitizer sanitizer,
+            AiGuardrailService guardrailService,
             Clock clock
     ) {
         this.persistenceService = persistenceService;
@@ -39,6 +42,7 @@ public class AiUsageService {
         this.costCalculator = costCalculator;
         this.errorClassifier = errorClassifier;
         this.sanitizer = sanitizer;
+        this.guardrailService = guardrailService;
         this.clock = clock;
     }
 
@@ -64,7 +68,9 @@ public class AiUsageService {
                 LocalDateTime.now(clock)
         );
         try {
-            return persistenceService.start(usageLog);
+            AiUsageHandle handle = persistenceService.start(usageLog);
+            guardrailService.markProviderStarted(command.aiJob());
+            return handle;
         } catch (RuntimeException exception) {
             throw persistenceFailure(null, exception);
         }
@@ -81,6 +87,7 @@ public class AiUsageService {
             persistenceService.completeSuccess(
                     handle.requestId(), usage, cost, attemptCount, resultId, LocalDateTime.now(clock)
             );
+            recordUsageWithRetry(handle.aiJob(), handle.requestId(), cost);
         } catch (RuntimeException exception) {
             throw persistenceFailure(handle.requestId(), exception);
         }
@@ -96,15 +103,17 @@ public class AiUsageService {
         AiErrorType errorType = errorClassifier.classify(throwable);
         String safeMessage = sanitizer.sanitize(errorClassifier.safeMessage(throwable));
         completeFailure(
-                handle.requestId(), usage, cost, attemptCount, errorType, safeMessage, LocalDateTime.now(clock)
+                handle.requestId(), handle.aiJob(), usage, cost, attemptCount,
+                errorType, safeMessage, LocalDateTime.now(clock)
         );
     }
 
     public void markOrphaned(UUID requestId, LocalDateTime completedAt) {
         String message = sanitizer.sanitize("제한 시간을 초과해 고아 요청으로 복구되었습니다.");
         completeFailure(
-                requestId,
-                null,
+            requestId,
+            null,
+            null,
                 AiCostSnapshot.unpriced(null),
                 null,
                 AiErrorType.ORPHANED_REQUEST,
@@ -115,6 +124,7 @@ public class AiUsageService {
 
     private void completeFailure(
             UUID requestId,
+            AiJob aiJob,
             AiUsageMetadata usage,
             AiCostSnapshot cost,
             Integer attemptCount,
@@ -126,6 +136,7 @@ public class AiUsageService {
             persistenceService.completeFailure(
                     requestId, usage, cost, attemptCount, errorType, errorMessage, completedAt
             );
+            recordUsageWithRetry(aiJob, requestId, cost);
         } catch (RuntimeException exception) {
             throw persistenceFailure(requestId, exception);
         }
@@ -141,5 +152,22 @@ public class AiUsageService {
             return exception;
         }
         return new AiAuditPersistenceException(cause);
+    }
+
+    private void recordUsageWithRetry(
+            AiJob aiJob,
+            UUID usageRequestId,
+            AiCostSnapshot cost
+    ) {
+        RuntimeException lastFailure = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                guardrailService.recordUsage(aiJob, usageRequestId, cost);
+                return;
+            } catch (RuntimeException exception) {
+                lastFailure = exception;
+            }
+        }
+        throw lastFailure;
     }
 }

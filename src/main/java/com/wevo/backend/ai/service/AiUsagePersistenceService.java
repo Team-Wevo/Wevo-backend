@@ -26,7 +26,7 @@ public class AiUsagePersistenceService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public AiUsageHandle start(AiUsageLog log) {
         AiUsageLog saved = repository.save(log);
-        return new AiUsageHandle(saved.getId(), saved.getRequestId());
+        return new AiUsageHandle(saved.getId(), saved.getRequestId(), saved.getAiJob());
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

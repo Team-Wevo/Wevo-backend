@@ -71,6 +71,9 @@ wevo:
       model-context-limit: ${OPENAI_API_CONTEXT_LIMIT:1050000}
     structured-output:
       max-correction-retries: ${AI_STRUCTURED_OUTPUT_MAX_CORRECTION_RETRIES:2}
+    guardrails:
+      # prod에서 AI provider를 켜면 startup validator가 true와 pricing snapshot을 강제한다.
+      enabled: false
     jobs:
       max-executions-per-key: ${AI_JOB_MAX_EXECUTIONS_PER_KEY:3}
     pricing:

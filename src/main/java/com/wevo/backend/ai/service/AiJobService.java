@@ -5,6 +5,8 @@ import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiJobStatus;
 import com.wevo.backend.ai.repository.AiJobRepository;
+import com.wevo.backend.global.exception.BusinessException;
+import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.user.domain.User;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -25,6 +27,7 @@ public class AiJobService {
     private final AiJobIdempotencyKeyGenerator keyGenerator;
     private final AiErrorClassifier errorClassifier;
     private final AiErrorMessageSanitizer sanitizer;
+    private final AiGuardrailService guardrailService;
     private final Clock clock;
 
     public AiJobService(
@@ -33,6 +36,7 @@ public class AiJobService {
             AiJobIdempotencyKeyGenerator keyGenerator,
             AiErrorClassifier errorClassifier,
             AiErrorMessageSanitizer sanitizer,
+            AiGuardrailService guardrailService,
             Clock clock
     ) {
         this.repository = repository;
@@ -40,6 +44,7 @@ public class AiJobService {
         this.keyGenerator = keyGenerator;
         this.errorClassifier = errorClassifier;
         this.sanitizer = sanitizer;
+        this.guardrailService = guardrailService;
         this.clock = clock;
     }
 
@@ -76,24 +81,48 @@ public class AiJobService {
         if (requestedBy == null || requestedBy.getId() == null) {
             throw new IllegalArgumentException("영속화된 requestedBy가 필요합니다.");
         }
+        AiJob requested = repository.findByRequestId(requestId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.AI_JOB_NOT_FOUND));
+        AiJob latestBeforeReservation = repository
+                .findTopByIdempotencyKeyOrderByExecutionSequenceDesc(requested.getIdempotencyKey())
+                .orElse(requested);
+        UUID newRequestId = UUID.randomUUID();
+        AiGuardrailReservation reservation = reserve(
+                requested.getIdempotencyKey(),
+                latestBeforeReservation.getExecutionSequence() + 1,
+                requested.getProject().getId(),
+                requestedBy.getId(),
+                requested.getFeature(),
+                requested.getModelId(),
+                requested.getMaxOutputTokens()
+        );
         try {
             AiJobPersistenceService.RetryResult result = persistenceService.retry(
-                    requestId, requestedBy, UUID.randomUUID(), now()
+                    requestId, requestedBy, newRequestId, now()
             );
+            if (!result.created()) {
+                rollbackQuietly(reservation);
+            }
             return AiJobCreateResult.from(result.job(), result.created());
         } catch (DataIntegrityViolationException exception) {
-            AiJob requested = repository.findByRequestId(requestId)
-                    .orElseThrow(() -> exception);
+            rollbackQuietly(reservation);
             AiJob latest = repository
                     .findTopByIdempotencyKeyOrderByExecutionSequenceDesc(requested.getIdempotencyKey())
                     .orElseThrow(() -> exception);
             return AiJobCreateResult.from(latest, false);
+        } catch (RuntimeException exception) {
+            rollbackQuietly(reservation);
+            throw exception;
         }
     }
 
     public AiJobStartResult start(UUID requestId, String currentSnapshotHash) {
         requireSnapshotHash(currentSnapshotHash);
-        return persistenceService.start(requestId, currentSnapshotHash, now());
+        AiJobStartResult result = persistenceService.start(requestId, currentSnapshotHash, now());
+        if (result.status() == AiJobStatus.STALE) {
+            settleWithRetry(requestId);
+        }
+        return result;
     }
 
     /**
@@ -109,11 +138,13 @@ public class AiJobService {
     ) {
         Objects.requireNonNull(snapshotProbe, "snapshotProbe는 필수입니다.");
         Objects.requireNonNull(resultWriter, "resultWriter는 필수입니다.");
-        return persistenceService.succeed(
+        AiJobCompletionResult result = persistenceService.succeed(
                 requestId,
                 () -> requireSnapshotHash(snapshotProbe.currentSnapshotHash()),
                 resultWriter,
                 now());
+        settleWithRetry(requestId);
+        return result;
     }
 
     public void heartbeat(UUID requestId) {
@@ -125,14 +156,17 @@ public class AiJobService {
         AiErrorType errorType = errorClassifier.classify(throwable);
         String safeMessage = sanitizer.sanitize(errorClassifier.safeMessage(throwable));
         persistenceService.fail(requestId, errorType, safeMessage, now());
+        settleWithRetry(requestId);
     }
 
     public void cancel(UUID requestId) {
         persistenceService.cancel(requestId, now());
+        settleWithRetry(requestId);
     }
 
     public void markStale(UUID requestId) {
         persistenceService.markStale(requestId, now());
+        settleWithRetry(requestId);
     }
 
     public void markApplicationTimedOut(UUID requestId) {
@@ -142,6 +176,7 @@ public class AiJobService {
                 "AI 작업의 애플리케이션 제한 시간이 초과되었습니다.",
                 now()
         );
+        settleWithRetry(requestId);
     }
 
     /**
@@ -152,7 +187,11 @@ public class AiJobService {
      */
     public boolean recoverIfHeartbeatStale(UUID requestId, LocalDateTime threshold) {
         Objects.requireNonNull(threshold, "threshold는 필수입니다.");
-        return persistenceService.failIfHeartbeatStale(requestId, threshold, now());
+        boolean recovered = persistenceService.failIfHeartbeatStale(requestId, threshold, now());
+        if (recovered) {
+            settleWithRetry(requestId);
+        }
+        return recovered;
     }
 
     public List<UUID> findNextQueuedRequestIds(int limit) {
@@ -187,8 +226,18 @@ public class AiJobService {
     }
 
     private AiJobCreateResult createInitial(AiJobCreateCommand command, String idempotencyKey) {
+        UUID requestId = UUID.randomUUID();
+        AiGuardrailReservation reservation = reserve(
+                idempotencyKey,
+                1,
+                command.project().getId(),
+                command.requestedBy().getId(),
+                command.feature(),
+                command.modelId(),
+                command.maxOutputTokens()
+        );
         AiJob job = AiJob.queue(
-                UUID.randomUUID(),
+                requestId,
                 command.project(),
                 command.projectSection(),
                 command.requestedBy(),
@@ -205,10 +254,54 @@ public class AiJobService {
         try {
             return AiJobCreateResult.from(persistenceService.insert(job), true);
         } catch (DataIntegrityViolationException exception) {
+            rollbackQuietly(reservation);
             AiJob existing = repository.findTopByIdempotencyKeyOrderByExecutionSequenceDesc(idempotencyKey)
                     .orElseThrow(() -> exception);
             return AiJobCreateResult.from(existing, false);
+        } catch (RuntimeException exception) {
+            rollbackQuietly(reservation);
+            throw exception;
         }
+    }
+
+    private AiGuardrailReservation reserve(
+            String idempotencyKey,
+            Integer executionSequence,
+            Long projectId,
+            Long userId,
+            AiFeature feature,
+            String modelId,
+            Integer maxOutputTokens
+    ) {
+        return guardrailService.reserve(new AiGuardrailReservationCommand(
+                idempotencyKey, executionSequence, projectId, userId,
+                feature, modelId, maxOutputTokens));
+    }
+
+    private void rollbackQuietly(AiGuardrailReservation reservation) {
+        try {
+            guardrailService.rollback(reservation);
+        } catch (RuntimeException ignored) {
+            // 보상 실패 시 비용 예약을 유지하는 fail-safe 정책을 적용한다.
+        }
+    }
+
+    private void settleWithRetry(UUID requestId) {
+        if (!guardrailService.isEnabled()) {
+            return;
+        }
+        RuntimeException lastFailure = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                AiJob job = repository.findByRequestId(requestId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.AI_JOB_NOT_FOUND));
+                guardrailService.settle(job);
+                return;
+            } catch (RuntimeException exception) {
+                lastFailure = exception;
+            }
+        }
+        throw lastFailure;
     }
 
     private LocalDateTime now() {

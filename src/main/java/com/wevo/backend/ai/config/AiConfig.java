@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.time.Clock;
+import java.time.ZoneId;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -80,6 +81,6 @@ public class AiConfig {
 
     @Bean
     public Clock aiClock() {
-        return Clock.systemDefaultZone();
+        return Clock.system(ZoneId.of("Asia/Seoul"));
     }
 }

@@ -22,6 +22,7 @@ import com.wevo.backend.section.repository.ProjectSectionRepository;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
 import com.wevo.backend.user.repository.UserRepository;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -67,6 +68,9 @@ class AiJobServiceIntegrationTest {
 
     @Autowired
     private AiUsageLogRepository usageLogRepository;
+
+    @Autowired
+    private Clock clock;
 
     @Autowired
     private ProjectSectionRepository sectionRepository;
@@ -268,7 +272,7 @@ class AiJobServiceIntegrationTest {
 
         assertThat(jobService.findNextQueuedRequestIds(10)).contains(queued).doesNotContain(running);
 
-        LocalDateTime futureThreshold = LocalDateTime.now().plusMinutes(1);
+        LocalDateTime futureThreshold = LocalDateTime.now(clock).plusMinutes(1);
         assertThat(jobService.findApplicationTimedOutRequestIds(futureThreshold)).contains(running);
         assertThat(jobService.findHeartbeatTimedOutRequestIds(futureThreshold)).contains(running);
 

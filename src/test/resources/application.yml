@@ -51,6 +51,8 @@ wevo:
       reasoning-effort: none
     structured-output:
       max-correction-retries: 2
+    guardrails:
+      enabled: false
     jobs:
       max-executions-per-key: 3
       # 실행 폴러는 테스트에서 기본 비활성화한다 — 스케줄러 검증 테스트에서만 명시적으로 켠다.
