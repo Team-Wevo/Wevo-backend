@@ -8,6 +8,7 @@ import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -42,6 +43,7 @@ public class AuthController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "500", description = "A007 — 소셜 제공자 토큰 교환·조회 실패")
     })
+    @SecurityRequirements // 토큰을 발급받는 API 이므로 전역 Bearer 요구사항을 해제한다.
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<TokenResponse>> login(
             @Valid @RequestBody SocialLoginRequest request
@@ -65,6 +67,7 @@ public class AuthController {
                     responseCode = "401",
                     description = "A003 — 형식·서명 오류 / A004 — 만료 / A005 — 저장된 토큰과 불일치")
     })
+    @SecurityRequirements // Access Token 이 만료된 상태에서 호출하므로 전역 요구사항을 해제한다.
     @PostMapping("/reissue")
     public ResponseEntity<ApiResponse<TokenResponse>> reissue(
             @Valid @RequestBody TokenReissueRequest request
