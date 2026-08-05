@@ -6,6 +6,7 @@ import com.wevo.backend.ai.context.AssembledAiContext;
 import com.wevo.backend.ai.context.DraftGenerationContext;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
+import com.wevo.backend.ai.exception.AiProviderUnavailableException;
 import com.wevo.backend.ai.repository.AiJobRepository;
 import com.wevo.backend.issue.service.CurrentSynthesisContext;
 import com.wevo.backend.issue.service.SynthesisSetQueryService;
@@ -118,7 +119,7 @@ public class DraftGenerationJobHandler implements AiJobHandler {
 
         SectionDraftGenerator generator = generatorProvider.getIfAvailable();
         if (generator == null) {
-            throw new IllegalStateException("AI provider가 구성되지 않아 초안을 생성할 수 없습니다.");
+            throw new AiProviderUnavailableException();
         }
         DraftGenerationOutput output = generator.generate(job, assembled.context());
         CurrentSynthesisContext evidenceSnapshot =

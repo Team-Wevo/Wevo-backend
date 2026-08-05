@@ -9,6 +9,7 @@ import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJobStatus;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.issue.service.SynthesisSetQueryService;
 import com.wevo.backend.project.service.ProjectAccessGuard;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.project.service.VerifiedProjectAccess;
@@ -32,6 +33,7 @@ public class DraftGenerationRequestService {
     private final SectionAccessGuard sectionAccessGuard;
     private final ProjectAccessGuard projectAccessGuard;
     private final AiContextAssembler contextAssembler;
+    private final SynthesisSetQueryService synthesisSetQueryService;
     private final AiJobService aiJobService;
     private final AiProperties aiProperties;
     private final UserService userService;
@@ -40,6 +42,7 @@ public class DraftGenerationRequestService {
             SectionAccessGuard sectionAccessGuard,
             ProjectAccessGuard projectAccessGuard,
             AiContextAssembler contextAssembler,
+            SynthesisSetQueryService synthesisSetQueryService,
             AiJobService aiJobService,
             AiProperties aiProperties,
             UserService userService
@@ -47,6 +50,7 @@ public class DraftGenerationRequestService {
         this.sectionAccessGuard = sectionAccessGuard;
         this.projectAccessGuard = projectAccessGuard;
         this.contextAssembler = contextAssembler;
+        this.synthesisSetQueryService = synthesisSetQueryService;
         this.aiJobService = aiJobService;
         this.aiProperties = aiProperties;
         this.userService = userService;
@@ -57,11 +61,14 @@ public class DraftGenerationRequestService {
         ProjectSection section = sectionAccessGuard.requireOwnedSection(sectionId, userId);
         VerifiedProjectAccess access =
                 projectAccessGuard.requireParticipantAccess(section.getProject().getId(), userId);
+        if (!synthesisSetQueryService.existsForSection(sectionId)) {
+            throw new BusinessException(ErrorCode.AI_SYNTHESIS_RESULT_REQUIRED);
+        }
         AssembledAiContext<DraftGenerationContext> assembled;
         try {
             assembled = contextAssembler.assembleDraftGeneration(access, sectionId);
         } catch (AiContextAssemblyException exception) {
-            throw new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
 
         AiProperties.ModelOptions options =

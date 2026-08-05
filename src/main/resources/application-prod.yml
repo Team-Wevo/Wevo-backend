@@ -35,7 +35,8 @@ spring:
 
 wevo:
   ai:
-    provider: ${AI_PROVIDER:none}
+    # 운영에서는 누락과 의도적 비활성화(AI_PROVIDER=none)를 구분한다.
+    provider: ${AI_PROVIDER}
     guardrails:
       enabled: ${AI_GUARDRAIL_ENABLED:false}
       policy-version: ${AI_GUARDRAIL_POLICY_VERSION:ai-guardrail-2026-08-02-v1}

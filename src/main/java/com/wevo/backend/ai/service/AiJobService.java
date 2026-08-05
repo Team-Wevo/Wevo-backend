@@ -32,6 +32,7 @@ public class AiJobService {
     private final AiJobIdempotencyKeyGenerator keyGenerator;
     private final AiErrorClassifier errorClassifier;
     private final AiErrorMessageSanitizer sanitizer;
+    private final AiExecutionAvailabilityGuard availabilityGuard;
     private final AiGuardrailService guardrailService;
     private final Clock clock;
     private AiRolloutService rolloutService;
@@ -44,6 +45,7 @@ public class AiJobService {
             AiJobIdempotencyKeyGenerator keyGenerator,
             AiErrorClassifier errorClassifier,
             AiErrorMessageSanitizer sanitizer,
+            AiExecutionAvailabilityGuard availabilityGuard,
             AiGuardrailService guardrailService,
             Clock clock
     ) {
@@ -52,6 +54,7 @@ public class AiJobService {
         this.keyGenerator = keyGenerator;
         this.errorClassifier = errorClassifier;
         this.sanitizer = sanitizer;
+        this.availabilityGuard = availabilityGuard;
         this.guardrailService = guardrailService;
         this.clock = clock;
     }
@@ -69,6 +72,7 @@ public class AiJobService {
         return findExisting(identity, idempotencyKey)
                 .map(job -> AiJobCreateResult.from(job, false))
                 .orElseGet(() -> {
+                    availabilityGuard.requireAvailable();
                     requireSubmissionAllowed(selected.feature());
                     return createInitial(selected, idempotencyKey);
                 });
@@ -98,6 +102,7 @@ public class AiJobService {
         }
         AiJob requested = repository.findByRequestId(requestId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.AI_JOB_NOT_FOUND));
+        availabilityGuard.requireAvailable();
         requireSubmissionAllowed(requested.getFeature());
         AiJob latestBeforeReservation = repository
                 .findTopByIdempotencyKeyOrderByExecutionSequenceDesc(requested.getIdempotencyKey())

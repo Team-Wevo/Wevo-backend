@@ -7,6 +7,7 @@ import com.wevo.backend.ai.service.OpinionClusteringRequestService;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -36,6 +37,12 @@ public class OpinionClusteringController {
 
     @PostMapping("/{sectionId}/opinion-clusters")
     @Operation(summary = "AI 의견 자동 분류 실행")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "202", description = "OPINION_CLUSTERING_REQUESTED"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "503", description = "AI008 — AI Provider 비활성·연결 불가")
+    })
     public ResponseEntity<ApiResponse<AiJobAcceptedResponse>> requestClustering(
             @PathVariable Long sectionId,
             @AuthenticationPrincipal AuthPrincipal principal

@@ -58,7 +58,9 @@ public class PrecheckController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "S001 — 존재 숨김, S003 — 초안 없음"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "409", description = "S002 — 실행할 수 없는 섹션 상태")
+                    responseCode = "409", description = "S002 — 실행할 수 없는 섹션 상태"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "503", description = "AI008 — AI Provider 비활성·연결 불가")
     })
     @PostMapping("/{sectionId}/precheck")
     public ResponseEntity<ApiResponse<AiJobAcceptedResponse>> requestPrecheck(

@@ -107,6 +107,17 @@ class SynthesisControllerWebMvcTest {
     }
 
     @Test
+    @DisplayName("AI Provider가 비활성 상태면 503 AI008을 반환한다")
+    void providerUnavailable_returns503() throws Exception {
+        given(synthesisRequestService.requestSynthesis(10L, 7L))
+                .willThrow(new BusinessException(ErrorCode.AI_PROVIDER_UNAVAILABLE));
+
+        mockMvc.perform(post(URL).with(authenticatedUser()))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("AI008"));
+    }
+
+    @Test
     @DisplayName("인증 없이 조회하면 A001 공통 응답을 반환한다")
     void getWithoutAuthentication_returnsA001() throws Exception {
         mockMvc.perform(get(URL))
