@@ -56,6 +56,8 @@ public class PublicReviewController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "OK"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400", description = "C001 — 검토자 키(X-Anonymous-Reviewer-Id) 형식 오류"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "R001 — 토큰 무효"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409",

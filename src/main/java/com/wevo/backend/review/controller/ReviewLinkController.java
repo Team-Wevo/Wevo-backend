@@ -60,7 +60,9 @@ public class ReviewLinkController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "409", description = "R009 — 초안이 없어 발급 불가"),
+                    responseCode = "409",
+                    description = "R009 — 초안이 없어 발급 불가 / R010 — 확정된 작성자 의도가 없어 발급 불가 "
+                            + "/ C003 — 동시 발급 경합 (섹션당 ACTIVE 1개 위반, 재시도하면 성공)"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "422", description = "C002 — expiresOn 이 발급일보다 1일 이상 뒤가 아님")
     })
