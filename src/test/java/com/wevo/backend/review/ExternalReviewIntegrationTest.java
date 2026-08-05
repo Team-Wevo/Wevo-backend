@@ -38,7 +38,9 @@ import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -67,6 +69,8 @@ class ExternalReviewIntegrationTest {
 
     private static final String DRAFT_CONTENT = "우리가 해결하려는 문제는 정보가 흩어져 있다는 점이다.";
     private static final String REVIEWER_ID_HEADER = "X-Anonymous-Reviewer-Id";
+    /** 유효 기간 판정 기준 시간대 — 서비스와 같은 KST 로 맞춘다. (CLAUDE.md §5.4) */
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -868,7 +872,303 @@ class ExternalReviewIntegrationTest {
                 .hasSize(1);
     }
 
+    @Test
+    @DisplayName("유효 기간을 지정해 발급하면 발급·복구 조회 응답에 만료일이 실린다")
+    void issuedLinkCarriesExpiryDate() throws Exception {
+        User owner = persistUser("owner-expiry@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        LocalDate expiresOn = LocalDate.now(KST).plusDays(7);
+        mockMvc.perform(post("/api/project-sections/{id}/review-links", section.getId())
+                        .with(authentication(authOf(owner)))
+                        .contentType("application/json")
+                        .content("{ \"expiresOn\": \"%s\" }".formatted(expiresOn)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.expiresOn").value(expiresOn.toString()));
+
+        mockMvc.perform(get("/api/project-sections/{id}/review-links/current", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.linkStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.expiresOn").value(expiresOn.toString()));
+    }
+
+    @Test
+    @DisplayName("유효 기간을 생략하면 기간 제한 없이 발급되고 응답에서 만료일 키가 생략된다")
+    void expiryIsOptional() throws Exception {
+        User owner = persistUser("owner-noexpiry@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        // 본문 없이 호출하는 기존 클라이언트도 그대로 동작한다.
+        mockMvc.perform(post("/api/project-sections/{id}/review-links", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.expiresOn").doesNotExist());
+
+        // 명시적 null 과 빈 문자열도 생략과 똑같이 "기간 제한 없음"으로 읽는다 — 입력칸을 비운 채
+        // 보내는 폼 제출을 400 으로 튕기지 않기 위함이다. (재발급이라 이전 링크는 닫힌다)
+        for (String blank : java.util.List.of("null", "\"\"")) {
+            mockMvc.perform(post("/api/project-sections/{id}/review-links", section.getId())
+                            .with(authentication(authOf(owner)))
+                            .contentType("application/json")
+                            .content("{ \"expiresOn\": %s }".formatted(blank)))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.data.expiresOn").doesNotExist());
+        }
+
+        mockMvc.perform(get("/api/project-sections/{id}/review-links/current", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.linkStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.expiresOn").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("유효 기간이 발급일보다 1일 이상 뒤가 아니면 422(C002) 로 거부한다")
+    void expiryMustBeAtLeastOneDayAhead() throws Exception {
+        User owner = persistUser("owner-expiry-today@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        // 하루도 열려 있지 않은 링크는 발급 자체가 성립하지 않는다 — 당일도, 과거도 거부.
+        for (LocalDate invalid : java.util.List.of(LocalDate.now(KST), LocalDate.now(KST).minusDays(1))) {
+            mockMvc.perform(post("/api/project-sections/{id}/review-links", section.getId())
+                            .with(authentication(authOf(owner)))
+                            .contentType("application/json")
+                            .content("{ \"expiresOn\": \"%s\" }".formatted(invalid)))
+                    .andExpect(status().isUnprocessableEntity())
+                    .andExpect(jsonPath("$.code").value("C002"))
+                    .andExpect(jsonPath("$.errors[0].field").value("expiresOn"));
+        }
+
+        assertThat(reviewLinkRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("유효 기간이 지난 링크는 열람에 EXPIRED 로 안내하고 제출을 409(R013) 로 거부한다")
+    void pastDueLinkRejectsSubmission() throws Exception {
+        User owner = persistUser("owner-pastdue@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLinkExpiringOn(section.getId(), owner, LocalDate.now(KST).plusDays(1));
+        Long linkId = linkId(token);
+
+        // 기간 안에는 정상 제출된다
+        submitAsReviewer(token, "CLEAR", "browser-in-time").andExpect(status().isCreated());
+
+        // 기간이 지난 뒤 — 저장된 상태는 아직 ACTIVE 지만 날짜로 판정해 거부한다 (배치 없음)
+        expireBy(linkId, LocalDate.now(KST).minusDays(1));
+        assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.ACTIVE);
+
+        mockMvc.perform(get("/public/review-links/{token}", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.linkStatus").value("EXPIRED"))
+                .andExpect(jsonPath("$.data.content").value(DRAFT_CONTENT));
+
+        submitAsReviewer(token, "CLEAR", "browser-too-late")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R013"))
+                .andExpect(jsonPath("$.message").value("외부 검토 링크의 유효 기간이 지났어요."));
+
+        // 기간 안에 들어온 제출 결과는 보존된다
+        assertThat(reviewSubmissionRepository.countByReviewLink_Id(linkId)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("유효 기간이 지난 링크는 현재 활성 링크 조회에서 빠진다 — 팀장이 재발급으로 넘어가게")
+    void pastDueLinkIsNotReturnedAsCurrent() throws Exception {
+        User owner = persistUser("owner-pastdue-current@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        Long linkId = linkId(issueLinkExpiringOn(
+                section.getId(), owner, LocalDate.now(KST).plusDays(1)));
+
+        expireBy(linkId, LocalDate.now(KST).minusDays(1));
+
+        mockMvc.perform(get("/api/project-sections/{id}/review-links/current", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("재발급하면 기간이 지난 기존 링크는 CLOSED 가 아니라 EXPIRED 로 정리된다")
+    void reissueMarksPastDueLinkExpired() throws Exception {
+        User owner = persistUser("owner-pastdue-reissue@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String oldToken = issueLinkExpiringOn(section.getId(), owner, LocalDate.now(KST).plusDays(1));
+        Long oldLinkId = linkId(oldToken);
+
+        expireBy(oldLinkId, LocalDate.now(KST).minusDays(1));
+        issueLink(section.getId(), owner);
+
+        // 종결 사유가 남아야 팀장 화면이 "종료했다"가 아니라 "기간이 지났다"로 안내할 수 있다.
+        assertThat(statusOf(oldLinkId)).isEqualTo(ReviewLinkStatus.EXPIRED);
+        submitAsReviewer(oldToken, "CLEAR", "browser-old-expired")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R013"));
+    }
+
+    @Test
+    @DisplayName("본문 수정 시 기간이 먼저 지난 링크는 OUTDATED 로 덮이지 않고 EXPIRED 로 남는다")
+    void contentEditDoesNotOverwritePastDueReason() throws Exception {
+        User owner = persistUser("owner-pastdue-outdated@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        Long linkId = linkId(issueLinkExpiringOn(
+                section.getId(), owner, LocalDate.now(KST).plusDays(1)));
+
+        expireBy(linkId, LocalDate.now(KST).minusDays(1));
+        reviewLinkService.markSectionLinksOutdated(section.getId());
+
+        assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.EXPIRED);
+    }
+
+    @Test
+    @DisplayName("유효 기간이 지난 링크를 수동 종료하면 409(R014) 로 거절하고 상태를 바꾸지 않는다")
+    void closingPastDueLinkIsRejected() throws Exception {
+        User owner = persistUser("owner-pastdue-close@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        Long linkId = linkId(issueLinkExpiringOn(
+                section.getId(), owner, LocalDate.now(KST).plusDays(1)));
+
+        expireBy(linkId, LocalDate.now(KST).minusDays(1));
+
+        // 이미 제출을 받지 않는 링크를 닫는 건 성립하지 않는 요청이라, 사유를 구분해 거절한다.
+        closeLink(linkId, owner, "CLOSED")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R014"))
+                .andExpect(jsonPath("$.message").value("유효 기간이 지난 링크입니다."));
+
+        // 거절 경로는 상태를 건드리지 않는다 — 저장된 상태 정리는 재발급·본문 수정 시점에 이뤄진다.
+        assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("마지막 날 당일에는 아직 제출을 받는다 — 유효 기간은 그 날 끝까지다")
+    void submissionIsAcceptedOnLastValidDay() throws Exception {
+        User owner = persistUser("owner-lastday@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        LocalDate today = LocalDate.now(KST);
+        String token = issueLinkExpiringOn(section.getId(), owner, today.plusDays(1));
+        Long linkId = linkId(token);
+
+        // 만료일을 "오늘"로 당긴다 — 하루를 먼저 닫아버리는 off-by-one 이 있으면 여기서 걸린다.
+        expireBy(linkId, today);
+
+        mockMvc.perform(get("/public/review-links/{token}", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.linkStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.expiresOn").value(today.toString()));
+
+        submitAsReviewer(token, "CLEAR", "browser-last-day")
+                .andExpect(status().isCreated());
+
+        // 팀장 화면에서도 아직 살아 있는 링크로 보여야 한다
+        mockMvc.perform(get("/api/project-sections/{id}/review-links/current", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.linkStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.expiresOn").value(today.toString()));
+    }
+
+    @Test
+    @DisplayName("유효 기간이 날짜로 파싱되지 않으면 400(C001) 로 거부한다")
+    void malformedExpiryIsRejected() throws Exception {
+        User owner = persistUser("owner-expiry-format@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+
+        // yyyy-MM-dd 가 아니거나 달력에 없는 날짜는 본문 파싱 단계에서 걸러진다.
+        for (String malformed : java.util.List.of("2026-13-01", "2026/09/01", "20260901", "내일")) {
+            mockMvc.perform(post("/api/project-sections/{id}/review-links", section.getId())
+                            .with(authentication(authOf(owner)))
+                            .contentType("application/json")
+                            .content("{ \"expiresOn\": \"%s\" }".formatted(malformed)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("C001"));
+        }
+
+        assertThat(reviewLinkRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("본문 수정으로 먼저 만료된 링크는 기간이 지나도 OUTDATED 로 남는다 — 먼저 끝난 사유가 이긴다")
+    void pastDueDoesNotOverwriteContentEditReason() throws Exception {
+        User owner = persistUser("owner-outdated-then-pastdue@wevo.com", "팀장");
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        String token = issueLinkExpiringOn(
+                section.getId(), owner, LocalDate.now(KST).plusDays(7));
+        Long linkId = linkId(token);
+
+        // 1) 기간이 남은 상태에서 본문이 수정돼 OUTDATED 가 된 뒤,
+        reviewLinkService.markSectionLinksOutdated(section.getId());
+        assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.OUTDATED);
+
+        // 2) 나중에 유효 기간까지 지난다 (contentEditDoesNotOverwritePastDueReason 의 역순)
+        expireBy(linkId, LocalDate.now(KST).minusDays(1));
+
+        // 외부 검토자에게는 "본문이 바뀌었다"로 안내해야 한다 — EXPIRED 로 뒤바뀌면 안 된다.
+        assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.OUTDATED);
+        mockMvc.perform(get("/public/review-links/{token}", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.linkStatus").value("OUTDATED"));
+        submitAsReviewer(token, "CLEAR", "browser-outdated-then-pastdue")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R004"));
+        closeLink(linkId, owner, "CLOSED")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R012"));
+    }
+
     // --- 시드 헬퍼 ---
+
+    /** 유효 기간을 지정해 링크를 발급하고 원문 토큰을 돌려준다. */
+    private String issueLinkExpiringOn(Long sectionId, User owner, LocalDate expiresOn)
+            throws Exception {
+        MvcResult issued = mockMvc.perform(post("/api/project-sections/{id}/review-links", sectionId)
+                        .with(authentication(authOf(owner)))
+                        .contentType("application/json")
+                        .content("{ \"expiresOn\": \"%s\" }".formatted(expiresOn)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return objectMapper.readTree(issued.getResponse().getContentAsString())
+                .path("data").path("token").asText();
+    }
+
+    /**
+     * 링크의 만료일을 과거로 당겨 "유효 기간이 지난 상태"를 만든다.
+     *
+     * <p>발급 API 는 미래 날짜만 받으므로(422 C002) 시간을 흘려보내는 대신 저장된 만료일을 바꾼다.
+     * 상태값({@code status})은 건드리지 않아, 정리되지 않은 {@code ACTIVE} 행을 날짜로 판정하는
+     * 실제 상황을 그대로 재현한다.
+     */
+    private void expireBy(Long reviewLinkId, LocalDate expiresOn) {
+        em.flush();
+        em.createNativeQuery("UPDATE review_links SET expires_on = :expiresOn WHERE id = :id")
+                .setParameter("expiresOn", expiresOn)
+                .setParameter("id", reviewLinkId)
+                .executeUpdate();
+        em.clear(); //1차 캐시의 낡은 엔티티를 비워 이후 조회가 DB 값을 읽게 한다
+    }
 
     private org.springframework.test.web.servlet.ResultActions submitWithoutSummary(
             String token, String signal, String reviewerLabel) throws Exception {

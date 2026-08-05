@@ -9,6 +9,7 @@ import com.wevo.backend.review.domain.ReviewLink;
 import com.wevo.backend.review.domain.ReviewLinkStatus;
 import com.wevo.backend.review.domain.ReviewSubmission;
 import com.wevo.backend.review.dto.request.ExternalReviewSubmitRequest;
+import com.wevo.backend.review.dto.request.ReviewLinkIssueRequest;
 import com.wevo.backend.review.dto.response.ExternalReviewViewResponse;
 import com.wevo.backend.review.dto.response.ReviewLinkResponse;
 import com.wevo.backend.review.dto.response.ReviewSubmissionResponse;
@@ -21,6 +22,8 @@ import com.wevo.backend.section.repository.SectionDraftRepository;
 import com.wevo.backend.section.service.SectionAuthorIntentQueryService;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.repository.UserRepository;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -42,8 +45,14 @@ import org.slf4j.LoggerFactory;
  *   <li><b>브라우저당 1회</b> — 익명 검토자 키 + 링크 유니크 제약으로 중복 제출을 막는다.</li>
  *   <li><b>링크당 20개 상한</b> — 제출 시 링크 행을 락으로 잡고 count 를 검사해 동시 초과를 막는다.</li>
  *   <li><b>버전 만료·비활성화</b> — OUTDATED/CLOSED 링크는 제출을 거부한다.</li>
+ *   <li><b>유효 기간</b> — 발급 시 지정한 마지막 날(KST)이 지나면 EXPIRED 로 제출을 거부한다.</li>
  *   <li><b>토큰 해시 저장</b> — 원문 대신 해시만 저장하고 요청 토큰을 해시해 비교한다.</li>
  * </ul>
+ *
+ * <h2>유효 기간 판정 (배치 없음)</h2>
+ * <p>기간 만료 판정 기준은 "지금 날짜 vs {@code expiresOn}"({@link ReviewLink#isPastDue})이고, 저장된 {@code status} 는 링크를
+ * 만지는 시점(재발급·본문 수정·수동 종료)에 {@link ReviewLink#expireIfPastDue} 로 따라온다.
+ * 정리가 늦어도 제출·조회는 날짜로 판정하므로, 기간이 지난 링크가 제출을 받는 구간은 없다.</p>
  *
  * <p>팀장(OWNER) 권한 검증은 SectionAccessGuard 에 위임한다. 단, 링크 ID 를 진입점으로 받는
  * 경로({@link #updateStatus})는 섹션이 아니라 <b>링크</b>의 존재를 숨겨야 하므로
@@ -54,6 +63,7 @@ import org.slf4j.LoggerFactory;
 public class ReviewLinkService {
 
     private static final Logger log = LoggerFactory.getLogger(ReviewLinkService.class);
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final SectionAccessGuard sectionAccessGuard;
     private final ProjectAccessGuard projectAccessGuard;
@@ -86,7 +96,7 @@ public class ReviewLinkService {
     }
 
     /**
-     * 외부 검토 링크를 발급한다. (팀장 전용 — <b>대체 발급</b>, API_SPEC §3.5.1 팀 확정 3)
+     * 외부 검토 링크를 발급한다. (팀장 전용 — <b>대체 발급</b>)
      *
      * <p>링크는 발급 시점의 <b>최신 초안 버전에 고정</b>된다 — 제목·본문·버전 스냅샷은 발급 이후
      * 불변이며, 이후 본문이 수정돼도 이 링크는 스냅샷을 그대로 보여준다. 새 본문에 대한 외부 검토는
@@ -97,12 +107,22 @@ public class ReviewLinkService {
      * {@code ACTIVE} 링크를 {@code CLOSED}로 닫고 새 토큰을 발급한다. 토큰이 해시로만 저장되어
      * 원문 재반환이 불가능하므로 멱등 재사용이 아니라 대체 발급이다. 기존 링크로 들어온 제출
      * 결과는 보존된다.
+     *
+     * <p><b>유효 기간</b>({@code expiresOn}, 선택) — 링크가 살아 있는 마지막 날(KST)이다. 지정하면
+     * 그 날 끝까지만 제출을 받고, 이후 제출은 {@code R013} 으로 거부한다.
+     * <b>발급일보다 최소 1일 뒤</b>여야 하며, 당일·과거
+     * 날짜는 저장 상태와 무관한 요청 내용의 오류이므로 422 {@code C002} 로 거부한다
+     * (CLAUDE.md §5.6). 생략하면 기간 제한 없이 발급된다. 발급 후 기간을 바꾸려면 재발급한다.
      */
     @Transactional
-    public ReviewLinkResponse issueExternalLink(Long sectionId, Long userId) {
+    public ReviewLinkResponse issueExternalLink(Long sectionId, Long userId,
+                                                ReviewLinkIssueRequest request) {
 
         ProjectSection section = sectionAccessGuard.requireOwnedSectionForUpdate(sectionId, userId);
         User createdBy = userRepository.getReferenceById(userId);
+        LocalDate today = LocalDate.now(KST);
+        LocalDate expiresOn = request == null ? null : request.expiresOn();
+        requireValidExpiry(expiresOn, today);
 
         // 초안 없으면 발급 거부
         SectionDraft latestDraft = sectionDraftRepository
@@ -114,9 +134,14 @@ public class ReviewLinkService {
                         ErrorCode.REVIEW_LINK_AUTHOR_INTENT_REQUIRED));
 
         // 대체 발급 — 기존 ACTIVE 링크를 닫는다 (섹션 행 잠금을 잡고 있어 발급·만료와 직렬화됨)
+        // 유효 기간이 이미 지난 링크는 CLOSED 가 아니라 EXPIRED 로 정리해 종결 사유를 보존한다.
         List<ReviewLink> previousActive = reviewLinkRepository
                 .findByProjectSection_IdAndStatus(sectionId, ReviewLinkStatus.ACTIVE);
-        previousActive.forEach(ReviewLink::close);
+        previousActive.forEach(previous -> {
+            if (!previous.expireIfPastDue(today)) {
+                previous.close(today);
+            }
+        });
         // 기존 ACTIVE→CLOSED UPDATE 를 새 ACTIVE INSERT 전에 DB 에 반영한다.
         // IDENTITY 전략은 save() 시점에 즉시 INSERT 하므로, 이 flush 가 없으면 새 행이 먼저 들어가
         // 부분 유니크 인덱스(uk_review_links_active_per_section)를 위반한다.
@@ -135,6 +160,7 @@ public class ReviewLinkService {
                 .authorIntentSnapshot(authorIntent.getConfirmedIntent())
                 .authorIntent(authorIntent)
                 .status(ReviewLinkStatus.ACTIVE)
+                .expiresOn(expiresOn)
                 .build();
         try {
             reviewLinkRepository.saveAndFlush(link);
@@ -159,7 +185,8 @@ public class ReviewLinkService {
         boolean alreadySubmitted = anonymousReviewerId != null
                 && reviewSubmissionRepository
                 .existsByReviewLink_IdAndAnonymousReviewerId(link.getId(), anonymousReviewerId);
-        return ExternalReviewViewResponse.of(link, alreadySubmitted);
+        // 조회는 쓰기가 없는 경로라 상태를 정리하지 않고, 날짜 기준으로 판정한 상태를 그대로 내려준다.
+        return ExternalReviewViewResponse.of(link, alreadySubmitted, LocalDate.now(KST));
     }
 
     /**
@@ -172,7 +199,7 @@ public class ReviewLinkService {
     public ReviewSubmissionResponse submitExternalReview(String token, String anonymousReviewerId,
                                                          ExternalReviewSubmitRequest request) {
         ReviewLink link = findLinkForUpdate(token);
-        requireSubmittable(link);
+        requireSubmittable(link, LocalDate.now(KST));
 
         if (reviewSubmissionRepository
                 .existsByReviewLink_IdAndAnonymousReviewerId(link.getId(), anonymousReviewerId)) {
@@ -209,7 +236,7 @@ public class ReviewLinkService {
     }
 
     /**
-     * 외부 검토 링크를 팀장이 수동으로 종료({@code CLOSED})한다. (API_SPEC §3.5.9)
+     * 외부 검토 링크를 팀장이 수동으로 종료({@code CLOSED})한다.
      *
      * <p>검토 링크 종료의 <b>기본 경로는 서버 자동 처리</b>다 — 본문 수정 시
      * {@link #markSectionLinksOutdated}로 {@code OUTDATED} 되고, 재발급 시 기존 {@code ACTIVE}
@@ -249,7 +276,8 @@ public class ReviewLinkService {
         ProjectAccessGuard.hidingNonMember(ErrorCode.REVIEW_LINK_NOT_FOUND,
                 () -> projectAccessGuard.requireOwner(
                         link.getProjectSection().getProject().getId(), userId));
-        link.close();
+        // 유효 기간이 지난 링크는 이미 끝난 링크다 — close() 가 날짜로 판정해 R014 로 거절한다.
+        link.close(LocalDate.now(KST));
     }
 
     /**
@@ -274,14 +302,43 @@ public class ReviewLinkService {
     public void markSectionLinksOutdated(Long sectionId) {
         List<ReviewLink> activeLinks = reviewLinkRepository
                 .findByProjectSection_IdAndStatusForUpdate(sectionId, ReviewLinkStatus.ACTIVE);
-        activeLinks.forEach(ReviewLink::markOutdated);
+        LocalDate today = LocalDate.now(KST);
+        // 유효 기간이 먼저 지난 링크는 본문 수정과 무관하게 이미 끝난 링크다 — 종결 사유를
+        // OUTDATED 로 덮어쓰지 않고 EXPIRED 로 정리한다.
+        activeLinks.forEach(link -> {
+            if (!link.expireIfPastDue(today)) {
+                link.markOutdated();
+            }
+        });
     }
 
-    private void requireSubmittable(ReviewLink link) {
-        switch (link.getStatus()) {
+    /**
+     * 제출 가능한 링크인지 검사한다. 거절 사유(본문 수정 만료·유효 기간 만료·종료)는 외부 검토자에게
+     * 보여줄 문구가 각각 다르므로 코드를 나눠 던진다.
+     *
+     * <p>유효 기간은 저장된 상태가 아직 {@code ACTIVE} 여도 날짜로 판정한다
+     * ({@link ReviewLink#statusAsOf}) — 상태 정리가 늦어도 기간이 지난 링크는 제출을 받지 않는다.
+     */
+    private void requireSubmittable(ReviewLink link, LocalDate today) {
+        switch (link.statusAsOf(today)) {
             case OUTDATED -> throw new BusinessException(ErrorCode.REVIEW_LINK_OUTDATED);
+            case EXPIRED -> throw new BusinessException(ErrorCode.REVIEW_LINK_EXPIRED);
             case CLOSED -> throw new BusinessException(ErrorCode.REVIEW_LINK_ALREADY_CLOSED);
             default -> { } //ACTIVE -> 제출 가능
+        }
+    }
+
+    /**
+     * 발급 요청의 유효 기간을 검사한다. (선택 입력이라 미지정은 그대로 통과 — 기간 제한 없음)
+     *
+     * <p>발급 당일·과거 날짜는 하루도 열려 있지 않은 링크라 요청 자체가 성립하지 않는다.
+     * 저장된 리소스 상태와 무관한 요청 내용의 의미적 오류이므로 422({@code C002})로 거부하고,
+     * 화면에서 입력 필드를 짚을 수 있게 필드 사유를 함께 담는다. (CLAUDE.md §5.6, §5.9)
+     */
+    private void requireValidExpiry(LocalDate expiresOn, LocalDate today) {
+        if (expiresOn != null && !expiresOn.isAfter(today)) {
+            throw new BusinessException(ErrorCode.BUSINESS_RULE_VIOLATION,
+                    List.of(new FieldError("expiresOn", "유효 기간은 발급일보다 최소 1일 뒤여야 합니다.")));
         }
     }
 

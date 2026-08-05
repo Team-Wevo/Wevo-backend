@@ -80,7 +80,9 @@ public class PublicReviewController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "R001 — 토큰 무효"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "409", description = "R002 — 중복 제출 / R003 — 정원 초과 / R004 — 만료 / R005 — 종료")
+                    responseCode = "409",
+                    description = "R002 — 중복 제출 / R003 — 정원 초과 / R004 — 본문 수정으로 만료 "
+                            + "/ R005 — 종료 / R013 — 유효 기간 만료")
     })
     @PostMapping("/{token}/submissions")
     public ResponseEntity<ApiResponse<ReviewSubmissionResponse>> submit(

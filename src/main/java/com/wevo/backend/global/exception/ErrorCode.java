@@ -100,6 +100,10 @@ public enum ErrorCode {
     // 팀장 화면은 두 사유를 각각 다른 문구로 보여줘야 하므로 클라이언트가 분기할 코드가 필요하다. (CLAUDE.md §5.8)
     REVIEW_LINK_CLOSE_ALREADY_CLOSED(HttpStatus.CONFLICT, "R011", "이미 종료된 링크입니다."),
     REVIEW_LINK_CLOSE_ALREADY_OUTDATED(HttpStatus.CONFLICT, "R012", "이미 만료된 링크입니다."),
+    // 유효 기간(발급 시 지정, API_SPEC §3.5.1) 만료 — 외부 검토자용(R013)과 팀장용(R014)을 나눈다.
+    // 본문 수정 만료(R004/R012)와 사유가 달라 안내 문구가 다르므로 코드를 합치지 않는다.
+    REVIEW_LINK_EXPIRED(HttpStatus.CONFLICT, "R013", "외부 검토 링크의 유효 기간이 지났어요."),
+    REVIEW_LINK_CLOSE_ALREADY_EXPIRED(HttpStatus.CONFLICT, "R014", "유효 기간이 지난 링크입니다."),
 
     // Export
     FINAL_OUTPUT_ASSEMBLY_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "E001", "완성본을 조립할 수 없습니다. 잠시 후 다시 시도해주세요.");

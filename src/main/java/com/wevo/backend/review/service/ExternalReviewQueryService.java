@@ -8,6 +8,8 @@ import com.wevo.backend.review.repository.ReviewLinkRepository;
 import com.wevo.backend.review.repository.ReviewSubmissionRepository;
 import com.wevo.backend.review.repository.ReviewIntentComparisonRepository;
 import com.wevo.backend.review.domain.ReviewSubmission;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 public class ExternalReviewQueryService {
+
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final SectionAccessGuard sectionAccessGuard;
     private final ReviewLinkRepository reviewLinkRepository;
@@ -69,13 +73,19 @@ public class ExternalReviewQueryService {
      * <p>원문 토큰은 재노출하지 않으며(해시만 저장), 활성 링크가 없으면 {@link Optional#empty()}
      * 를 반환한다(컨트롤러가 {@code data} 없는 {@code 200} 으로 변환).
      * 권한 검증은 발급과 동일하게 OWNER 로 제한한다.
+     *
+     * <p><b>유효 기간이 지난 링크는 활성 링크가 아니다</b> — 저장된 상태가 아직 {@code ACTIVE} 여도
+     * 날짜로 걸러내(정리는 재발급 시점에 이뤄진다) "활성 링크 없음"으로 응답한다. 그래야 팀장이
+     * 이미 제출을 받지 않는 링크를 계속 공유하지 않고 재발급으로 넘어간다.
      */
     public Optional<ReviewLinkCurrentResponse> getCurrentActiveLink(Long sectionId, Long userId) {
         sectionAccessGuard.requireOwnedSection(sectionId, userId);
 
+        LocalDate today = LocalDate.now(KST);
         return reviewLinkRepository
                 .findByProjectSection_IdAndStatus(sectionId, ReviewLinkStatus.ACTIVE)
                 .stream()
+                .filter(link -> !link.isPastDue(today))
                 .findFirst()
                 .map(link -> ReviewLinkCurrentResponse.of(
                         link, reviewSubmissionRepository.countByReviewLink_Id(link.getId())));
