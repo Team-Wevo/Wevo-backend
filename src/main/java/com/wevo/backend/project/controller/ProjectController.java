@@ -65,9 +65,12 @@ public class ProjectController {
     }
 
     /**
-     * 내 프로젝트 목록 조회 — 내가 멤버로 속한 프로젝트만 최신순으로 반환한다.
+     * 내 프로젝트 목록 조회 — 내가 멤버로 속한 프로젝트만 최근 작업순으로 반환한다.
+     *
+     * <p>대시보드 카드가 한 번의 요청으로 그려지도록 마지막 활동 섹션과 확정 진행도를 함께 담는다.
      */
-    @Operation(summary = "내 프로젝트 목록 — 멤버인 것만, 보관(ARCHIVED) 제외, 최신순")
+    @Operation(summary = "내 프로젝트 목록 — 멤버인 것만, 보관(ARCHIVED) 제외, 최근 작업순 "
+            + "(마지막 활동 섹션·확정 진행도 포함)")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "OK"),

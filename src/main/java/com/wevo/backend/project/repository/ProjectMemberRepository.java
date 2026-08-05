@@ -55,7 +55,7 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Lo
     List<ProjectMember> findAllWithUserByProjectId(@Param("projectId") Long projectId);
 
     /**
-     * 내가 멤버로 속한 프로젝트 목록을 최신순으로 조회한다.
+     * 내가 멤버로 속한 프로젝트 목록을 조회한다.
      *
      * <p>{@code JOIN FETCH} 로 프로젝트를 함께 로딩해 N+1 을 방지한다.
      * 멤버십을 함께 반환하므로 프로젝트별 내 역할(role)도 추가 조회 없이 알 수 있다.
@@ -63,10 +63,13 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Lo
      * <p>보관 처리된({@code ARCHIVED}) 프로젝트는 제외한다 — 삭제(§3.2.9)는 하드 삭제가 아니라
      * 상태 전이이므로, 목록에서 빼는 것이 "삭제됐다"는 사용자 기대를 충족하는 지점이다.
      * 개별 조회는 계속 동작한다.
+     *
+     * <p><b>정렬은 여기서 하지 않는다.</b> 목록의 정렬 기준은 "프로젝트에 속한 섹션들의 마지막
+     * 활동 시각 중 최대값"(§3.2.2)이라 이 쿼리만으로는 정할 수 없다. 서비스가 섹션을 함께 읽어
+     * 정렬하며, 여기서 다시 정렬하면 그 결과가 덮여 기준이 갈린다.
      */
     @Query("SELECT pm FROM ProjectMember pm JOIN FETCH pm.project p "
             + "WHERE pm.user.id = :userId "
-            + "AND p.status <> com.wevo.backend.project.domain.ProjectStatus.ARCHIVED "
-            + "ORDER BY p.createdAt DESC")
+            + "AND p.status <> com.wevo.backend.project.domain.ProjectStatus.ARCHIVED")
     List<ProjectMember> findAllWithProjectByUserId(@Param("userId") Long userId);
 }

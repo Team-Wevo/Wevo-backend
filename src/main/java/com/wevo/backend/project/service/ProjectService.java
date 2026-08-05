@@ -31,7 +31,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 프로젝트 생성. 생성자를 OWNER 로 등록하고, 결과물 유형에 따라 고정 섹션을 자동 생성한다.
@@ -100,13 +103,74 @@ public class ProjectService {
     }
 
     /**
-     * 내가 멤버로 속한 프로젝트 목록을 최신순으로 조회한다.
+     * 내가 멤버로 속한 프로젝트 목록을 <b>최근 작업순</b>으로 조회한다. (API_SPEC §3.2.2)
+     *
+     * <p>정렬 기준은 프로젝트에 속한 섹션들의 {@code lastActivityAt} 중 <b>최대값</b>이다.
+     * {@code projects.updatedAt} 을 쓰지 않는 이유는 그 값이 프로젝트 이름·설명을 고칠 때만
+     * 움직여서, 정렬이 사실상 "최근에 이름 바꾼 순"이 되기 때문이다.
+     *
+     * <p>각 항목에는 <b>마지막 활동 섹션</b>과 확정 진행도를 함께 담는다 — 대시보드 카드가
+     * 프로젝트마다 섹션 목록 API 를 다시 부르지 않아도 되게 한다.
+     *
+     * <p>섹션은 프로젝트별로 나눠 조회하지 않고 <b>한 번에</b> 읽는다. 프로젝트 수만큼 쿼리가
+     * 늘면 카드가 많아질수록 목록이 느려진다.
      */
     @Transactional(readOnly = true)
     public List<ProjectSummaryResponse> getMyProjects(Long userId) {
-        return projectMemberRepository.findAllWithProjectByUserId(userId).stream()
-                .map(ProjectSummaryResponse::from)
+        List<ProjectMember> memberships = projectMemberRepository.findAllWithProjectByUserId(userId);
+        if (memberships.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, List<ProjectSection>> sectionsByProject = projectSectionRepository
+                .findAllByProjectIdsOrderByLastActivity(memberships.stream()
+                        .map(membership -> membership.getProject().getId())
+                        .toList())
+                .stream()
+                .collect(Collectors.groupingBy(section -> section.getProject().getId()));
+
+        Comparator<ProjectMember> byRecentWork = Comparator
+                .<ProjectMember, LocalDateTime>comparing(
+                        membership -> lastActivityOf(sectionsByProject, membership.getProject().getId()),
+                        Comparator.nullsLast(Comparator.reverseOrder()))
+                // 활동 시각이 같으면(직후 생성된 프로젝트들) 최근에 만든 것이 위로 온다.
+                .thenComparing(membership -> membership.getProject().getCreatedAt(),
+                        Comparator.nullsLast(Comparator.reverseOrder()));
+
+        return memberships.stream()
+                .sorted(byRecentWork)
+                .map(membership -> toSummary(membership, sectionsByProject))
                 .toList();
+    }
+
+    /**
+     * 멤버십 하나를 목록 항목으로 만든다.
+     *
+     * <p>섹션 목록은 활동 시각 내림차순으로 정렬돼 있으므로 <b>첫 번째가 마지막 활동 섹션</b>이다.
+     * 같은 시각이 여러 섹션에 걸리면(프로젝트 생성 직후) 순서가 앞선 섹션이 뽑힌다 — 아직 아무
+     * 작업도 없는 프로젝트는 1번 섹션을 가리키는 것이 자연스럽다.
+     */
+    private ProjectSummaryResponse toSummary(ProjectMember membership,
+                                             Map<Long, List<ProjectSection>> sectionsByProject) {
+        List<ProjectSection> sections =
+                sectionsByProject.getOrDefault(membership.getProject().getId(), List.of());
+
+        return ProjectSummaryResponse.of(
+                membership,
+                sections.isEmpty() ? null : sections.get(0),
+                SectionConfirmationSummary.from(sections));
+    }
+
+    /**
+     * 정렬 키 — 프로젝트의 마지막 활동 시각.
+     *
+     * <p>섹션 목록이 활동 시각 내림차순이라 첫 항목의 값이 곧 프로젝트의 최대값이다.
+     * 섹션이 없는 비정상 프로젝트는 {@code null} 로 두어 맨 뒤로 보낸다.
+     */
+    private static LocalDateTime lastActivityOf(Map<Long, List<ProjectSection>> sectionsByProject,
+                                                Long projectId) {
+        List<ProjectSection> sections = sectionsByProject.getOrDefault(projectId, List.of());
+        return sections.isEmpty() ? null : sections.get(0).getLastActivityAt();
     }
 
     /**

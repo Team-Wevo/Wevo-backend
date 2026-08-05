@@ -1,11 +1,14 @@
 package com.wevo.backend.section.domain;
 
+import com.wevo.backend.global.exception.BusinessException;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ProjectSectionTest {
 
@@ -19,6 +22,60 @@ class ProjectSectionTest {
         assertThat(section.isSynthesisStale()).isFalse();
         assertThat(section.getOpinionGateGeneration()).isZero();
         assertThat(section.getConfirmedVersion()).isZero();
+    }
+
+    @Test
+    @DisplayName("생성 직후에도 마지막 활동 시각이 비어 있지 않다 — 목록이 빈 값을 분기하지 않아도 된다")
+    void newSection_hasLastActivityAt() {
+        assertThat(section().getLastActivityAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("활동을 기록하면 마지막 활동 시각이 그 시점으로 옮겨간다")
+    void recordActivity_movesLastActivityForward() {
+        ProjectSection section = section();
+        LocalDateTime later = section.getLastActivityAt().plusHours(1);
+
+        section.recordActivity(later);
+
+        assertThat(section.getLastActivityAt()).isEqualTo(later);
+    }
+
+    @Test
+    @DisplayName("더 이른 시각이나 null 은 무시한다 — 마지막 활동이 과거로 밀리지 않는다")
+    void recordActivity_ignoresEarlierAndNull() {
+        ProjectSection section = section();
+        LocalDateTime initial = section.getLastActivityAt();
+
+        section.recordActivity(initial.minusDays(1));
+        section.recordActivity(null);
+
+        assertThat(section.getLastActivityAt()).isEqualTo(initial);
+    }
+
+    @Test
+    @DisplayName("상태 전이는 활동으로 기록된다 — 마감·확정 같은 사건이 목록에 반영되어야 한다")
+    void changeStatus_recordsActivity() {
+        ProjectSection section = section();
+        LocalDateTime transitionAt = section.getLastActivityAt().plusMinutes(30);
+
+        section.changeStatus(ProjectSectionStatus.SYNTHESIZING, transitionAt);
+
+        assertThat(section.getStatus()).isEqualTo(ProjectSectionStatus.SYNTHESIZING);
+        assertThat(section.getLastActivityAt()).isEqualTo(transitionAt);
+    }
+
+    @Test
+    @DisplayName("전이가 거부되면 활동도 기록하지 않는다")
+    void changeStatus_rejected_doesNotRecordActivity() {
+        ProjectSection section = section();
+        LocalDateTime initial = section.getLastActivityAt();
+
+        assertThatThrownBy(() ->
+                section.changeStatus(ProjectSectionStatus.CONFIRMED, initial.plusHours(1)))
+                .isInstanceOf(BusinessException.class);
+
+        assertThat(section.getLastActivityAt()).isEqualTo(initial);
     }
 
     @Test
