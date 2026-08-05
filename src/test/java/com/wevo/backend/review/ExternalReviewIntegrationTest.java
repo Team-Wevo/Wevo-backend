@@ -195,16 +195,22 @@ class ExternalReviewIntegrationTest {
         String token = objectMapper.readTree(issued.getResponse().getContentAsString())
                 .path("data").path("token").asText();
 
-        // 본문 v2 저장 (+ 본문 저장 플로우가 호출하는 링크 만료 처리)
-        persistDraft(section, "수정된 본문 v2", 2, owner);
-        reviewLinkService.markSectionLinksOutdated(section.getId());
-
-        // 열람은 여전히 발급 시점(v1) 스냅샷 — 링크 상태만 OUTDATED 로 안내
+        // 만료 전 열람은 발급 시점(v1) 스냅샷을 보여준다
         mockMvc.perform(get("/public/review-links/{token}", token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content").value(DRAFT_CONTENT))
                 .andExpect(jsonPath("$.data.contentVersion").value(1))
-                .andExpect(jsonPath("$.data.linkStatus").value("OUTDATED"));
+                .andExpect(jsonPath("$.data.linkStatus").value("ACTIVE"));
+
+        // 본문 v2 저장 (+ 본문 저장 플로우가 호출하는 링크 만료 처리)
+        persistDraft(section, "수정된 본문 v2", 2, owner);
+        reviewLinkService.markSectionLinksOutdated(section.getId());
+
+        // 만료된 뒤에는 스냅샷도 보여주지 않는다 — 열람부터 R004 로 거절
+        mockMvc.perform(get("/public/review-links/{token}", token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R004"))
+                .andExpect(jsonPath("$.data").doesNotExist());
 
         // 새 본문(v2)의 외부 검토는 재발급으로만 — 새 링크는 v2 에 고정된다
         mockMvc.perform(post("/api/project-sections/{id}/review-links", section.getId())
@@ -454,6 +460,11 @@ class ExternalReviewIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("REVIEW_LINK_CLOSED"));
         assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.CLOSED);
+
+        // 열람도 같은 사유로 막힌다 — 본문을 보여준 뒤 제출만 거절하지 않는다.
+        mockMvc.perform(get("/public/review-links/{token}", token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R005"));
 
         submitAsReviewer(token, "CLEAR", "browser-A")
                 .andExpect(status().isConflict())
@@ -966,10 +977,11 @@ class ExternalReviewIntegrationTest {
         expireBy(linkId, LocalDate.now(KST).minusDays(1));
         assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.ACTIVE);
 
+        // 열람부터 막힌다 — 스냅샷 본문을 보여주지 않는다
         mockMvc.perform(get("/public/review-links/{token}", token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.linkStatus").value("EXPIRED"))
-                .andExpect(jsonPath("$.data.content").value(DRAFT_CONTENT));
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R013"))
+                .andExpect(jsonPath("$.data").doesNotExist());
 
         submitAsReviewer(token, "CLEAR", "browser-too-late")
                 .andExpect(status().isConflict())
@@ -1129,8 +1141,8 @@ class ExternalReviewIntegrationTest {
         // 외부 검토자에게는 "본문이 바뀌었다"로 안내해야 한다 — EXPIRED 로 뒤바뀌면 안 된다.
         assertThat(statusOf(linkId)).isEqualTo(ReviewLinkStatus.OUTDATED);
         mockMvc.perform(get("/public/review-links/{token}", token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.linkStatus").value("OUTDATED"));
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R004"));
         submitAsReviewer(token, "CLEAR", "browser-outdated-then-pastdue")
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("R004"));
@@ -1139,7 +1151,62 @@ class ExternalReviewIntegrationTest {
                 .andExpect(jsonPath("$.code").value("R012"));
     }
 
+    @Test
+    @DisplayName("활성이 아닌 링크는 열람과 제출이 같은 코드로 거절된다 — 세 종결 사유 전부")
+    void viewAndSubmitRejectWithTheSameCode() throws Exception {
+        User owner = persistUser("owner-same-code@wevo.com", "팀장");
+        // 섹션당 ACTIVE 링크는 1개라, 세 종결 사유를 각각 다른 섹션에서 만든다.
+        // (유효 기간 시나리오의 em.clear() 전에 시드를 모두 끝내둔다)
+        Long outdatedSectionId = persistOwnedSectionWithDraft(owner);
+        Long expiredSectionId = persistOwnedSectionWithDraft(owner);
+        Long closedSectionId = persistOwnedSectionWithDraft(owner);
+
+        // 1) 본문 수정으로 만료 → R004
+        String outdatedToken = issueLink(outdatedSectionId, owner);
+        reviewLinkService.markSectionLinksOutdated(outdatedSectionId);
+        assertViewAndSubmitRejectWith(outdatedToken, "R004", "browser-same-code-outdated");
+
+        // 2) 유효 기간 경과 → R013 (저장된 상태는 아직 ACTIVE — 날짜로만 판정되는 경로)
+        String expiredToken = issueLinkExpiringOn(
+                expiredSectionId, owner, LocalDate.now(KST).plusDays(1));
+        Long expiredLinkId = linkId(expiredToken);
+        expireBy(expiredLinkId, LocalDate.now(KST).minusDays(1));
+        assertThat(statusOf(expiredLinkId)).isEqualTo(ReviewLinkStatus.ACTIVE);
+        assertViewAndSubmitRejectWith(expiredToken, "R013", "browser-same-code-expired");
+
+        // 3) 팀장의 수동 종료 → R005
+        String closedToken = issueLink(closedSectionId, owner);
+        closeLink(linkId(closedToken), owner, "CLOSED").andExpect(status().isOk());
+        assertViewAndSubmitRejectWith(closedToken, "R005", "browser-same-code-closed");
+    }
+
     // --- 시드 헬퍼 ---
+
+    /**
+     * 열람과 제출이 <b>같은 실패 코드</b>로 거절되는지 확인한다.
+     *
+     * <p>두 경로가 갈리면 검토자가 본문을 다 읽은 뒤에야 제출을 거절당한다. 열람 응답에는 스냅샷
+     * 본문이 실리지 않아야 한다({@code data} 생략).
+     */
+    private void assertViewAndSubmitRejectWith(String token, String expectedCode,
+                                               String reviewerLabel) throws Exception {
+        mockMvc.perform(get("/public/review-links/{token}", token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(expectedCode))
+                .andExpect(jsonPath("$.data").doesNotExist());
+
+        submitAsReviewer(token, "CLEAR", reviewerLabel)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(expectedCode));
+    }
+
+    /** 소유자가 OWNER 인 프로젝트·섹션·초안을 한 벌 만들고 섹션 ID 를 돌려준다. */
+    private Long persistOwnedSectionWithDraft(User owner) {
+        ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
+        persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
+        em.flush();
+        return section.getId();
+    }
 
     /** 유효 기간을 지정해 링크를 발급하고 원문 토큰을 돌려준다. */
     private String issueLinkExpiringOn(Long sectionId, User owner, LocalDate expiresOn)

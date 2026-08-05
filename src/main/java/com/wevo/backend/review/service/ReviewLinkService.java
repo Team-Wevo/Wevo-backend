@@ -44,15 +44,17 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li><b>브라우저당 1회</b> — 익명 검토자 키 + 링크 유니크 제약으로 중복 제출을 막는다.</li>
  *   <li><b>링크당 20개 상한</b> — 제출 시 링크 행을 락으로 잡고 count 를 검사해 동시 초과를 막는다.</li>
- *   <li><b>버전 만료·비활성화</b> — OUTDATED/CLOSED 링크는 제출을 거부한다.</li>
- *   <li><b>유효 기간</b> — 발급 시 지정한 마지막 날(KST)이 지나면 EXPIRED 로 제출을 거부한다.</li>
+ *   <li><b>버전 만료·비활성화</b> — OUTDATED/CLOSED 링크는 열람·제출을 거부한다.</li>
+ *   <li><b>유효 기간</b> — 발급 시 지정한 마지막 날(KST)이 지나면 EXPIRED 로 열람·제출을 거부한다.</li>
  *   <li><b>토큰 해시 저장</b> — 원문 대신 해시만 저장하고 요청 토큰을 해시해 비교한다.</li>
  * </ul>
  *
  * <h2>유효 기간 판정 (배치 없음)</h2>
  * <p>기간 만료 판정 기준은 "지금 날짜 vs {@code expiresOn}"({@link ReviewLink#isPastDue})이고, 저장된 {@code status} 는 링크를
  * 만지는 시점(재발급·본문 수정·수동 종료)에 {@link ReviewLink#expireIfPastDue} 로 따라온다.
- * 정리가 늦어도 제출·조회는 날짜로 판정하므로, 기간이 지난 링크가 제출을 받는 구간은 없다.</p>
+ * 정리가 늦어도 열람·제출·조회는 날짜로 판정하므로, 기간이 지난 링크가 열리거나 제출을 받는
+ * 구간은 없다. 열람과 제출은 {@code requireUsable} 이라는 <b>같은 검사</b>를 지나므로
+ * 같은 링크·같은 사유에는 항상 같은 실패 코드가 나간다.</p>
  *
  * <p>팀장(OWNER) 권한 검증은 SectionAccessGuard 에 위임한다. 단, 링크 ID 를 진입점으로 받는
  * 경로({@link #updateStatus})는 섹션이 아니라 <b>링크</b>의 존재를 숨겨야 하므로
@@ -177,16 +179,24 @@ public class ReviewLinkService {
     /**
      * 토큰으로 섹션 초안 스냅샷을 읽기 전용으로 조회한다.
      *
+     * <p><b>살아 있는 링크만 열람할 수 있다</b> — 만료·종료된 링크는 제출과 <b>동일한 검사</b>
+     * ({@link #requireUsable})로 거절한다. 본문 스냅샷은 팀 내부 문서이므로, 제출을 받지 않는
+     * 링크로는 내용도 보여주지 않는다. 검토자는 열람 단계에서 사유({@code R004}/{@code R013}/
+     * {@code R005})를 받아 바로 안내 화면을 볼 수 있다.
+     *
      * <p>이미 제출한 브라우저면 {@code alreadySubmitted=true} 로 내려, 프론트가
      * "이미 검토를 제출했어요." 화면을 보여줄 수 있게 한다.
      */
     public ExternalReviewViewResponse getExternalView(String token, String anonymousReviewerId) {
         ReviewLink link = findLink(token);
+        // 조회는 쓰기가 없는 경로라 상태를 정리하지 않고, 날짜 기준으로만 판정한다.
+        LocalDate today = LocalDate.now(KST);
+        requireUsable(link, today);
+
         boolean alreadySubmitted = anonymousReviewerId != null
                 && reviewSubmissionRepository
                 .existsByReviewLink_IdAndAnonymousReviewerId(link.getId(), anonymousReviewerId);
-        // 조회는 쓰기가 없는 경로라 상태를 정리하지 않고, 날짜 기준으로 판정한 상태를 그대로 내려준다.
-        return ExternalReviewViewResponse.of(link, alreadySubmitted, LocalDate.now(KST));
+        return ExternalReviewViewResponse.of(link, alreadySubmitted, today);
     }
 
     /**
@@ -199,7 +209,7 @@ public class ReviewLinkService {
     public ReviewSubmissionResponse submitExternalReview(String token, String anonymousReviewerId,
                                                          ExternalReviewSubmitRequest request) {
         ReviewLink link = findLinkForUpdate(token);
-        requireSubmittable(link, LocalDate.now(KST));
+        requireUsable(link, LocalDate.now(KST));
 
         if (reviewSubmissionRepository
                 .existsByReviewLink_IdAndAnonymousReviewerId(link.getId(), anonymousReviewerId)) {
@@ -313,18 +323,27 @@ public class ReviewLinkService {
     }
 
     /**
-     * 제출 가능한 링크인지 검사한다. 거절 사유(본문 수정 만료·유효 기간 만료·종료)는 외부 검토자에게
-     * 보여줄 문구가 각각 다르므로 코드를 나눠 던진다.
+     * <b>외부 검토자가 이 링크를 쓸 수 있는지</b> 검사한다. 열람({@link #getExternalView})과
+     * 제출({@link #submitExternalReview})이 공유하는 단일 관문이다.
      *
-     * <p>유효 기간은 저장된 상태가 아직 {@code ACTIVE} 여도 날짜로 판정한다
-     * ({@link ReviewLink#statusAsOf}) — 상태 정리가 늦어도 기간이 지난 링크는 제출을 받지 않는다.
+     * <p>두 경로가 같은 검사를 쓰는 이유는 <b>같은 링크에 같은 사유로 접근했을 때 항상 같은 코드가
+     * 나가야</b> 하기 때문이다. 검사가 갈리면 "열람은 되는데 제출만 막히는" 상태가 생겨,
+     * 검토자가 본문을 다 읽고 나서야 거절당한다.
+     *
+     * <p>거절 사유(본문 수정 만료·유효 기간 만료·종료)는 검토자에게 보여줄 안내 문구가 각각 다르므로
+     * 코드를 나눠 던진다. 유효 기간은 저장된 상태가 아직 {@code ACTIVE} 여도 날짜로 판정한다
+     * ({@link ReviewLink#statusAsOf}) — 상태 정리가 늦어도 기간이 지난 링크는 열람·제출을 받지 않는다.
+     *
+     * @throws BusinessException 본문 수정 만료면 {@link ErrorCode#REVIEW_LINK_OUTDATED}({@code R004}),
+     *                           유효 기간 만료면 {@link ErrorCode#REVIEW_LINK_EXPIRED}({@code R013}),
+     *                           종료된 링크면 {@link ErrorCode#REVIEW_LINK_ALREADY_CLOSED}({@code R005})
      */
-    private void requireSubmittable(ReviewLink link, LocalDate today) {
+    private void requireUsable(ReviewLink link, LocalDate today) {
         switch (link.statusAsOf(today)) {
             case OUTDATED -> throw new BusinessException(ErrorCode.REVIEW_LINK_OUTDATED);
             case EXPIRED -> throw new BusinessException(ErrorCode.REVIEW_LINK_EXPIRED);
             case CLOSED -> throw new BusinessException(ErrorCode.REVIEW_LINK_ALREADY_CLOSED);
-            default -> { } //ACTIVE -> 제출 가능
+            default -> { } //ACTIVE -> 열람·제출 가능
         }
     }
 
