@@ -10,6 +10,8 @@ import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionStatusHistory;
 import com.wevo.backend.section.repository.ProjectSectionRepository;
 import com.wevo.backend.section.repository.SectionStatusHistoryRepository;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class SectionStatusService {
+
+    /** 시간 값은 배포 서버 시간대와 무관하게 KST로 고정한다. (CLAUDE.md §5.4) */
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final ProjectSectionRepository projectSectionRepository;
     private final ProjectAccessGuard projectAccessGuard;
@@ -108,7 +113,7 @@ public class SectionStatusService {
         ProjectSection section = requireSection(sectionId);
         ProjectMember actor = requireOwner(section, actorUserId);
         ProjectSectionStatus from = section.getStatus();
-        section.changeStatus(ProjectSectionStatus.DRAFTING);
+        section.changeStatus(ProjectSectionStatus.DRAFTING, LocalDateTime.now(KST));
         sectionStatusHistoryRepository.save(SectionStatusHistory.builder()
                 .projectSection(section)
                 .actor(actor.getUser())
@@ -135,7 +140,7 @@ public class SectionStatusService {
         ProjectMember actor = requireOwner(section, actorUserId);
 
         ProjectSectionStatus from = section.getStatus();
-        section.changeStatus(ProjectSectionStatus.CONFIRMED); // REVIEWING이 아니면 ERROR
+        section.changeStatus(ProjectSectionStatus.CONFIRMED, LocalDateTime.now(KST)); // REVIEWING이 아니면 ERROR
         section.recordConfirmedVersion(contentVersion);
         section.clearDrift(); // 드리프트로 재검토가 요구됐던 섹션이 재확정되면 배지 해소 (§6.4)
 
@@ -218,7 +223,7 @@ public class SectionStatusService {
                                            ProjectSectionStatus target, String eventType,
                                            Integer contentVersion) {
         ProjectSectionStatus from = section.getStatus();
-        section.changeStatus(target); // 허용되지 않은 전이면 INVALID_SECTION_STATUS_TRANSITION
+        section.changeStatus(target, LocalDateTime.now(KST)); // 허용되지 않은 전이면 INVALID_SECTION_STATUS_TRANSITION
 
         // version(본문 버전)은 초안 이후 전이에서만 의미가 있다. COLLECTING→SYNTHESIZING 시점엔
         // 초안이 없어 null이 정상이며, 초안 단계 전이(DRAFTING→…) 구현 시 contentVersion을 채운다.

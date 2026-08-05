@@ -140,7 +140,7 @@ class IssueAnswerIntegrationTest {
     void answerAfterDraft_marksSynthesisStaleAndKeepsDraft() {
         Issue gap = gap(succeededSet("초안 생성 세트"), 1);
         evidenceRequest(gap);
-        section.changeStatus(ProjectSectionStatus.DRAFTING);
+        section.changeStatus(ProjectSectionStatus.DRAFTING, LocalDateTime.now());
         projectSectionRepository.save(section);
         SectionDraft draft = sectionDraftRepository.save(SectionDraft.builder()
                 .projectSection(section)

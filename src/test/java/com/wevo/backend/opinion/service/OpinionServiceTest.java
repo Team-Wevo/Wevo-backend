@@ -418,7 +418,7 @@ class OpinionServiceTest {
         given(opinionRepository.existsByProjectSection_IdAndStatus(SECTION_ID, OpinionStatus.SUBMITTED))
                 .willReturn(true);
         willAnswer(invocation -> {
-            section.changeStatus(ProjectSectionStatus.SYNTHESIZING);
+            section.changeStatus(ProjectSectionStatus.SYNTHESIZING, LocalDateTime.now());
             return null;
         }).given(sectionStatusService).markSynthesizing(SECTION_ID, USER_ID);
 
@@ -463,7 +463,7 @@ class OpinionServiceTest {
         ProjectSection section = section(ProjectSectionStatus.DRAFTING);
         given(sectionAccessGuard.requireOwnedSectionForUpdate(SECTION_ID, USER_ID)).willReturn(section);
         given(sectionStatusService.markCollecting(SECTION_ID, USER_ID)).willAnswer(invocation -> {
-            section.changeStatus(ProjectSectionStatus.COLLECTING);
+            section.changeStatus(ProjectSectionStatus.COLLECTING, LocalDateTime.now());
             section.markSynthesisStale();
             return section;
         });

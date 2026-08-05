@@ -15,6 +15,8 @@ import com.wevo.backend.section.dto.response.SectionDraftReadResponse.ActiveEdit
 import com.wevo.backend.section.dto.response.SectionDraftSaveResponse;
 import com.wevo.backend.section.repository.SectionDraftRepository;
 import com.wevo.backend.user.service.UserService;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -44,6 +46,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 public class SectionDraftService {
+
+    /** 시간 값은 배포 서버 시간대와 무관하게 KST로 고정한다. (CLAUDE.md §5.4) */
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final SectionAccessGuard sectionAccessGuard;
     private final SectionDraftRepository sectionDraftRepository;
@@ -175,6 +180,10 @@ public class SectionDraftService {
         } catch (DataIntegrityViolationException e) {
             throw new BusinessException(ErrorCode.CONFLICT);
         }
+
+        // 사람이 본문을 고친 시점이므로 목록 카드가 가리키는 "마지막 작업 지점"을 여기로 옮긴다.
+        // (API_SPEC §3.2.2) 본문이 그대로인 멱등 저장은 위에서 이미 반환됐으므로 여기까지 오지 않는다.
+        section.recordActivity(LocalDateTime.now(KST));
 
         // 본문이 바뀌었으므로 이 섹션의 기존 검토 결과를 같은 트랜잭션에서 모두 만료 처리한다 (§5.2.3).
         // AI 사전 검토(aiCheckStatus)는 성공한 검토가 있을 때(CURRENT)만 OUTDATED로 내려가며,
