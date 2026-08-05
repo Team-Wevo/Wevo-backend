@@ -13,6 +13,14 @@ public class AiJobIdempotencyKeyGenerator {
     private static final String CANONICAL_VERSION = "wevo-ai-job-idempotency:v1";
 
     public String generate(AiJobIdempotencyInput input) {
+        return generate(input, true);
+    }
+
+    public String generateLegacy(AiJobIdempotencyInput input) {
+        return generate(input, false);
+    }
+
+    private String generate(AiJobIdempotencyInput input, boolean includeReasoning) {
         if (input == null) {
             throw new IllegalArgumentException("idempotency input은 필수입니다.");
         }
@@ -28,6 +36,9 @@ public class AiJobIdempotencyKeyGenerator {
         update(digest, input.schemaVersion());
         update(digest, input.modelId());
         update(digest, input.maxOutputTokens().toString());
+        if (includeReasoning) {
+            update(digest, input.reasoningEffort());
+        }
         return HexFormat.of().formatHex(digest.digest());
     }
 

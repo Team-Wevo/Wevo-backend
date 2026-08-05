@@ -36,11 +36,18 @@ public class AuthorIntentPromptFactory {
     public StructuredAiProviderRequest<AuthorIntentExtractionOutput> providerRequest(
             AuthorIntentContext context
     ) {
+        return providerRequest(context, PROMPT_ID.trackingValue());
+    }
+
+    public StructuredAiProviderRequest<AuthorIntentExtractionOutput> providerRequest(
+            AuthorIntentContext context,
+            String promptVersion
+    ) {
         if (context == null) {
             throw new IllegalArgumentException("작성자 의도 context는 필수입니다.");
         }
         RenderedPrompt prompt = promptRenderer.render(
-                promptRegistry.get(PROMPT_ID),
+                promptRegistry.get(PROMPT_ID, promptVersion),
                 Map.of("sectionData", serialize(context)));
         return new StructuredAiProviderRequest<>(
                 AiFeature.AUTHOR_INTENT_EXTRACTION,

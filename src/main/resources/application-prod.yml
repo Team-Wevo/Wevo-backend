@@ -33,6 +33,63 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 30s
 
+wevo:
+  ai:
+    # 운영에서는 누락과 의도적 비활성화(AI_PROVIDER=none)를 구분한다.
+    provider: ${AI_PROVIDER}
+    guardrails:
+      enabled: ${AI_GUARDRAIL_ENABLED:false}
+      policy-version: ${AI_GUARDRAIL_POLICY_VERSION:ai-guardrail-2026-08-02-v1}
+      user:
+        per-minute: ${AI_QUOTA_USER_PER_MINUTE:6}
+        per-day: ${AI_QUOTA_USER_PER_DAY:100}
+      project:
+        per-minute: ${AI_QUOTA_PROJECT_PER_MINUTE:20}
+        per-day: ${AI_QUOTA_PROJECT_PER_DAY:500}
+      features:
+        issue-detection:
+          per-minute: ${AI_QUOTA_ISSUE_DETECTION_PER_MINUTE:200}
+          per-day: ${AI_QUOTA_ISSUE_DETECTION_PER_DAY:100000}
+          max-provider-requests: ${AI_ISSUE_DETECTION_MAX_PROVIDER_REQUESTS:10}
+        opinion-synthesis:
+          per-minute: ${AI_QUOTA_OPINION_SYNTHESIS_PER_MINUTE:200}
+          per-day: ${AI_QUOTA_OPINION_SYNTHESIS_PER_DAY:100000}
+          max-provider-requests: ${AI_OPINION_SYNTHESIS_MAX_PROVIDER_REQUESTS:11}
+        draft-generation:
+          per-minute: ${AI_QUOTA_DRAFT_GENERATION_PER_MINUTE:200}
+          per-day: ${AI_QUOTA_DRAFT_GENERATION_PER_DAY:100000}
+          max-provider-requests: ${AI_DRAFT_GENERATION_MAX_PROVIDER_REQUESTS:1}
+        draft-review:
+          per-minute: ${AI_QUOTA_DRAFT_REVIEW_PER_MINUTE:200}
+          per-day: ${AI_QUOTA_DRAFT_REVIEW_PER_DAY:100000}
+          max-provider-requests: ${AI_DRAFT_REVIEW_MAX_PROVIDER_REQUESTS:1}
+        author-intent-extraction:
+          per-minute: ${AI_QUOTA_AUTHOR_INTENT_PER_MINUTE:200}
+          per-day: ${AI_QUOTA_AUTHOR_INTENT_PER_DAY:100000}
+          max-provider-requests: ${AI_AUTHOR_INTENT_MAX_PROVIDER_REQUESTS:1}
+        review-intent-comparison:
+          per-minute: ${AI_QUOTA_REVIEW_INTENT_PER_MINUTE:200}
+          per-day: ${AI_QUOTA_REVIEW_INTENT_PER_DAY:100000}
+          max-provider-requests: ${AI_REVIEW_INTENT_MAX_PROVIDER_REQUESTS:1}
+        opinion-clustering:
+          per-minute: ${AI_QUOTA_OPINION_CLUSTERING_PER_MINUTE:200}
+          per-day: ${AI_QUOTA_OPINION_CLUSTERING_PER_DAY:100000}
+          max-provider-requests: ${AI_OPINION_CLUSTERING_MAX_PROVIDER_REQUESTS:11}
+        project-flow-review:
+          per-minute: ${AI_QUOTA_PROJECT_FLOW_REVIEW_PER_MINUTE:200}
+          per-day: ${AI_QUOTA_PROJECT_FLOW_REVIEW_PER_DAY:100000}
+          max-provider-requests: ${AI_PROJECT_FLOW_REVIEW_MAX_PROVIDER_REQUESTS:36}
+      cost:
+        daily-budget-usd: ${AI_PROJECT_DAILY_COST_BUDGET_USD:50.000000}
+        monthly-budget-usd: ${AI_PROJECT_MONTHLY_COST_BUDGET_USD:1000.000000}
+        max-estimated-job-cost-usd: ${AI_MAX_ESTIMATED_JOB_COST_USD:10.000000}
+    operations:
+      enabled: ${AI_OPERATIONS_ENABLED:true}
+      circuit-breaker:
+        failure-threshold: ${AI_CIRCUIT_FAILURE_THRESHOLD:5}
+        open-duration: ${AI_CIRCUIT_OPEN_DURATION:30s}
+        half-open-max-calls: ${AI_CIRCUIT_HALF_OPEN_MAX_CALLS:1}
+
 springdoc:
   api-docs:
     enabled: false
@@ -51,11 +108,15 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
   endpoint:
     health:
       show-components: never
       show-details: never
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 jwt:
   secret: ${JWT_SECRET}
@@ -74,11 +135,6 @@ app:
       - ${FRONTEND_ORIGIN}
   invite:
     base-url: ${INVITE_BASE_URL}
-
-wevo:
-  ai:
-    # 운영에서는 누락과 의도적 비활성화(AI_PROVIDER=none)를 구분한다.
-    provider: ${AI_PROVIDER}
 
 logging:
   level:

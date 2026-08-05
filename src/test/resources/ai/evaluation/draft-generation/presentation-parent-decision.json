@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "draft-generation/presentation-parent-decision",
+    "feature": "DRAFT_GENERATION",
+    "description": "발표 자료 형식에서 상위 확정본과 해소된 결정을 반영하는 정상 사례",
+    "language": "ko",
+    "tags": ["boundary", "presentation", "conflict", "needs-decision", "parent-confirmed", "invalid-enum-trap"],
+    "datasetVersion": "draft-generation-v1",
+    "kind": "QUALITY",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PRESENTATION",
+    "projectContext": "가상 교내 축제 앱의 도입 효과를 발표한다.",
+    "sectionContext": "핵심 효과를 한 장의 발표 자료로 작성한다.",
+    "labels": ["짧은 문장", "상위 확정본 준수", "결정 반영"],
+    "opinions": [
+      {"id": "opinion-map", "content": "행사장 지도를 앱에서 제공하자.", "submitted": true, "deleted": false},
+      {"id": "opinion-alert", "content": "일정 변경 알림을 제공하자.", "submitted": true, "deleted": false}
+    ],
+    "parentConfirmedContent": "대상 사용자는 교내 축제 방문자로 확정했다."
+  },
+  "expected": {
+    "requiredFacts": ["행사장 지도", "일정 변경 알림", "축제 방문자"],
+    "expectedIssues": [],
+    "expectedEvidenceIds": ["opinion-map", "opinion-alert"],
+    "forbiddenClaims": ["앱 사용자가 10만 명이다"],
+    "goldReviewIssueIds": []
+  }
+}

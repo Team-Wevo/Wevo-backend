@@ -69,14 +69,24 @@ wevo:
       reasoning-effort: ${OPENAI_API_REASONING_EFFORT:medium}
       # 2026-07-31 공식 모델 snapshot. Java enum으로 고정하지 않는다.
       model-context-limit: ${OPENAI_API_CONTEXT_LIMIT:1050000}
+      prompt-cache:
+        # false이면 OpenAI의 자동 implicit baseline만 사용한다.
+        optimization-enabled: ${OPENAI_PROMPT_CACHE_OPTIMIZATION_ENABLED:false}
+        # comma-separated 기능 key. 측정·승인된 기능만 explicit breakpoint를 사용한다.
+        explicit-features: ${OPENAI_PROMPT_CACHE_EXPLICIT_FEATURES:}
+        explicit-models: ${OPENAI_PROMPT_CACHE_EXPLICIT_MODELS:gpt-5.6-luna}
+        ttl: ${OPENAI_PROMPT_CACHE_TTL:30m}
     structured-output:
       max-correction-retries: ${AI_STRUCTURED_OUTPUT_MAX_CORRECTION_RETRIES:2}
+    guardrails:
+      # prod에서 AI provider를 켜면 startup validator가 true와 pricing snapshot을 강제한다.
+      enabled: false
     jobs:
       max-executions-per-key: ${AI_JOB_MAX_EXECUTIONS_PER_KEY:3}
     pricing:
       version: ${AI_PRICING_VERSION:openai-2026-07-31-standard}
       models:
-        gpt-5.6-luna:
+        "[gpt-5.6-luna]":
           input-per-million-tokens: 0.20
           cache-read-per-million-tokens: 0.02
           cache-write-per-million-tokens: 0.25
@@ -85,6 +95,16 @@ wevo:
       recovery-enabled: true
       recovery-interval: 60s
       orphan-grace: 30s
+    operations:
+      # 전역/기능 kill switch. false이면 새 job 생성과 provider 실행만 차단한다.
+      enabled: ${AI_OPERATIONS_ENABLED:true}
+      circuit-breaker:
+        failure-threshold: ${AI_CIRCUIT_FAILURE_THRESHOLD:5}
+        open-duration: ${AI_CIRCUIT_OPEN_DURATION:30s}
+        half-open-max-calls: ${AI_CIRCUIT_HALF_OPEN_MAX_CALLS:1}
+    rollout:
+      # 조합과 route가 모두 검증되기 전에는 baseline 설정을 그대로 사용한다.
+      enabled: false
 
 # JWT 유효 시간 (비밀 키(jwt.secret)는 프로파일별 설정에서 주입)
 jwt:

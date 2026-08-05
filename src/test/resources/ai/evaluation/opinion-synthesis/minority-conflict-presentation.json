@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "opinion-synthesis/minority-conflict-presentation",
+    "feature": "OPINION_SYNTHESIS",
+    "description": "다수안과 소수안을 임의로 병합하지 않고 충돌로 유지하는 발표 자료 사례",
+    "language": "ko",
+    "tags": ["boundary", "conflict", "minority", "neutrality", "invalid-enum-trap"],
+    "datasetVersion": "opinion-synthesis-v1",
+    "kind": "QUALITY",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PRESENTATION",
+    "projectContext": "가상 동아리 홍보 발표를 준비한다.",
+    "sectionContext": "홍보 채널 선택에 의견 차이가 있다.",
+    "labels": ["다수 의견", "소수 의견", "미해결 쟁점"],
+    "opinions": [
+      {"id": "opinion-video-a", "content": "짧은 영상 중심으로 홍보하자.", "submitted": true, "deleted": false},
+      {"id": "opinion-video-b", "content": "영상 중심 홍보에 동의한다.", "submitted": true, "deleted": false},
+      {"id": "opinion-poster", "content": "접근성을 위해 인쇄 포스터를 주 채널로 써야 한다.", "submitted": true, "deleted": false}
+    ],
+    "parentConfirmedContent": null
+  },
+  "expected": {
+    "requiredFacts": ["영상", "포스터"],
+    "expectedIssues": [
+      {"type": "CONFLICT", "evidenceIds": ["opinion-video-a", "opinion-poster"]}
+    ],
+    "expectedEvidenceIds": ["opinion-video-a", "opinion-video-b", "opinion-poster"],
+    "forbiddenClaims": ["포스터 의견은 철회되었다"],
+    "goldReviewIssueIds": []
+  }
+}

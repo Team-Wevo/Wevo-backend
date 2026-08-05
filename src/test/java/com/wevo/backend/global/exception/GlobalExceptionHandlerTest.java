@@ -1,6 +1,7 @@
 package com.wevo.backend.global.exception;
 
 import com.wevo.backend.global.response.FieldError;
+import com.wevo.backend.ai.exception.AiGuardrailExceededException;
 import jakarta.validation.constraints.Min;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class GlobalExceptionHandlerTest {
@@ -42,6 +44,15 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.errors").doesNotExist())
                 .andExpect(jsonPath("$.timestamp").exists());
+    }
+
+    @Test
+    void quotaExceededReturnsProductCodeAndSafeRetryAfterHeader() throws Exception {
+        mockMvc.perform(get("/test/quota-exceeded"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "30"))
+                .andExpect(jsonPath("$.code").value("AI025"))
+                .andExpect(jsonPath("$.errors").doesNotExist());
     }
 
     @Test
@@ -131,6 +142,11 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/test/business-exception")
         void throwBusinessException() {
             throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND);
+        }
+
+        @GetMapping("/test/quota-exceeded")
+        void throwQuotaExceeded() {
+            throw new AiGuardrailExceededException(ErrorCode.AI_REQUEST_QUOTA_EXCEEDED, 30);
         }
 
         @GetMapping("/test/business-exception-with-field-errors")

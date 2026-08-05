@@ -120,6 +120,12 @@ class AiJobTest {
         assertThat(retry.getRetryOf()).isSameAs(previous);
         assertThat(retry.getIdempotencyKey()).isEqualTo(previous.getIdempotencyKey());
         assertThat(retry.getInputSnapshotHash()).isEqualTo(previous.getInputSnapshotHash());
+        assertThat(retry.getRolloutId()).isEqualTo(previous.getRolloutId());
+        assertThat(retry.getReasoningEffort()).isEqualTo(previous.getReasoningEffort());
+        assertThat(retry.getPricingVersion()).isEqualTo(previous.getPricingVersion());
+        assertThat(retry.getPolicyVersion()).isEqualTo(previous.getPolicyVersion());
+        assertThat(retry.getModelId()).isEqualTo(previous.getModelId());
+        assertThat(retry.getPromptVersion()).isEqualTo(previous.getPromptVersion());
         assertThat(retry.getRequestedBy()).isSameAs(retryRequester);
     }
 
@@ -156,6 +162,7 @@ class AiJobTest {
         return AiJob.queue(
                 UUID.randomUUID(), project, null, project.getOwner(), AiFeature.DRAFT_GENERATION,
                 SNAPSHOT, "source:v1", "prompt:v1", "schema:v1", "model", 100,
+                "candidate-5pct", "medium", "pricing:v1", "policy:v1",
                 KEY, QUEUED_AT
         );
     }

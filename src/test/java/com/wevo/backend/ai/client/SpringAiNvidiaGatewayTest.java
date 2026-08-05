@@ -276,6 +276,8 @@ class SpringAiNvidiaGatewayTest {
 
         assertThat(calls).hasValue(3);
         assertThat(response.attemptCount()).isEqualTo(3);
+        assertThat(response.providerRetryCount()).isZero();
+        assertThat(response.correctionRetryCount()).isEqualTo(2);
         assertThat(response.usageMetadata().inputTokens()).isEqualTo(15L);
         assertThat(response.usageMetadata().outputTokens()).isEqualTo(6L);
         assertThat(correctedPrompt.get().getInstructions().get(1).getText())

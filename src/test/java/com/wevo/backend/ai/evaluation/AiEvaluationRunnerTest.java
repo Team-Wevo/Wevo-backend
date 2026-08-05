@@ -45,6 +45,66 @@ class AiEvaluationRunnerTest {
         ), success(1, 1L, "0.01"), 1);
     }
 
+    @Test
+    void reservesWorstCaseRequestsAndOutputTokensBeforeStartingNextFixture() {
+        AiEvaluationBudget budget = new AiEvaluationBudget(
+                10,
+                5,
+                3,
+                10,
+                6,
+                Duration.ofSeconds(1),
+                null,
+                null
+        );
+        AtomicInteger calls = new AtomicInteger();
+
+        List<AiEvaluationSample> samples = new AiEvaluationRunner(
+                alternatingNanoTime(1)
+        ).run(fixtures, fixture -> {
+            calls.incrementAndGet();
+            return success(3, 6L, "0.001");
+        }, budget);
+
+        assertThat(calls).hasValue(1);
+        assertThat(samples).extracting(AiEvaluationSample::outcome)
+                .containsExactly(
+                        AiEvaluationOutcome.SUCCESS,
+                        AiEvaluationOutcome.BUDGET_EXHAUSTED,
+                        AiEvaluationOutcome.BUDGET_EXHAUSTED
+                );
+    }
+
+    @Test
+    void accumulatesExpectedCostReservationsEvenWhenProviderCostIsUnpriced() {
+        AiEvaluationBudget budget = new AiEvaluationBudget(
+                10,
+                10,
+                1,
+                100,
+                10,
+                Duration.ofSeconds(1),
+                new BigDecimal("0.02"),
+                new BigDecimal("0.01")
+        );
+        AtomicInteger calls = new AtomicInteger();
+
+        List<AiEvaluationSample> samples = new AiEvaluationRunner(
+                alternatingNanoTime(1)
+        ).run(fixtures, fixture -> {
+            calls.incrementAndGet();
+            return AiEvaluationObservation.success(
+                    AiEvaluationCandidate.empty(),
+                    new AiUsageMetadata("openai", "request", "model", 1L, 1L, null, null),
+                    AiCostSnapshot.unpriced("missing-price"),
+                    1
+            );
+        }, budget);
+
+        assertThat(calls).hasValue(2);
+        assertThat(samples.getLast().outcome()).isEqualTo(AiEvaluationOutcome.BUDGET_EXHAUSTED);
+    }
+
     private void assertStopsAfterFirst(
             AiEvaluationBudget budget,
             AiEvaluationObservation observation,

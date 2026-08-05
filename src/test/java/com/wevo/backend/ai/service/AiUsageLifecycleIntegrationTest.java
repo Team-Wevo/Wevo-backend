@@ -32,6 +32,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.UUID;
@@ -61,6 +62,9 @@ class AiUsageLifecycleIntegrationTest {
 
     @Autowired
     private AiOrphanRecoveryService orphanRecoveryService;
+
+    @Autowired
+    private Clock clock;
 
     private User user;
     private Project project;
@@ -237,7 +241,7 @@ class AiUsageLifecycleIntegrationTest {
 
     @Test
     void recoversOnlyRequestsOlderThanFeatureTimeoutAndGrace() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
         AiUsageLog orphan = usageLogRepository.save(AiUsageLog.start(
                 UUID.randomUUID(), project, null, user, AiFeature.DRAFT_GENERATION,
                 "nvidia", "model", "v1", "old", now.minusSeconds(40)

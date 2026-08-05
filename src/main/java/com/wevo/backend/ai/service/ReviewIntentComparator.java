@@ -29,7 +29,7 @@ public class ReviewIntentComparator {
             ReviewIntentComparisonContext context
     ) {
         StructuredAiProviderRequest<ReviewIntentComparisonOutput> request =
-                promptFactory.providerRequest(context);
+                promptFactory.providerRequest(context, job.getPromptVersion());
         AiUsageStartCommand usage = new AiUsageStartCommand(
                 job,
                 job.getProject(),

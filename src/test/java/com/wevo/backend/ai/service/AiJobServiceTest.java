@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.exception.AiProviderUnavailableException;
 import com.wevo.backend.ai.repository.AiJobRepository;
 import com.wevo.backend.global.exception.ErrorCode;
@@ -27,7 +28,9 @@ class AiJobServiceTest {
     @Mock private AiErrorClassifier errorClassifier;
     @Mock private AiErrorMessageSanitizer sanitizer;
     @Mock private AiExecutionAvailabilityGuard availabilityGuard;
+    @Mock private AiGuardrailService guardrailService;
     @Mock private AiJobCreateCommand command;
+    @Mock private AiJob requestedJob;
     @Mock private User requestedBy;
 
     private AiJobService service;
@@ -41,6 +44,7 @@ class AiJobServiceTest {
                 errorClassifier,
                 sanitizer,
                 availabilityGuard,
+                guardrailService,
                 Clock.systemUTC()
         );
     }
@@ -65,6 +69,7 @@ class AiJobServiceTest {
     void unavailableProviderPreventsRetryPersistence() {
         UUID requestId = UUID.randomUUID();
         given(requestedBy.getId()).willReturn(1L);
+        given(repository.findByRequestId(requestId)).willReturn(Optional.of(requestedJob));
         org.mockito.Mockito.doThrow(new AiProviderUnavailableException())
                 .when(availabilityGuard).requireAvailable();
 

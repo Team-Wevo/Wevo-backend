@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "draft-review/no-findings-proposal",
+    "feature": "DRAFT_REVIEW",
+    "description": "명확하고 근거와 템플릿을 충족한 초안을 문제 없음으로 유지하는 정상 사례",
+    "language": "ko",
+    "tags": ["normal", "no-findings", "schema-contract", "empty-list"],
+    "datasetVersion": "draft-review-v1",
+    "kind": "CONTRACT",
+    "synthetic": true
+  },
+  "input": {
+    "outputType": "PROPOSAL",
+    "projectContext": "가상 독서 모임 운영안을 검토한다.",
+    "sectionContext": "독서 모임은 매월 첫째 주 토요일에 열며, 참여자는 모임 전날까지 읽을 책을 선택한다.",
+    "labels": ["일정과 참여 방법을 명확히 설명"],
+    "opinions": [
+      {"id": "opinion-review-source", "content": "검토용 합성 입력", "submitted": true, "deleted": false}
+    ],
+    "parentConfirmedContent": null
+  },
+  "expected": {
+    "requiredFacts": [],
+    "expectedIssues": [],
+    "expectedEvidenceIds": [],
+    "forbiddenClaims": [],
+    "goldReviewIssueIds": []
+  }
+}

@@ -225,6 +225,15 @@ public record AiProperties(
                 throw new IllegalArgumentException(path + ".max-backoff은 initial-backoff 이상이어야 합니다.");
             }
         }
+
+        public ModelOptions withExecutionSnapshot(String modelId, Integer outputTokens) {
+            ModelOptions resolved = new ModelOptions(
+                    modelId, timeout, maxInputTokens, outputTokens, modelContextLimit,
+                    safetyMarginTokens, tokenEstimationPolicy, singleInputOverflowPolicy,
+                    maxRetries, initialBackoff, maxBackoff);
+            resolved.validate("AiJob execution snapshot");
+            return resolved;
+        }
     }
 
     public record FeatureOptions(

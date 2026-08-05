@@ -64,6 +64,14 @@ class DraftGenerationPromptFactoryTest {
                 .contains("&quot;outputType&quot;:&quot;PRESENTATION&quot;");
     }
 
+    @Test
+    void rendersThePromptVersionSnapshottedByRollout() {
+        StructuredAiProviderRequest<DraftGenerationOutput> request =
+                factory.providerRequest(context(OutputType.PROPOSAL), "draft-generation:v1");
+
+        assertThat(request.prompt().trackingVersion()).isEqualTo("draft-generation:v1");
+    }
+
     private DraftGenerationContext context(OutputType outputType) {
         return new DraftGenerationContext(
                 new AiProjectIdentity(1L, "프로젝트", outputType),

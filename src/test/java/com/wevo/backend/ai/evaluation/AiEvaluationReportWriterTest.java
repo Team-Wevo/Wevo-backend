@@ -44,6 +44,8 @@ class AiEvaluationReportWriterTest {
                 "issue-detection-v1",
                 "nvidia",
                 "mistralai/mistral-medium-3.5-128b",
+                "chat-completions",
+                "none",
                 "issue-detection:v1",
                 "issue-detection:v1",
                 Instant.parse("2026-07-18T00:00:00Z"),
@@ -65,7 +67,14 @@ class AiEvaluationReportWriterTest {
                         new ClassPathResource("ai/evaluation/schema/report-v1.schema.json").getInputStream()
                 ));
         assertThat(reportSchema.validate(jsonMapper.readTree(firstJson))).isEmpty();
-        assertThat(markdown).contains("Schema valid rate", "PROVIDER_FAILURE", "UNPRICED");
+        AiEvaluationReport roundTripped = jsonMapper.readValue(firstJson, AiEvaluationReport.class);
+        assertThat(roundTripped.run().endpointType()).isEqualTo("chat-completions");
+        assertThat(roundTripped.humanReview().status())
+                .isEqualTo(AiEvaluationHumanReview.Status.PENDING);
+        assertThat(markdown).contains(
+                "Schema valid rate", "PROVIDER_FAILURE", "UNPRICED",
+                "Endpoint / reasoning effort", "Reasoning tokens", "Human review"
+        );
         assertThat(firstJson + markdown)
                 .doesNotContain(
                         "nvapi-secret-value",
@@ -106,9 +115,45 @@ class AiEvaluationReportWriterTest {
         assertThat(current.baselineDeltas()).containsEntry("schemaValidRate", 1.0d);
     }
 
+    @Test
+    void marksTokenPercentilesComputedFromPartialSamples() {
+        AiEvaluationFixture first = loader.load(
+                "ai/evaluation/issue-detection/all-agreed-proposal.json"
+        );
+        AiEvaluationFixture second = loader.load(
+                "ai/evaluation/issue-detection/direct-conflict-proposal.json"
+        );
+        AiEvaluationSample measured = sample(first, AiEvaluationOutcome.SUCCESS);
+        AiEvaluationSample missingInputTokens = new AiEvaluationSample(
+                second.metadata().id(),
+                AiEvaluationOutcome.SUCCESS,
+                AiEvaluationCandidate.empty(),
+                new AiUsageMetadata("canned", "request", "model", null, 2L, 0L, 0L),
+                AiCostSnapshot.unpriced("none"),
+                1,
+                1,
+                List.of()
+        );
+        AiEvaluationReport report = factory.create(
+                metadata(),
+                List.of(first, second),
+                List.of(measured, missingInputTokens),
+                null,
+                1
+        );
+
+        String markdown = writer.toMarkdown(report);
+
+        assertThat(markdown).contains(
+                "| Input tokens p50 / p95 | 1 / 1 (`PARTIALLY_MEASURED`, 1/2 samples) |",
+                "| Output tokens p50 / p95 | 1 / 2 (`MEASURED`, 2/2 samples) |"
+        );
+    }
+
     private AiEvaluationRunMetadata metadata() {
         return new AiEvaluationRunMetadata(
-                "issue-detection-v1", "canned", "model", "prompt:v1", "schema:v1",
+                "issue-detection-v1", "canned", "model", "chat-completions", "none",
+                "prompt:v1", "schema:v1",
                 Instant.parse("2026-07-18T00:00:00Z"), 0.0d, 128, "abc123"
         );
     }

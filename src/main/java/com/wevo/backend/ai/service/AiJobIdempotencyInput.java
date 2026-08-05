@@ -12,10 +12,30 @@ public record AiJobIdempotencyInput(
         String promptVersion,
         String schemaVersion,
         String modelId,
-        Integer maxOutputTokens
+        Integer maxOutputTokens,
+        String rolloutId,
+        String reasoningEffort,
+        String pricingVersion,
+        String policyVersion
 ) {
 
     private static final Pattern SHA_256_PATTERN = Pattern.compile("[0-9a-f]{64}");
+
+    public AiJobIdempotencyInput(
+            AiFeature feature,
+            Long projectId,
+            Long projectSectionId,
+            String inputSnapshotHash,
+            String sourceVersion,
+            String promptVersion,
+            String schemaVersion,
+            String modelId,
+            Integer maxOutputTokens
+    ) {
+        this(feature, projectId, projectSectionId, inputSnapshotHash, sourceVersion,
+                promptVersion, schemaVersion, modelId, maxOutputTokens,
+                "baseline", "none", "unpriced", "guardrails-disabled");
+    }
 
     public AiJobIdempotencyInput {
         if (feature == null || projectId == null || projectId <= 0) {
@@ -31,6 +51,10 @@ public record AiJobIdempotencyInput(
         requireText(promptVersion, "promptVersion");
         requireText(schemaVersion, "schemaVersion");
         requireText(modelId, "modelId");
+        requireText(rolloutId, "rolloutId");
+        requireText(reasoningEffort, "reasoningEffort");
+        requireText(pricingVersion, "pricingVersion");
+        requireText(policyVersion, "policyVersion");
         if (maxOutputTokens == null || maxOutputTokens <= 0) {
             throw new IllegalArgumentException("maxOutputTokens는 1 이상이어야 합니다.");
         }

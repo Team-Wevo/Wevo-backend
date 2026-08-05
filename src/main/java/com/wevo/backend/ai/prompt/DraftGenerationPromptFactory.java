@@ -40,11 +40,18 @@ public class DraftGenerationPromptFactory {
     public StructuredAiProviderRequest<DraftGenerationOutput> providerRequest(
             DraftGenerationContext context
     ) {
+        return providerRequest(context, PROMPT_ID.trackingValue());
+    }
+
+    public StructuredAiProviderRequest<DraftGenerationOutput> providerRequest(
+            DraftGenerationContext context,
+            String promptVersion
+    ) {
         if (context == null) {
             throw new IllegalArgumentException("초안 생성 context는 필수입니다.");
         }
         RenderedPrompt prompt = promptRenderer.render(
-                promptRegistry.get(PROMPT_ID),
+                promptRegistry.get(PROMPT_ID, promptVersion),
                 Map.of("draftContext", serialize(context))
         );
         Set<Long> opinionIds = context.synthesis().opinionEvidence().stream()

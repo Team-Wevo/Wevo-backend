@@ -6,6 +6,7 @@ record AiProviderRuntimeOptions(
         String reasoningEffort,
         Double temperature,
         boolean nativeStrictSchema,
-        boolean maxCompletionTokens
+        boolean maxCompletionTokens,
+        OpenAiPromptCachePolicy promptCachePolicy
 ) {
 }

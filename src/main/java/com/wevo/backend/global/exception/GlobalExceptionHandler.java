@@ -1,6 +1,7 @@
 package com.wevo.backend.global.exception;
 
 import com.wevo.backend.auth.domain.AuthProvider;
+import com.wevo.backend.ai.exception.AiGuardrailExceededException;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.response.FieldError;
 import org.slf4j.Logger;
@@ -8,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -203,5 +205,16 @@ public class GlobalExceptionHandler {
             current = current.getCause();
         }
         return false;
+    }
+
+    @ExceptionHandler(AiGuardrailExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAiGuardrailExceeded(
+            AiGuardrailExceededException exception
+    ) {
+        ErrorCode errorCode = exception.getErrorCode();
+        return ResponseEntity
+                .status(errorCode.getStatus())
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(exception.getRetryAfterSeconds()))
+                .body(ApiResponse.error(errorCode));
     }
 }

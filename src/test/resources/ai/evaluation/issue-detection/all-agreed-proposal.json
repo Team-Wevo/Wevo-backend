@@ -5,7 +5,7 @@
     "feature": "ISSUE_DETECTION",
     "description": "제안서의 대상과 기간에 모든 의견이 합의된 합성 시나리오",
     "language": "ko",
-    "tags": ["agreement", "proposal"],
+    "tags": ["normal", "agreement", "proposal", "schema-contract"],
     "datasetVersion": "issue-detection-v1",
     "kind": "QUALITY",
     "synthetic": true

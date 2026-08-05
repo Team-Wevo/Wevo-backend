@@ -65,7 +65,8 @@ public class SynthesisGenerator {
                 opinions,
                 chunkOpinions -> {
                     SynthesisPromptContext context = partialContext(chunkOpinions, gapAnswers);
-                    return promptFactory.tokenBudgetInput(context, opinionIds(chunkOpinions));
+                    return promptFactory.tokenBudgetInput(
+                            context, opinionIds(chunkOpinions), job.getPromptVersion());
                 }
         );
 
@@ -75,7 +76,8 @@ public class SynthesisGenerator {
             SynthesisPromptContext context = partialContext(chunk.opinions(), gapAnswers);
             SynthesisAiOutput output = invoke(
                     usage,
-                    promptFactory.providerRequest(context, Set.copyOf(chunk.opinionIds()))
+                    promptFactory.providerRequest(
+                            context, Set.copyOf(chunk.opinionIds()), job.getPromptVersion())
             );
             partials.add(new PartialSynthesis(chunk.index(), chunk.opinionIds(), output));
         }
@@ -94,7 +96,8 @@ public class SynthesisGenerator {
                 usage,
                 promptFactory.providerRequest(
                         mergeContext,
-                        Set.copyOf(plan.eligibleOpinionIds())
+                        Set.copyOf(plan.eligibleOpinionIds()),
+                        job.getPromptVersion()
                 )
         );
     }

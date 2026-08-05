@@ -38,11 +38,18 @@ public class ReviewIntentComparisonPromptFactory {
     public StructuredAiProviderRequest<ReviewIntentComparisonOutput> providerRequest(
             ReviewIntentComparisonContext context
     ) {
+        return providerRequest(context, PROMPT_ID.trackingValue());
+    }
+
+    public StructuredAiProviderRequest<ReviewIntentComparisonOutput> providerRequest(
+            ReviewIntentComparisonContext context,
+            String promptVersion
+    ) {
         if (context == null) {
             throw new IllegalArgumentException("검토 의도 비교 context는 필수입니다.");
         }
         RenderedPrompt prompt = promptRenderer.render(
-                promptRegistry.get(PROMPT_ID),
+                promptRegistry.get(PROMPT_ID, promptVersion),
                 Map.of("comparisonData", serialize(new ComparisonData(
                         context.authorIntent(), context.reviewerSummary()))));
         return new StructuredAiProviderRequest<>(

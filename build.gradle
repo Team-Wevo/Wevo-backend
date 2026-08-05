@@ -30,6 +30,7 @@ dependencyManagement {
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	compileOnly 'org.projectlombok:lombok'
@@ -39,6 +40,7 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
 	testImplementation 'org.testcontainers:testcontainers-postgresql'
+	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
 	testRuntimeOnly 'com.h2database:h2'
 	testCompileOnly 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -73,8 +75,19 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform {
-        excludeTags 'nvidia-integration', 'nvidia-evaluation', 'openai-integration', 'postgres-schema'
+        excludeTags 'nvidia-integration', 'nvidia-evaluation', 'openai-integration', 'openai-evaluation', 'postgres-schema', 'redis-integration'
 	}
+}
+
+tasks.register('redisIntegrationTest', Test) {
+    description = 'Runs opt-in Redis AI guardrail concurrency and settlement tests.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'redis-integration'
+    }
+    shouldRunAfter tasks.named('test')
 }
 
 tasks.register('postgresSchemaTest', Test) {
@@ -117,6 +130,17 @@ tasks.register('openAiIntegrationTest', Test) {
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform {
         includeTags 'openai-integration'
+    }
+    shouldRunAfter tasks.named('test')
+}
+
+tasks.register('openAiEvaluationTest', Test) {
+    description = 'Runs budgeted opt-in OpenAI live quality evaluation.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'openai-evaluation'
     }
     shouldRunAfter tasks.named('test')
 }

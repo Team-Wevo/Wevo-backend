@@ -42,9 +42,16 @@ public class IssueDetectionPromptFactory {
     public StructuredAiProviderRequest<IssueDetectionOutput> providerRequest(
             IssueDetectionContext context
     ) {
+        return providerRequest(context, PROMPT_ID.trackingValue());
+    }
+
+    public StructuredAiProviderRequest<IssueDetectionOutput> providerRequest(
+            IssueDetectionContext context,
+            String promptVersion
+    ) {
         Set<Long> allowedOpinionIds = allowedOpinionIds(context);
         RenderedPrompt prompt = promptRenderer.render(
-                promptRegistry.get(PROMPT_ID),
+                promptRegistry.get(PROMPT_ID, promptVersion),
                 Map.of("issueDetectionContext", serialize(context))
         );
         return new StructuredAiProviderRequest<>(
@@ -56,7 +63,11 @@ public class IssueDetectionPromptFactory {
     }
 
     public AiTokenBudgetInput tokenBudgetInput(IssueDetectionContext context) {
-        StructuredAiProviderRequest<IssueDetectionOutput> request = providerRequest(context);
+        return tokenBudgetInput(context, PROMPT_ID.trackingValue());
+    }
+
+    public AiTokenBudgetInput tokenBudgetInput(IssueDetectionContext context, String promptVersion) {
+        StructuredAiProviderRequest<IssueDetectionOutput> request = providerRequest(context, promptVersion);
         return AiTokenBudgetInput.of(
                 request.prompt().systemPrompt(),
                 StructuredPromptFormatter.initialUserPrompt(request)
