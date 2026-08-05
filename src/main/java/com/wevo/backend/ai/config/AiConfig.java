@@ -1,5 +1,6 @@
 package com.wevo.backend.ai.config;
 
+import com.wevo.backend.ai.client.OpenAiPromptCacheHttpInterceptor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
@@ -41,7 +42,10 @@ public class AiConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "wevo.ai", name = "provider", havingValue = "openai")
-    public ChatClient openAiChatClient(AiProperties properties) {
+    public ChatClient openAiChatClient(
+            AiProperties properties,
+            OpenAiPromptCacheHttpInterceptor promptCacheInterceptor
+    ) {
         AiProperties.OpenAiOptions openai = properties.openai();
         AiProperties.ModelOptions options = properties.providerDefaultOptions();
         OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
@@ -53,7 +57,11 @@ public class AiConfig {
                 .timeout(options.timeout())
                 .maxRetries(0)
                 .build();
-        return ChatClient.builder(OpenAiChatModel.builder().options(chatOptions).build()).build();
+        OpenAiChatModel chatModel = OpenAiChatModel.builder()
+                .options(chatOptions)
+                .httpClientBuilderCustomizer(builder -> builder.interceptor(promptCacheInterceptor))
+                .build();
+        return ChatClient.builder(chatModel).build();
     }
 
     /**

@@ -142,6 +142,8 @@ class NvidiaProviderContractTest {
         JsonNode request = objectMapper.readTree(takeRequest().body());
         assertThat(request.get("reasoning_effort").asText()).isEqualTo("none");
         assertThat(request.get("response_format").get("type").asText()).isEqualTo("json_object");
+        assertThat(request.get("prompt_cache_key")).isNull();
+        assertThat(request.get("prompt_cache_options")).isNull();
         assertThat(request.get("messages").get(1).get("content").asText())
                 .contains("<output_contract>", "summary");
     }

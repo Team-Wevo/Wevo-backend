@@ -1,5 +1,6 @@
 package com.wevo.backend.ai.client;
 
+import com.openai.core.JsonValue;
 import com.openai.models.completions.CompletionUsage;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
@@ -51,6 +52,30 @@ class AiUsageExtractorTest {
         assertThat(usage.inputTokens()).isEqualTo(9L);
         assertThat(usage.cacheReadInputTokens()).isEqualTo(3L);
         assertThat(usage.reasoningTokens()).isEqualTo(4L);
+    }
+
+    @Test
+    void extractsOpenAiCacheWriteFromNativePromptTokenDetails() {
+        CompletionUsage nativeUsage = CompletionUsage.builder()
+                .promptTokens(12)
+                .completionTokens(2)
+                .totalTokens(14)
+                .promptTokensDetails(CompletionUsage.PromptTokensDetails.builder()
+                        .cachedTokens(3)
+                        .putAdditionalProperty("cache_write_tokens", JsonValue.from(2L))
+                        .build())
+                .build();
+        ChatResponseMetadata metadata = ChatResponseMetadata.builder()
+                .model("gpt-5.6-luna")
+                .usage(new DefaultUsage(12, 2, 14, nativeUsage, 3L, null))
+                .build();
+
+        AiUsageMetadata usage = extractor.extract(metadata, "fallback", "openai");
+
+        assertThat(usage.inputTokens()).isEqualTo(7L);
+        assertThat(usage.cacheReadInputTokens()).isEqualTo(3L);
+        assertThat(usage.cacheWriteInputTokens()).isEqualTo(2L);
+        assertThat(usage.totalInputTokens()).isEqualTo(12L);
     }
 
     @Test

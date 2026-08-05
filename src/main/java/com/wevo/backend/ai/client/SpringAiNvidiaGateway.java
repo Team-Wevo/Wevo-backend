@@ -67,7 +67,8 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
                         nvidiaProperties.reasoningEffort(),
                         nvidiaProperties.temperature(),
                         false,
-                        false
+                        false,
+                        null
                 ),
                 exceptionTranslator,
                 providerRequestExecutor,
@@ -268,7 +269,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
                         new SystemMessage(request.prompt().systemPrompt()),
                         new UserMessage(userPrompt)
                 ))
-                .options(structuredProviderOptions(options, request.outputDefinition(), reasoning(request.executionPolicy())))
+                .options(structuredProviderOptions(options, request, reasoning(request.executionPolicy())))
                 .call()
                 .responseEntity(converter);
     }
@@ -498,16 +499,31 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
 
     private OpenAiChatOptions.Builder structuredProviderOptions(
             AiProperties.ModelOptions options,
-            StructuredOutputDefinition<?> outputDefinition,
+            StructuredAiProviderRequest<?> request,
             String reasoningEffort
     ) {
         OpenAiChatModel.ResponseFormat.Builder responseFormat = OpenAiChatModel.ResponseFormat.builder();
         if (runtimeOptions.nativeStrictSchema()) {
-            responseFormat.jsonSchema(outputDefinition.jsonSchema());
+            responseFormat.jsonSchema(request.outputDefinition().jsonSchema());
         } else {
             responseFormat.type(OpenAiChatModel.ResponseFormat.Type.JSON_OBJECT);
         }
-        return providerOptions(options, reasoningEffort).responseFormat(responseFormat.build());
+        OpenAiChatOptions.Builder builder = providerOptions(options, reasoningEffort)
+                .responseFormat(responseFormat.build());
+        if (runtimeOptions.promptCachePolicy() != null) {
+            OpenAiPromptCacheDecision cache = runtimeOptions.promptCachePolicy()
+                    .decide(request, options.model());
+            if (cache.enabled()) {
+                builder.promptCacheKey(cache.cacheKey());
+            }
+            if (cache.explicit()) {
+                builder.extraBody(Map.of(
+                        "prompt_cache_options",
+                        Map.of("mode", "explicit", "ttl", cache.ttl())
+                ));
+            }
+        }
+        return builder;
     }
 
     private AiProperties.ModelOptions options(

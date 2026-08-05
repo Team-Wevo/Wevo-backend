@@ -37,7 +37,7 @@
       "id": 4, "type": "timeseries", "title": "Token / 비용 / 예산 소진율",
       "targets": [
         { "refId": "A", "expr": "sum by (token_type) (rate(wevo_ai_tokens_sum{feature=~\"$feature\",model_family=~\"$model\"}[5m]))" },
-        { "refId": "B", "expr": "sum(rate(wevo_ai_cost_usd_sum{feature=~\"$feature\",model_family=~\"$model\"}[5m])) / sum(rate(wevo_ai_requests_total{outcome=\"success\",feature=~\"$feature\",model_family=~\"$model\"}[5m]))" },
+        { "refId": "B", "expr": "sum(rate(wevo_ai_success_cost_usd_sum{feature=~\"$feature\",model_family=~\"$model\"}[5m])) / sum(rate(wevo_ai_success_cost_usd_count{feature=~\"$feature\",model_family=~\"$model\"}[5m]))" },
         { "refId": "C", "expr": "wevo_ai_guardrail_budget_utilization_sum / wevo_ai_guardrail_budget_utilization_count" }
       ], "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }
     },
@@ -57,6 +57,15 @@
         { "refId": "A", "expr": "sum by (reason) (increase(wevo_ai_guardrail_rejections_total[15m]))" },
         { "refId": "B", "expr": "sum by (feature, model_family) (rate(wevo_ai_cost_usd_sum[5m]))" }
       ], "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 }
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Prompt cache hit / read / write / 성공 비용",
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(wevo_ai_cache_reads_total{outcome=\"hit\",feature=~\"$feature\",model_family=~\"$model\"}[5m])) / sum(rate(wevo_ai_cache_reads_total{outcome=~\"hit|miss\",feature=~\"$feature\",model_family=~\"$model\"}[5m]))" },
+        { "refId": "B", "expr": "sum by (feature, token_type) (rate(wevo_ai_tokens_sum{token_type=~\"cache_read|cache_write\",feature=~\"$feature\",model_family=~\"$model\"}[5m]))" },
+        { "refId": "C", "expr": "sum(rate(wevo_ai_success_cost_usd_sum{feature=~\"$feature\",model_family=~\"$model\"}[5m])) / sum(rate(wevo_ai_success_cost_usd_count{feature=~\"$feature\",model_family=~\"$model\"}[5m]))" },
+        { "refId": "D", "expr": "sum by (outcome) (rate(wevo_ai_cache_writes_total{feature=~\"$feature\",model_family=~\"$model\"}[5m]))" }
+      ], "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 }
     }
   ]
 }
