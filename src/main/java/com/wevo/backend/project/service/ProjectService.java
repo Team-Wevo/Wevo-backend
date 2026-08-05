@@ -7,6 +7,7 @@ import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.dto.request.ProjectCreateRequest;
+import com.wevo.backend.project.dto.request.ProjectUpdateRequest;
 import com.wevo.backend.project.dto.response.ProjectCreateResponse;
 import com.wevo.backend.project.dto.response.ProjectDetailResponse;
 import com.wevo.backend.project.dto.response.ProjectMemberListResponse;
@@ -183,6 +184,47 @@ public class ProjectService {
         project.archive();
         inviteLinkRepository.findAllByProjectIdAndIsActiveTrue(projectId)
                 .forEach(InviteLink::deactivate);
+    }
+
+    /**
+     * 프로젝트의 이름·설명을 수정한다. (OWNER 만 — API_SPEC §3.2.10)
+     *
+     * <p><b>부분 수정이다.</b> 요청에 없는(= {@code null} 인) 필드는 건드리지 않는다. 이름은 빈 값을
+     * 허용하지 않고, 설명은 빈 문자열로 지울 수 있다 — 판정은 {@link Project} 의 상태 변경 메서드가
+     * 갖는다.
+     *
+     * <p><b>AI·섹션 상태에는 영향을 주지 않는다.</b> 이름·설명은 AI 프롬프트 입력이 아니므로
+     * {@code synthesisStale} 등 오버레이 플래그를 세우지 않는다. 정책서 §8이 규정한
+     * {@code synthesisStale} 트리거는 수집 재오픈과 늦은 GAP 답변뿐이다.
+     *
+     * <p>보관된({@code ARCHIVED}) 프로젝트도 수정할 수 있다 — 목록에서 빠질 뿐 상세 조회는
+     * 계속 동작하므로(§3.2.9) 여기서 따로 막지 않는다.
+     *
+     * @return 수정 결과를 반영한 상세 응답 (§3.2.3과 동일 구조 — FE 가 재조회하지 않아도 되도록)
+     * @throws BusinessException 프로젝트 없음/멤버 아님(존재 숨김, {@code P001}),
+     *                           멤버지만 OWNER 아님({@code A002})
+     */
+    @Transactional
+    public ProjectDetailResponse updateProject(Long userId, Long projectId,
+                                               ProjectUpdateRequest request) {
+        ProjectMember membership = getMembershipOrThrow(projectId, userId);
+        if (membership.getRole() != ProjectMemberRole.OWNER) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        Project project = membership.getProject();
+        if (request.title() != null) {
+            project.rename(request.title());
+        }
+        if (request.description() != null) {
+            project.changeDescription(request.description());
+        }
+
+        long memberCount = projectMemberRepository.countByProjectId(projectId);
+        List<ProjectSection> sections = projectSectionRepository.findByProjectIdOrderBySectionOrder(projectId);
+
+        return ProjectDetailResponse.of(project, membership.getRole(), memberCount,
+                SectionConfirmationSummary.from(sections));
     }
 
     /**

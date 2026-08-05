@@ -8,7 +8,9 @@ import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.dto.request.ProjectCreateRequest;
+import com.wevo.backend.project.dto.request.ProjectUpdateRequest;
 import com.wevo.backend.project.dto.response.ProjectCreateResponse;
+import com.wevo.backend.project.dto.response.ProjectDetailResponse;
 import com.wevo.backend.project.dto.response.ProjectMemberListResponse;
 import com.wevo.backend.project.domain.InviteLink;
 import com.wevo.backend.project.repository.InviteLinkRepository;
@@ -256,6 +258,106 @@ class ProjectServiceTest {
 
         assertThat(project.getStatus()).isEqualTo(ProjectStatus.ARCHIVED);
         verify(inviteLinkRepository, never()).findAllByProjectIdAndIsActiveTrue(any());
+    }
+
+    @Test
+    @DisplayName("OWNER 가 수정하면 title·description 이 바뀌고 갱신된 상세를 반환한다")
+    void updateProject_ownerUpdatesTitleAndDescription() {
+        User owner = user(1L, "김위보", null);
+        Project project = project(100L, ProjectStatus.ACTIVE);
+        given(projectMemberRepository.findByProjectIdAndUserId(100L, 1L))
+                .willReturn(Optional.of(membership(project, owner, ProjectMemberRole.OWNER)));
+        given(projectMemberRepository.countByProjectId(100L)).willReturn(2L);
+        given(projectSectionRepository.findByProjectIdOrderBySectionOrder(100L))
+                .willReturn(List.of());
+
+        ProjectDetailResponse response = projectService.updateProject(1L, 100L,
+                new ProjectUpdateRequest("위보 중간발표", "10월 중간발표용."));
+
+        assertThat(project.getTitle()).isEqualTo("위보 중간발표");
+        assertThat(project.getDescription()).isEqualTo("10월 중간발표용.");
+        assertThat(response.title()).isEqualTo("위보 중간발표");
+        assertThat(response.description()).isEqualTo("10월 중간발표용.");
+        assertThat(response.memberCount()).isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName("요청에 없는 필드는 기존값을 유지한다 (부분 수정)")
+    void updateProject_nullFieldsKeepExistingValues() {
+        User owner = user(1L, "김위보", null);
+        Project project = project(100L, ProjectStatus.ACTIVE);
+        project.changeDescription("기존 설명");
+        given(projectMemberRepository.findByProjectIdAndUserId(100L, 1L))
+                .willReturn(Optional.of(membership(project, owner, ProjectMemberRole.OWNER)));
+        given(projectSectionRepository.findByProjectIdOrderBySectionOrder(100L))
+                .willReturn(List.of());
+
+        projectService.updateProject(1L, 100L, new ProjectUpdateRequest(null, null));
+
+        assertThat(project.getTitle()).isEqualTo("위보 발표 준비");
+        assertThat(project.getDescription()).isEqualTo("기존 설명");
+    }
+
+    @Test
+    @DisplayName("description 에 빈 문자열을 보내면 설명을 지운다")
+    void updateProject_blankDescriptionClearsIt() {
+        User owner = user(1L, "김위보", null);
+        Project project = project(100L, ProjectStatus.ACTIVE);
+        project.changeDescription("기존 설명");
+        given(projectMemberRepository.findByProjectIdAndUserId(100L, 1L))
+                .willReturn(Optional.of(membership(project, owner, ProjectMemberRole.OWNER)));
+        given(projectSectionRepository.findByProjectIdOrderBySectionOrder(100L))
+                .willReturn(List.of());
+
+        projectService.updateProject(1L, 100L, new ProjectUpdateRequest(null, ""));
+
+        // 저장 값이 "없음"인지 "공백"인지 갈리지 않도록 null 로 정규화한다. (§1.4 — 응답에서 생략)
+        assertThat(project.getDescription()).isNull();
+    }
+
+    @Test
+    @DisplayName("MEMBER 가 수정을 시도하면 FORBIDDEN 으로 거부하고 값을 바꾸지 않는다")
+    void updateProject_member_forbidden() {
+        User member = user(2L, "이팀원", null);
+        Project project = project(100L, ProjectStatus.ACTIVE);
+        given(projectMemberRepository.findByProjectIdAndUserId(100L, 2L))
+                .willReturn(Optional.of(membership(project, member, ProjectMemberRole.MEMBER)));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> projectService.updateProject(2L, 100L,
+                        new ProjectUpdateRequest("바꾼 이름", null)));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN);
+        assertThat(project.getTitle()).isEqualTo("위보 발표 준비");
+    }
+
+    @Test
+    @DisplayName("비멤버가 수정을 시도하면 PROJECT_NOT_FOUND 로 존재를 숨긴다")
+    void updateProject_nonMember_hidesProject() {
+        given(projectMemberRepository.findByProjectIdAndUserId(100L, 99L)).willReturn(Optional.empty());
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> projectService.updateProject(99L, 100L,
+                        new ProjectUpdateRequest("바꾼 이름", null)));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PROJECT_NOT_FOUND);
+        verify(projectSectionRepository, never()).findByProjectIdOrderBySectionOrder(any());
+    }
+
+    @Test
+    @DisplayName("보관된 프로젝트도 수정할 수 있다 — 상태는 그대로 ARCHIVED 다")
+    void updateProject_archivedProjectIsStillEditable() {
+        User owner = user(1L, "김위보", null);
+        Project project = project(100L, ProjectStatus.ARCHIVED);
+        given(projectMemberRepository.findByProjectIdAndUserId(100L, 1L))
+                .willReturn(Optional.of(membership(project, owner, ProjectMemberRole.OWNER)));
+        given(projectSectionRepository.findByProjectIdOrderBySectionOrder(100L))
+                .willReturn(List.of());
+
+        projectService.updateProject(1L, 100L, new ProjectUpdateRequest("보관본 이름", null));
+
+        assertThat(project.getTitle()).isEqualTo("보관본 이름");
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.ARCHIVED);
     }
 
     private Project project(Long id, ProjectStatus status) {

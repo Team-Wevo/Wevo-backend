@@ -3,6 +3,7 @@ package com.wevo.backend.project.controller;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.project.dto.request.ProjectCreateRequest;
+import com.wevo.backend.project.dto.request.ProjectUpdateRequest;
 import com.wevo.backend.project.dto.response.ProjectCreateResponse;
 import com.wevo.backend.project.dto.response.ProjectDetailResponse;
 import com.wevo.backend.project.dto.response.ProjectMemberListResponse;
@@ -18,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -28,7 +30,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/projects")
-@Tag(name = "Projects", description = "프로젝트 생성·조회·삭제·멤버·섹션 목록 API")
+@Tag(name = "Projects", description = "프로젝트 생성·조회·수정·삭제·멤버·섹션 목록 API")
 public class ProjectController {
 
     private final ProjectService projectService;
@@ -166,5 +168,36 @@ public class ProjectController {
     ) {
         projectService.archiveProject(principal.userId(), projectId);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * 프로젝트 기본 정보 수정 — 이름·설명만. OWNER 만 호출할 수 있다.
+     *
+     * <p>부분 수정이라 본문에 없는 필드는 기존값을 유지한다. 응답은 상세 조회와 같은 구조라
+     * 수정 직후 재조회가 필요 없다.
+     */
+    @Operation(summary = "프로젝트 기본 정보 수정 — title·description 부분 수정, OWNER 만")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "PROJECT_UPDATED"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400", description = "C001 — title 공백·200자 초과, description 2,000자 초과"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "403", description = "A002 — 멤버지만 OWNER 아님"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "P001 — 프로젝트 없음 또는 비멤버 (존재 숨김)")
+    })
+    @PatchMapping("/{projectId}")
+    public ResponseEntity<ApiResponse<ProjectDetailResponse>> update(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @PathVariable Long projectId,
+            @Valid @RequestBody ProjectUpdateRequest request
+    ) {
+        ProjectDetailResponse response =
+                projectService.updateProject(principal.userId(), projectId, request);
+        return ResponseEntity.ok(
+                ApiResponse.success("PROJECT_UPDATED", "프로젝트가 수정되었습니다.", response));
     }
 }
