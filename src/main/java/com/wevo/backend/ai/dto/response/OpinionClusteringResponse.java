@@ -2,12 +2,14 @@ package com.wevo.backend.ai.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wevo.backend.ai.domain.AiRequestStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
 /** 최신 실행과 현재 snapshot에 유효한 마지막 성공 set을 분리한 조회 응답. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(requiredProperties = {"exists", "canViewResult", "stale"})
 public record OpinionClusteringResponse(
         boolean exists,
         Boolean canViewResult,
@@ -29,6 +31,7 @@ public record OpinionClusteringResponse(
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Schema(requiredProperties = {"requestId", "status"})
     public record LatestJobResponse(
             UUID requestId,
             AiRequestStatus status,
@@ -36,6 +39,7 @@ public record OpinionClusteringResponse(
     ) {
     }
 
+    @Schema(requiredProperties = {"errorCode", "message"})
     public record FailureResponse(String errorCode, String message) {
     }
 
@@ -48,6 +52,8 @@ public record OpinionClusteringResponse(
             List<ClusterResponse> clusters
     ) {
     }
+
+    @Schema(requiredProperties = {"order", "title", "summary", "opinionIds"})
 
     public record ClusterResponse(
             int order,
