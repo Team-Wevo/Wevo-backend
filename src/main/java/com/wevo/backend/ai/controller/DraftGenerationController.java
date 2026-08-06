@@ -39,6 +39,8 @@ public class DraftGenerationController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "202", description = "DRAFT_GENERATION_REQUESTED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403", description = "A002 — OWNER 권한 없음"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버"),

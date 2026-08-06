@@ -41,6 +41,8 @@ public class OpinionClusteringController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "202", description = "OPINION_CLUSTERING_REQUESTED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "503", description = "AI008 — AI Provider 비활성·연결 불가")
     })
     public ResponseEntity<ApiResponse<AiJobAcceptedResponse>> requestClustering(
@@ -57,7 +59,15 @@ public class OpinionClusteringController {
     }
 
     @GetMapping("/{sectionId}/opinion-clusters")
-    @Operation(summary = "AI 의견 자동 분류 조회")
+    @Operation(summary = "AI 의견 자동 분류 조회 — 최신 실행 상태와 결과")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "OK"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)")
+    })
     public ResponseEntity<ApiResponse<OpinionClusteringResponse>> getClustering(
             @PathVariable Long sectionId,
             @AuthenticationPrincipal AuthPrincipal principal

@@ -137,3 +137,14 @@ app:
 logging:
   level:
     org.springframework.ai.openai: ERROR
+
+springdoc:
+  # 응답 Content-Type을 문서에 명시한다. 지정하지 않으면 모든 응답이 `*/*`로 나가, 문서만 봐서는
+  # JSON인지 알 수 없고 FE 코드 생성기가 타입을 좁히지 못한다. (CLAUDE.md §5.3)
+  #
+  # 컨트롤러의 @*Mapping에 `produces`를 거는 방식은 쓰지 않는다 — 걸어두면 그 media type이 요청
+  # 속성으로 남아, 예외 발생 시 GlobalExceptionHandler가 만든 JSON 실패 응답까지 같은 타입으로 써야
+  # 해서 파일 응답 API(완성본 다운로드)가 406으로 깨진다. 이 설정은 문서 생성에만 관여하고
+  # 실제 협상에는 영향을 주지 않는다.
+  default-produces-media-type: application/json
+  default-consumes-media-type: application/json
