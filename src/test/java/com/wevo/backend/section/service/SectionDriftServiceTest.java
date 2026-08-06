@@ -1,5 +1,6 @@
 package com.wevo.backend.section.service;
 
+import java.time.LocalDateTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
@@ -80,7 +81,7 @@ class SectionDriftServiceTest {
         given(projectAccessGuard.requireParticipant(PROJECT_ID, ACTOR_ID)).willReturn(actor);
         doAnswer(invocation -> {
             ProjectSection section = invocation.getArgument(0);
-            section.changeStatus(ProjectSectionStatus.REVIEWING);
+            section.changeStatus(ProjectSectionStatus.REVIEWING, LocalDateTime.now());
             return null;
         }).when(sectionStatusService).markReviewingAfterConfirmedContentChange(
                 org.mockito.ArgumentMatchers.any(),
@@ -88,7 +89,7 @@ class SectionDriftServiceTest {
                 org.mockito.ArgumentMatchers.anyInt());
         doAnswer(invocation -> {
             ProjectSection section = invocation.getArgument(0);
-            section.changeStatus(ProjectSectionStatus.REVIEWING);
+            section.changeStatus(ProjectSectionStatus.REVIEWING, LocalDateTime.now());
             return null;
         }).when(sectionStatusService).markReviewingAfterPrerequisiteChange(
                 org.mockito.ArgumentMatchers.any(),

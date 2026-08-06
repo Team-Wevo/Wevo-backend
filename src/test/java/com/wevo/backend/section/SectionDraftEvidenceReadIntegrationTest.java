@@ -110,8 +110,8 @@ class SectionDraftEvidenceReadIntegrationTest {
         // 재수집(COLLECTING) → 재정리(SYNTHESIZING)를 거쳐 같은 섹션에 두 번째 AI 초안(version 2)을 만든다.
         // AI 초안 생성은 SYNTHESIZING 에서만 가능하고 DRAFTING → SYNTHESIZING 직접 전이는 막혀 있다.
         ProjectSection section = em.find(ProjectSection.class, fixture.section().getId());
-        section.changeStatus(ProjectSectionStatus.COLLECTING);
-        section.changeStatus(ProjectSectionStatus.SYNTHESIZING);
+        section.changeStatus(ProjectSectionStatus.COLLECTING, LocalDateTime.now());
+        section.changeStatus(ProjectSectionStatus.SYNTHESIZING, LocalDateTime.now());
         UUID secondRequestId = UUID.randomUUID();
         em.persist(job(secondRequestId, section.getProject(), section, fixture.owner(),
                 AiFeature.DRAFT_GENERATION, randomHex64()));

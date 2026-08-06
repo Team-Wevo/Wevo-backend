@@ -31,9 +31,21 @@ class AiOpenApiWebMvcTest {
         assertResponse(paths,
                 "/api/project-sections/{sectionId}/synthesis", "post", "202");
         assertResponse(paths,
+                "/api/project-sections/{sectionId}/synthesis", "post", "503");
+        assertResponse(paths,
                 "/api/project-sections/{sectionId}/draft/generate", "post", "202");
         assertResponse(paths,
+                "/api/project-sections/{sectionId}/draft/generate", "post", "503");
+        assertResponse(paths,
                 "/api/project-sections/{sectionId}/precheck", "post", "202");
+        assertResponse(paths,
+                "/api/project-sections/{sectionId}/precheck", "post", "503");
+        assertResponse(paths,
+                "/api/project-sections/{sectionId}/author-intent/extractions", "post", "503");
+        assertResponse(paths,
+                "/api/project-sections/{sectionId}/opinion-clusters", "post", "503");
+        assertResponse(paths,
+                "/api/projects/{projectId}/flow-check", "post", "503");
         assertResponse(paths, "/api/ai-jobs/{requestId}", "get", "200");
         assertResponse(paths, "/api/ai-jobs/{requestId}", "get", "404");
         assertResponse(paths, "/api/issues/{issueId}/decision", "post", "200");

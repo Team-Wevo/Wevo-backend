@@ -7,6 +7,7 @@ import com.wevo.backend.review.dto.response.ReviewSubmissionResponse;
 import com.wevo.backend.review.service.ReviewLinkService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -63,6 +64,7 @@ public class PublicReviewController {
                     responseCode = "409",
                     description = "R004 — 본문 수정으로 만료 / R005 — 종료된 링크 / R013 — 유효 기간 만료")
     })
+    @SecurityRequirements // 외부 검토자는 비로그인이므로 전역 Bearer 요구사항을 해제한다.
     @GetMapping("/{token}")
     public ResponseEntity<ApiResponse<ExternalReviewViewResponse>> view(
             @PathVariable String token,
@@ -91,6 +93,7 @@ public class PublicReviewController {
                     description = "R002 — 중복 제출 / R003 — 정원 초과 / R004 — 본문 수정으로 만료 "
                             + "/ R005 — 종료 / R013 — 유효 기간 만료")
     })
+    @SecurityRequirements // 외부 검토자는 비로그인이므로 전역 Bearer 요구사항을 해제한다.
     @PostMapping("/{token}/submissions")
     public ResponseEntity<ApiResponse<ReviewSubmissionResponse>> submit(
             @PathVariable String token,

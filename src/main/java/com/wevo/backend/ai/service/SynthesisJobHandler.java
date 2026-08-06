@@ -4,6 +4,7 @@ import com.wevo.backend.ai.config.AiJobDispatchProperties;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.dto.model.IssueDetectionIssueOutput;
+import com.wevo.backend.ai.exception.AiProviderUnavailableException;
 import com.wevo.backend.ai.repository.AiJobRepository;
 import com.wevo.backend.issue.domain.IssueType;
 import com.wevo.backend.issue.service.SynthesisPersistCommand;
@@ -184,7 +185,7 @@ public class SynthesisJobHandler implements AiJobHandler {
     private SynthesisAiOutput invokeSynthesis(AiJob job, SynthesisInputSnapshot snapshot) {
         SynthesisGenerator generator = synthesisGeneratorProvider.getIfAvailable();
         if (generator == null) {
-            throw new IllegalStateException("AI provider가 구성되지 않아 의견 정리를 실행할 수 없습니다.");
+            throw new AiProviderUnavailableException();
         }
         return generator.generate(job, snapshot);
     }

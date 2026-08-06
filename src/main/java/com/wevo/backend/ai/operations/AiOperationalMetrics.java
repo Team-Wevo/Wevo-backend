@@ -30,6 +30,9 @@ public class AiOperationalMetrics {
     public static final String QUEUE_LATENCY = "wevo.ai.queue.latency";
     public static final String TOKENS = "wevo.ai.tokens";
     public static final String COST = "wevo.ai.cost.usd";
+    public static final String SUCCESS_COST = "wevo.ai.success.cost.usd";
+    public static final String CACHE_READS = "wevo.ai.cache.reads";
+    public static final String CACHE_WRITES = "wevo.ai.cache.writes";
     public static final String ATTEMPTS = "wevo.ai.attempts";
     public static final String TRANSPORT_RETRIES = "wevo.ai.transport.retries";
     public static final String CORRECTION_RETRIES = "wevo.ai.correction.retries";
@@ -73,7 +76,7 @@ public class AiOperationalMetrics {
                     .tag("model_family", modelFamily(model)).tag("outcome", "valid")
                     .register(registry).increment();
         }
-        recordUsage(feature, provider, model, usage, cost);
+        recordUsage(feature, provider, model, usage, cost, true);
     }
 
     public void recordFailure(
@@ -103,7 +106,7 @@ public class AiOperationalMetrics {
                     .tag("model_family", modelFamily(model)).tag("outcome", "invalid")
                     .register(registry).increment();
         }
-        recordUsage(feature, provider, model, usage, cost);
+        recordUsage(feature, provider, model, usage, cost, false);
     }
 
     public void recordProviderLatency(AiFeature feature, String provider, String model, Duration latency) {
@@ -181,7 +184,8 @@ public class AiOperationalMetrics {
             String provider,
             String model,
             AiUsageMetadata usage,
-            AiCostSnapshot cost
+            AiCostSnapshot cost,
+            boolean success
     ) {
         if (usage != null) {
             recordTokens(feature, provider, model, "input", usage.inputTokens());
@@ -190,6 +194,14 @@ public class AiOperationalMetrics {
             recordTokens(feature, provider, model, "cache_read", usage.cacheReadInputTokens());
             recordTokens(feature, provider, model, "cache_write", usage.cacheWriteInputTokens());
         }
+        recordCacheOutcome(
+                CACHE_READS, feature, provider, model,
+                usage == null ? null : usage.cacheReadInputTokens(), "hit", "miss"
+        );
+        recordCacheOutcome(
+                CACHE_WRITES, feature, provider, model,
+                usage == null ? null : usage.cacheWriteInputTokens(), "write", "no_write"
+        );
         BigDecimal estimatedCost = cost == null ? null : cost.estimatedCost();
         if (estimatedCost != null) {
             DistributionSummary.builder(COST)
@@ -198,7 +210,35 @@ public class AiOperationalMetrics {
                     .tag("provider", safeProvider(provider))
                     .tag("model_family", modelFamily(model))
                     .register(registry).record(estimatedCost.doubleValue());
+            if (success) {
+                DistributionSummary.builder(SUCCESS_COST)
+                        .baseUnit("USD")
+                        .tag("feature", feature.configKey())
+                        .tag("provider", safeProvider(provider))
+                        .tag("model_family", modelFamily(model))
+                        .register(registry).record(estimatedCost.doubleValue());
+            }
         }
+    }
+
+    private void recordCacheOutcome(
+            String metric,
+            AiFeature feature,
+            String provider,
+            String model,
+            Long tokens,
+            String positiveOutcome,
+            String zeroOutcome
+    ) {
+        String outcome = tokens == null
+                ? "metadata_unavailable"
+                : tokens > 0 ? positiveOutcome : zeroOutcome;
+        Counter.builder(metric)
+                .tag("feature", feature.configKey())
+                .tag("provider", safeProvider(provider))
+                .tag("model_family", modelFamily(model))
+                .tag("outcome", outcome)
+                .register(registry).increment();
     }
 
     private void recordTokens(

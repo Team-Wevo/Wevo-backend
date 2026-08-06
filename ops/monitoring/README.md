@@ -16,6 +16,11 @@ metric tag는 `feature`, `provider`, `model_family`, `prompt_version`, `schema_v
 예외 메시지, prompt/completion, Provider 오류 body는 tag에 넣지 않는다. 알 수 없는 model은 `other`로
 정규화해 외부 입력으로 시계열이 무한히 늘지 않게 한다.
 
+Prompt cache panel은 cache read의 `hit`, `miss`, `metadata_unavailable`과 cache write의 `write`,
+`no_write`, `metadata_unavailable`을 구분한다. hit rate 분모에서는 측정 불가를 제외하며 cache read/write
+token과 cache 비용이 모두 포함된 성공 1건당 비용을 함께 본다. cache는 Provider 내부 prefix 최적화이며
+애플리케이션 결과 캐시가 아니다.
+
 ## 2. 추적과 안전한 로그
 
 한 논리 job의 연결 기준은 다음과 같다.
@@ -82,6 +87,8 @@ AI-12R의 schema valid rate 99% gate와 AI-13의 기능별 p95/쿼터 정책을 
 - Provider와 end-to-end를 비교해 queue/애플리케이션과 upstream을 구분한다.
 - attempt, output/reasoning/cache token, 성공 1건당 비용을 baseline과 비교한다.
 - 비용 급증 시 canary를 중단하고 필요하면 kill switch를 적용한다. 단가 누락은 0원으로 간주하지 않는다.
+- prompt cache candidate는 read/write token과 metadata unavailable 비율을 함께 확인한다. cache write를
+  제외한 절감액으로 rollout을 승인하지 않는다.
 
 ### quota/예산/Redis
 
@@ -143,6 +150,10 @@ wevo:
 rollback은 route의 baseline/candidate/percentage를 직전 승인 combination으로 한 번에 바꿔 재배포한다.
 부분 field만 되돌리지 않는다. 이미 생성된 job은 기존 snapshot으로 끝나고, 새 job부터 rollback 조합을
 선택한다. Provider 자동 fallback은 없다.
+
+prompt cache option만의 rollback은 `OPENAI_PROMPT_CACHE_OPTIMIZATION_ENABLED=false`로 수행한다.
+model/reasoning/prompt/schema/dataset을 동시에 바꾸지 않으며 새 요청부터 자동 implicit baseline으로
+복귀하는지 cache request shape와 dashboard로 확인한다.
 
 ## 6. kill switch 허용 범위
 

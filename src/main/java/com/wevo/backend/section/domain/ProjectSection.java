@@ -17,6 +17,8 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -51,6 +53,9 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ProjectSection extends BaseTimeEntity {
+
+    /** 시간 값은 배포 서버 시간대와 무관하게 KST로 고정한다. (CLAUDE.md §5.4) */
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -98,6 +103,20 @@ public class ProjectSection extends BaseTimeEntity {
     @Column(name = "opinion_gate_generation", nullable = false)
     private long opinionGateGeneration;
 
+    /**
+     * 이 섹션에서 사람이 무언가를 한 마지막 시각. (API_SPEC §3.2.2 — 목록의 마지막 활동 섹션·정렬 기준)
+     *
+     * <p>{@code updatedAt} 과 다르다. 초안 본문은 {@code section_drafts} 에 따로 쌓이므로 팀원이
+     * 초안을 고쳐도 이 행의 {@code updatedAt} 은 움직이지 않고, 반대로 아무도 손대지 않은 섹션이
+     * 내부 플래그(드리프트·AI 검토 상태) 변경만으로 갱신되기도 한다. 사용자가 "여기까지 하다 말았다"
+     * 라고 느끼는 지점을 그대로 담기 위해 별도 값으로 둔다.
+     *
+     * <p><b>AI가 돌린 작업은 활동으로 세지 않는다</b> — 자리를 비운 사이 카드가 바뀌면
+     * "내가 마지막에 만진 곳"이라는 기대와 어긋난다.
+     */
+    @Column(name = "last_activity_at", nullable = false)
+    private LocalDateTime lastActivityAt;
+
     @Builder
     private ProjectSection(Project project, SectionTemplate template, String title, Integer sectionOrder,
                            ProjectSectionStatus status, Integer confirmedVersion) {
@@ -110,19 +129,43 @@ public class ProjectSection extends BaseTimeEntity {
         this.driftStatus = DriftStatus.NONE;
         this.synthesisStale = Boolean.FALSE;
         this.opinionGateGeneration = 0;
+        // 활동이 한 번도 없어도 값이 비지 않게 생성 시각으로 시작한다 — 목록이 빈 값을 분기하지
+        // 않아도 되고, 갓 만든 프로젝트도 "방금 만든 순서"로 정렬된다.
+        this.lastActivityAt = LocalDateTime.now(KST);
     }
 
     /**
-     * 상태를 전이한다. 허용되지 않은 전이면 예외를 던진다. (전이 규칙은 {@link ProjectSectionStatus} 소유)
+     * 상태를 전이하고 그 시각을 활동으로 기록한다.
+     * (전이 규칙은 {@link ProjectSectionStatus} 소유)
      *
+     * <p>시각을 <b>인자로 받는 이유</b>는 상태 전이를 활동 기록과 떼어놓을 수 없게 하기 위해서다.
+     * 호출부가 하나라도 기록을 빠뜨리면 마감·확정 같은 큰 사건이 목록에 반영되지 않는다.
+     *
+     * @param at 전이 시각 (KST — {@code CLAUDE.md §5.4})
      * @throws BusinessException 현재 상태에서 {@code target} 으로 전이가 불가능한 경우
      *                           ({@code INVALID_SECTION_STATUS_TRANSITION})
      */
-    public void changeStatus(ProjectSectionStatus target) {
+    public void changeStatus(ProjectSectionStatus target, LocalDateTime at) {
         if (!this.status.canTransitionTo(target)) {
             throw new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
         }
         this.status = target;
+        recordActivity(at);
+    }
+
+    /**
+     * 상태 전이를 동반하지 않는 활동을 기록한다. (초안 저장, 의견 제출 등)
+     *
+     * <p>이미 더 나중 시각이 기록돼 있으면 되돌리지 않는다 — 같은 트랜잭션에서 여러 활동이
+     * 겹치거나 지연 처리가 뒤늦게 들어와도 마지막 활동 시각이 과거로 밀리지 않게 한다.
+     *
+     * @param at 활동 시각 (KST — {@code CLAUDE.md §5.4})
+     */
+    public void recordActivity(LocalDateTime at) {
+        if (at == null || (this.lastActivityAt != null && at.isBefore(this.lastActivityAt))) {
+            return;
+        }
+        this.lastActivityAt = at;
     }
 
     /**

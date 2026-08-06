@@ -190,8 +190,8 @@ class DraftLeaseConcurrencyIntegrationTest {
             );
             Long sectionId = jdbcTemplate.queryForObject(
                     """
-                    INSERT INTO project_sections (project_id, title, section_order, status)
-                    VALUES (?, 'lease-concurrency-section', 1, 'DRAFTING')
+                    INSERT INTO project_sections (project_id, title, section_order, status, last_activity_at)
+                    VALUES (?, 'lease-concurrency-section', 1, 'DRAFTING', NOW())
                     RETURNING id
                     """,
                     Long.class,

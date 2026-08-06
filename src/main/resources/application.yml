@@ -69,6 +69,13 @@ wevo:
       reasoning-effort: ${OPENAI_API_REASONING_EFFORT:medium}
       # 2026-07-31 공식 모델 snapshot. Java enum으로 고정하지 않는다.
       model-context-limit: ${OPENAI_API_CONTEXT_LIMIT:1050000}
+      prompt-cache:
+        # false이면 OpenAI의 자동 implicit baseline만 사용한다.
+        optimization-enabled: ${OPENAI_PROMPT_CACHE_OPTIMIZATION_ENABLED:false}
+        # comma-separated 기능 key. 측정·승인된 기능만 explicit breakpoint를 사용한다.
+        explicit-features: ${OPENAI_PROMPT_CACHE_EXPLICIT_FEATURES:}
+        explicit-models: ${OPENAI_PROMPT_CACHE_EXPLICIT_MODELS:gpt-5.6-luna}
+        ttl: ${OPENAI_PROMPT_CACHE_TTL:30m}
     structured-output:
       max-correction-retries: ${AI_STRUCTURED_OUTPUT_MAX_CORRECTION_RETRIES:2}
     guardrails:

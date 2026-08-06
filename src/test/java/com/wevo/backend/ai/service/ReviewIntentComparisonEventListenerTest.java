@@ -4,6 +4,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.ai.exception.AiProviderUnavailableException;
 import com.wevo.backend.review.service.ReviewIntentComparisonStateService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,5 +27,15 @@ class ReviewIntentComparisonEventListenerTest {
         listener.afterSubmissionCommitted(new ReviewIntentComparisonRequestedEvent(33L));
 
         verify(stateService).fail(33L, ErrorCode.AI_PROVIDER_ERROR.getCode());
+    }
+
+    @Test
+    void providerUnavailablePreservesActionableSafeCode() {
+        doThrow(new AiProviderUnavailableException())
+                .when(requestService).request(33L);
+
+        listener.afterSubmissionCommitted(new ReviewIntentComparisonRequestedEvent(33L));
+
+        verify(stateService).fail(33L, ErrorCode.AI_PROVIDER_UNAVAILABLE.getCode());
     }
 }

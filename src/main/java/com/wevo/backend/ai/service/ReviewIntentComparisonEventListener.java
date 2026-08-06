@@ -1,5 +1,6 @@
 package com.wevo.backend.ai.service;
 
+import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.review.service.ReviewIntentComparisonStateService;
 import org.slf4j.Logger;
@@ -30,9 +31,17 @@ public class ReviewIntentComparisonEventListener {
         try {
             requestService.request(event.submissionId());
         } catch (RuntimeException exception) {
-            stateService.fail(event.submissionId(), ErrorCode.AI_PROVIDER_ERROR.getCode());
+            stateService.fail(event.submissionId(), safeErrorCode(exception));
             log.warn("검토 의도 비교 작업 생성 실패 submissionId={}, exceptionType={}",
                     event.submissionId(), exception.getClass().getSimpleName());
         }
+    }
+
+    private String safeErrorCode(RuntimeException exception) {
+        if (exception instanceof BusinessException businessException
+                && businessException.getErrorCode() == ErrorCode.AI_PROVIDER_UNAVAILABLE) {
+            return ErrorCode.AI_PROVIDER_UNAVAILABLE.getCode();
+        }
+        return ErrorCode.AI_PROVIDER_ERROR.getCode();
     }
 }

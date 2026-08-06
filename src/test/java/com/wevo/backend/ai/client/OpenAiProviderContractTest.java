@@ -43,6 +43,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "wevo.ai.openai.timeout=5s",
         "wevo.ai.openai.max-output-tokens=256",
         "wevo.ai.openai.reasoning-effort=medium",
+        "wevo.ai.openai.prompt-cache.optimization-enabled=true",
+        "wevo.ai.openai.prompt-cache.explicit-features=draft-review",
+        "wevo.ai.openai.prompt-cache.explicit-models=gpt-5.6-luna",
+        "wevo.ai.openai.prompt-cache.ttl=30m",
         "wevo.ai.default-options.max-retries=0",
         "wevo.ai.structured-output.max-correction-retries=0"
 })
@@ -107,6 +111,8 @@ class OpenAiProviderContractTest {
         assertThat(request.get("reasoning_effort").asText()).isEqualTo("medium");
         assertThat(request.get("temperature")).isNull();
         assertThat(request.get("max_tokens")).isNull();
+        assertThat(request.get("prompt_cache_key")).isNull();
+        assertThat(request.get("prompt_cache_options")).isNull();
         assertThat(request.get("messages")).extracting(
                 message -> message.get("role").asText(),
                 message -> message.get("content").asText()
@@ -133,8 +139,76 @@ class OpenAiProviderContractTest {
         assertThat(responseFormat.get("json_schema").get("strict").asBoolean()).isTrue();
         assertThat(responseFormat.get("json_schema").get("schema").toString())
                 .contains("resourceId", "signal");
+        assertThat(request.get("prompt_cache_key").asText()).hasSize(64);
+        assertThat(request.get("prompt_cache_options")).isNull();
+        assertThat(request.get("messages").get(0).get("content").isTextual()).isTrue();
         assertThat(request.get("messages").get(1).get("content").asText())
                 .contains("<output_contract>", "resourceId", "signal");
+    }
+
+    @Test
+    void sendsExplicitCacheOptionsAndBreakpointOnlyForTheApprovedFeature() throws Exception {
+        enqueue(200, structuredBody("{\"resourceId\":7,\"signal\":\"CLEAR\"}"));
+
+        providerGateway.generateStructured(structuredRequest(
+                AiFeature.DRAFT_REVIEW, "tenant-a-dynamic-input", Set.of(7L)));
+
+        JsonNode request = objectMapper.readTree(takeRequest().body());
+        assertThat(request.get("prompt_cache_key").asText()).hasSize(64);
+        assertThat(request.get("prompt_cache_options").get("mode").asText())
+                .isEqualTo("explicit");
+        assertThat(request.get("prompt_cache_options").get("ttl").asText())
+                .isEqualTo("30m");
+        JsonNode systemContent = request.get("messages").get(0).get("content");
+        assertThat(systemContent.isArray()).isTrue();
+        assertThat(systemContent.get(0).get("text").asText())
+                .isEqualTo("Return only the requested structured output.");
+        assertThat(systemContent.get(0).get("prompt_cache_breakpoint").get("mode").asText())
+                .isEqualTo("explicit");
+        assertThat(request.get("messages").get(1).get("content").asText())
+                .contains("tenant-a-dynamic-input");
+    }
+
+    @Test
+    void explicitCachingStillUsesTheCommonStructuredValidationGate() throws Exception {
+        enqueue(200, structuredBody("{\"resourceId\":7}"));
+
+        assertThatThrownBy(() -> providerGateway.generateStructured(structuredRequest(
+                AiFeature.DRAFT_REVIEW, "dynamic-invalid-output-case", Set.of(7L))))
+                .isInstanceOf(AiProviderException.class)
+                .extracting(exception -> ((AiProviderException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.AI_STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED);
+
+        JsonNode request = objectMapper.readTree(takeRequest().body());
+        assertThat(request.get("prompt_cache_options").get("mode").asText())
+                .isEqualTo("explicit");
+        assertThat(request.get("messages").get(0).get("content").get(0)
+                .get("prompt_cache_breakpoint").get("mode").asText())
+                .isEqualTo("explicit");
+    }
+
+    @Test
+    void keepsTenantPayloadDynamicAndNeverReusesAnApplicationResult() throws Exception {
+        enqueue(200, structuredBody("{\"resourceId\":7,\"signal\":\"CLEAR\"}"));
+        enqueue(200, structuredBody("{\"resourceId\":7,\"signal\":\"UNCLEAR\"}"));
+
+        StructuredAiProviderResponse<ContractOutput> first = providerGateway.generateStructured(
+                structuredRequest(AiFeature.DRAFT_REVIEW, "project-a-payload", Set.of(7L)));
+        StructuredAiProviderResponse<ContractOutput> second = providerGateway.generateStructured(
+                structuredRequest(AiFeature.DRAFT_REVIEW, "project-b-payload", Set.of(7L)));
+
+        JsonNode firstRequest = objectMapper.readTree(takeRequest().body());
+        JsonNode secondRequest = objectMapper.readTree(takeRequest().body());
+        assertThat(first.result().signal()).isEqualTo(ContractSignal.CLEAR);
+        assertThat(second.result().signal()).isEqualTo(ContractSignal.UNCLEAR);
+        assertThat(firstRequest.get("prompt_cache_key").asText())
+                .isEqualTo(secondRequest.get("prompt_cache_key").asText());
+        assertThat(firstRequest.get("messages").get(1).get("content").asText())
+                .contains("project-a-payload")
+                .doesNotContain("project-b-payload");
+        assertThat(secondRequest.get("messages").get(1).get("content").asText())
+                .contains("project-b-payload")
+                .doesNotContain("project-a-payload");
     }
 
     @Test
@@ -205,12 +279,21 @@ class OpenAiProviderContractTest {
     }
 
     private StructuredAiProviderRequest<ContractOutput> structuredRequest(Set<Long> allowedIds) {
+        return structuredRequest(
+                AiFeature.ISSUE_DETECTION, "Use the synthetic resource.", allowedIds);
+    }
+
+    private StructuredAiProviderRequest<ContractOutput> structuredRequest(
+            AiFeature feature,
+            String userPrompt,
+            Set<Long> allowedIds
+    ) {
         return new StructuredAiProviderRequest<>(
-                AiFeature.ISSUE_DETECTION,
+                feature,
                 new RenderedPrompt(
                         new PromptTemplateId("contract-output", 1),
                         "Return only the requested structured output.",
-                        "Use the synthetic resource."
+                        userPrompt
                 ),
                 StructuredOutputDefinition.of(
                         new OutputSchemaId("contract-output", 1),

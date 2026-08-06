@@ -6,6 +6,7 @@ import com.wevo.backend.ai.context.AssembledAiContext;
 import com.wevo.backend.ai.context.OpinionClusteringContext;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
+import com.wevo.backend.ai.exception.AiProviderUnavailableException;
 import com.wevo.backend.ai.dto.model.OpinionClusteringOutput;
 import com.wevo.backend.ai.repository.AiJobRepository;
 import com.wevo.backend.project.service.ProjectAccessGuard;
@@ -95,7 +96,7 @@ public class OpinionClusteringJobHandler implements AiJobHandler {
         }
         OpinionClusterer clusterer = clustererProvider.getIfAvailable();
         if (clusterer == null) {
-            throw new IllegalStateException("AI provider가 구성되지 않아 의견을 분류할 수 없습니다.");
+            throw new AiProviderUnavailableException();
         }
         OpinionClusteringOutput output = clusterer.cluster(job, assembled.context());
         aiJobService.succeed(job.getRequestId(), () -> {

@@ -133,8 +133,8 @@ class ReviewLinkConcurrencyIntegrationTest {
             );
             Long sectionId = jdbcTemplate.queryForObject(
                     """
-                    INSERT INTO project_sections (project_id, title, section_order, status)
-                    VALUES (?, 'review-link-concurrency-section', 1, 'REVIEWING')
+                    INSERT INTO project_sections (project_id, title, section_order, status, last_activity_at)
+                    VALUES (?, 'review-link-concurrency-section', 1, 'REVIEWING', NOW())
                     RETURNING id
                     """,
                     Long.class,

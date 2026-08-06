@@ -90,8 +90,8 @@ class PostgresSchemaIntegrationTest {
         );
         Long sectionId = jdbcTemplate.queryForObject(
                 """
-                INSERT INTO project_sections (project_id, title, section_order, status)
-                VALUES (?, 'schema-test-section', 1, 'COLLECTING')
+                INSERT INTO project_sections (project_id, title, section_order, status, last_activity_at)
+                VALUES (?, 'schema-test-section', 1, 'COLLECTING', NOW())
                 RETURNING id
                 """,
                 Long.class,
@@ -135,8 +135,8 @@ class PostgresSchemaIntegrationTest {
         );
         Long sectionId = jdbcTemplate.queryForObject(
                 """
-                INSERT INTO project_sections (project_id, title, section_order, status)
-                VALUES (?, 'review-schema-test-section', 1, 'DRAFTING')
+                INSERT INTO project_sections (project_id, title, section_order, status, last_activity_at)
+                VALUES (?, 'review-schema-test-section', 1, 'DRAFTING', NOW())
                 RETURNING id
                 """,
                 Long.class,
@@ -287,8 +287,8 @@ class PostgresSchemaIntegrationTest {
         Long projectId = insertProject(jdbcTemplate, ownerId, "lease-unique");
         Long sectionId = jdbcTemplate.queryForObject(
                 """
-                INSERT INTO project_sections (project_id, title, section_order, status)
-                VALUES (?, 'lease-section', 1, 'DRAFTING')
+                INSERT INTO project_sections (project_id, title, section_order, status, last_activity_at)
+                VALUES (?, 'lease-section', 1, 'DRAFTING', NOW())
                 RETURNING id
                 """,
                 Long.class,
@@ -327,8 +327,8 @@ class PostgresSchemaIntegrationTest {
         Long projectId = insertProject(jdbcTemplate, ownerId, "review-link-unique");
         Long sectionId = jdbcTemplate.queryForObject(
                 """
-                INSERT INTO project_sections (project_id, title, section_order, status)
-                VALUES (?, 'link-section', 1, 'REVIEWING')
+                INSERT INTO project_sections (project_id, title, section_order, status, last_activity_at)
+                VALUES (?, 'link-section', 1, 'REVIEWING', NOW())
                 RETURNING id
                 """,
                 Long.class,
@@ -354,8 +354,8 @@ class PostgresSchemaIntegrationTest {
         Long projectId = insertProject(jdbcTemplate, ownerId, "review-link-history");
         Long sectionId = jdbcTemplate.queryForObject(
                 """
-                INSERT INTO project_sections (project_id, title, section_order, status)
-                VALUES (?, 'link-history-section', 1, 'REVIEWING')
+                INSERT INTO project_sections (project_id, title, section_order, status, last_activity_at)
+                VALUES (?, 'link-history-section', 1, 'REVIEWING', NOW())
                 RETURNING id
                 """,
                 Long.class,

@@ -21,6 +21,7 @@ import com.wevo.backend.ai.context.AiContextAssembler;
 import com.wevo.backend.ai.domain.AiJobStatus;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.issue.service.SynthesisSetQueryService;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.service.ProjectAccessGuard;
@@ -55,6 +56,7 @@ class DraftGenerationRequestServiceTest {
     @Mock private SectionAccessGuard sectionAccessGuard;
     @Mock private ProjectAccessGuard projectAccessGuard;
     @Mock private AiContextAssembler contextAssembler;
+    @Mock private SynthesisSetQueryService synthesisSetQueryService;
     @Mock private AiJobService aiJobService;
     @Mock private UserService userService;
     @Mock private ProjectSection section;
@@ -70,6 +72,7 @@ class DraftGenerationRequestServiceTest {
                 sectionAccessGuard,
                 projectAccessGuard,
                 contextAssembler,
+                synthesisSetQueryService,
                 aiJobService,
                 properties(),
                 userService
@@ -79,6 +82,7 @@ class DraftGenerationRequestServiceTest {
         given(section.getId()).willReturn(SECTION_ID);
         given(project.getId()).willReturn(PROJECT_ID);
         given(projectAccessGuard.requireParticipantAccess(PROJECT_ID, USER_ID)).willReturn(access);
+        given(synthesisSetQueryService.existsForSection(SECTION_ID)).willReturn(true);
         given(userService.getUserReference(USER_ID)).willReturn(user);
     }
 
@@ -165,6 +169,33 @@ class DraftGenerationRequestServiceTest {
                 context(ProjectSectionStatus.SYNTHESIZING, false, true, 4, 4),
                 ErrorCode.ISSUE_CONFLICT_UNDECIDED
         );
+    }
+
+    @Test
+    void missingCurrentSynthesis_returnsDedicatedConflictBeforeContextAssembly() {
+        given(synthesisSetQueryService.existsForSection(SECTION_ID)).willReturn(false);
+
+        assertThatThrownBy(() -> service.requestDraftGeneration(SECTION_ID, USER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).getErrorCode())
+                .isEqualTo(ErrorCode.AI_SYNTHESIS_RESULT_REQUIRED);
+
+        verify(contextAssembler, never()).assembleDraftGeneration(any(), any());
+        verify(aiJobService, never()).createOrGet(any());
+    }
+
+    @Test
+    void invalidContextData_returnsInternalErrorInsteadOfSectionStatusError() {
+        given(contextAssembler.assembleDraftGeneration(access, SECTION_ID))
+                .willThrow(new com.wevo.backend.ai.context.AiContextAssemblyException(
+                        new IllegalStateException("invalid context")));
+
+        assertThatThrownBy(() -> service.requestDraftGeneration(SECTION_ID, USER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).getErrorCode())
+                .isEqualTo(ErrorCode.INTERNAL_SERVER_ERROR);
+
+        verify(aiJobService, never()).createOrGet(any());
     }
 
     private void assertRejected(DraftGenerationContext context, ErrorCode code) {

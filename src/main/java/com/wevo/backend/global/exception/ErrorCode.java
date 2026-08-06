@@ -80,6 +80,7 @@ public enum ErrorCode {
     AI_PROJECT_COST_BUDGET_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "AI027", "프로젝트의 AI 비용 한도를 초과했습니다. 한도가 갱신된 후 다시 시도해주세요."),
     AI_GUARDRAIL_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI028", "AI 사용 한도를 확인할 수 없어 새 AI 요청을 시작할 수 없습니다."),
     AI_PRICING_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "AI029", "AI 비용 정책을 확인할 수 없어 새 AI 요청을 시작할 수 없습니다."),
+    AI_SYNTHESIS_RESULT_REQUIRED(HttpStatus.CONFLICT, "AI030", "AI 의견 정리 결과가 필요합니다."),
     AI_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "AI999", "AI 처리 중 오류가 발생했습니다."),
 
     // Review

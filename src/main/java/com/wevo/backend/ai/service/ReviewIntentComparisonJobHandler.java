@@ -6,6 +6,7 @@ import com.wevo.backend.ai.context.AiInputSnapshotHasher;
 import com.wevo.backend.ai.context.ReviewIntentComparisonContext;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
+import com.wevo.backend.ai.exception.AiProviderUnavailableException;
 import com.wevo.backend.ai.domain.AiJobStatus;
 import com.wevo.backend.ai.dto.model.ReviewIntentComparisonOutput;
 import com.wevo.backend.ai.repository.AiJobRepository;
@@ -105,7 +106,7 @@ public class ReviewIntentComparisonJobHandler implements AiJobHandler {
         }
         ReviewIntentComparator comparator = comparatorProvider.getIfAvailable();
         if (comparator == null) {
-            throw new IllegalStateException("AI provider가 구성되지 않아 검토 의도를 비교할 수 없습니다.");
+            throw new AiProviderUnavailableException();
         }
         ReviewIntentComparisonOutput output = comparator.compare(job, context);
         aiJobService.succeed(job.getRequestId(), () -> {

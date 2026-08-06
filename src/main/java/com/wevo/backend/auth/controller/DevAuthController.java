@@ -6,6 +6,7 @@ import com.wevo.backend.auth.service.DevLoginService;
 import com.wevo.backend.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
@@ -46,6 +47,7 @@ public class DevAuthController {
                     responseCode = "404",
                     description = "local 외 프로파일에서는 컨트롤러가 등록되지 않아 경로 자체가 없음")
     })
+    @SecurityRequirements // 토큰을 발급받는 API 이므로 전역 Bearer 요구사항을 해제한다.
     @PostMapping("/dev-login")
     public ResponseEntity<ApiResponse<TokenResponse>> devLogin(
             @RequestBody(required = false) DevLoginRequest request

@@ -6,6 +6,7 @@ import com.wevo.backend.ai.context.AssembledAiContext;
 import com.wevo.backend.ai.context.DraftReviewContext;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
+import com.wevo.backend.ai.exception.AiProviderUnavailableException;
 import com.wevo.backend.ai.dto.model.DraftReviewOutput;
 import com.wevo.backend.ai.repository.AiJobRepository;
 import com.wevo.backend.project.service.ProjectAccessGuard;
@@ -102,7 +103,7 @@ public class DraftReviewJobHandler implements AiJobHandler {
 
         SectionDraftReviewer reviewer = reviewerProvider.getIfAvailable();
         if (reviewer == null) {
-            throw new IllegalStateException("AI provider가 구성되지 않아 사전 검토를 실행할 수 없습니다.");
+            throw new AiProviderUnavailableException();
         }
         DraftReviewOutput output = reviewer.review(job, assembled.context());
 

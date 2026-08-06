@@ -50,6 +50,10 @@ OPENAI_API_MAX_TOKENS=4096
 OPENAI_API_REASONING_EFFORT=medium
 ```
 
+운영 `compose.prod.yml`은 `AI_PROVIDER`를 필수로 전달한다. 값이 누락되면 배포 설정 검증 또는
+애플리케이션 기동이 실패하며, 의도적으로 `AI_PROVIDER=none`을 선택한 환경에서는 기존 AI 결과
+조회와 비AI 기능만 유지하고 신규·재시도 AI 실행을 `503 AI008`로 거부한다.
+
 OpenAI 연결과 opt-in synthetic smoke 절차는
 [`docs/engineering/ai/openai-gpt-5-6-luna.md`](docs/engineering/ai/openai-gpt-5-6-luna.md)를 참고한다.
 

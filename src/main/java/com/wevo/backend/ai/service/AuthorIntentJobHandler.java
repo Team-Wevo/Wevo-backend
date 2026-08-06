@@ -6,6 +6,7 @@ import com.wevo.backend.ai.context.AssembledAiContext;
 import com.wevo.backend.ai.context.AuthorIntentContext;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
+import com.wevo.backend.ai.exception.AiProviderUnavailableException;
 import com.wevo.backend.ai.dto.model.AuthorIntentExtractionOutput;
 import com.wevo.backend.ai.repository.AiJobRepository;
 import com.wevo.backend.project.service.ProjectAccessGuard;
@@ -93,7 +94,7 @@ public class AuthorIntentJobHandler implements AiJobHandler {
         }
         AuthorIntentExtractor extractor = extractorProvider.getIfAvailable();
         if (extractor == null) {
-            throw new IllegalStateException("AI provider가 구성되지 않아 작성자 의도를 추출할 수 없습니다.");
+            throw new AiProviderUnavailableException();
         }
         AuthorIntentExtractionOutput output = extractor.extract(job, assembled.context());
         aiJobService.succeed(job.getRequestId(), () -> {
