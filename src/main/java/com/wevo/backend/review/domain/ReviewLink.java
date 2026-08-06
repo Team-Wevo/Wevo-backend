@@ -17,6 +17,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -39,12 +40,17 @@ import lombok.NoArgsConstructor;
  *       {@link ReviewLinkStatus#OUTDATED} 로 만료되고, 재발급 시 기존 {@code ACTIVE} 링크는
  *       {@link ReviewLinkStatus#CLOSED} 로 닫힌다. 팀장이 지금 당장 수집을 끊어야 할 때만
  *       수동 종료(API_SPEC §3.5.9)를 쓴다. 만료·비활성 링크는 제출을 받지 않는다.</li>
+ *   <li><b>유효 기간 (발급 시 선택)</b> — 발급 시점에 {@code expiresOn}(마지막 유효 날짜)을 지정하면
+ *       그 날 끝까지만 제출을 받고 이후에는 {@link ReviewLinkStatus#EXPIRED} 로 취급한다.
+ *       기간이 지났는지는 <b>항상 날짜 비교로 판정</b>하고({@link #isPastDue}), 저장된 상태값은
+ *       링크를 다시 만질 때 {@link #expireIfPastDue} 로 따라온다 — 만료를 배치로 훑지 않아도
+ *       기간이 지난 링크가 제출을 받는 구간이 생기지 않는다.</li>
  *   <li><b>종료 상태는 되돌아가지 않는다</b> — {@code ACTIVE} 에서만 다른 상태로 전이하며,
- *       한 번 {@code OUTDATED}·{@code CLOSED} 가 된 링크는 상태가 다시 바뀌지 않는다.
- *       종료 사유({@code OUTDATED} = 본문 수정, {@code CLOSED} = 종료)가 나중 호출에 덮여
- *       외부 검토자 안내 문구가 뒤바뀌는 일을 막기 위함이다.
+ *       한 번 {@code OUTDATED}·{@code EXPIRED}·{@code CLOSED} 가 된 링크는 상태가 다시 바뀌지 않는다.
+ *       종료 사유({@code OUTDATED} = 본문 수정, {@code EXPIRED} = 유효 기간 만료,
+ *       {@code CLOSED} = 종료)가 나중 호출에 덮여 외부 검토자 안내 문구가 뒤바뀌는 일을 막기 위함이다.
  *       수동 종료({@code close()})는 {@code ACTIVE} 링크에서만 성공하고, 이미 끝난 링크는
- *       사유별로 거절한다({@code CLOSED} → R011, {@code OUTDATED} → R012).</li>
+ *       사유별로 거절한다({@code CLOSED} → R011, {@code OUTDATED} → R012, {@code EXPIRED} → R014).</li>
  * </ul>
  */
 @Entity
@@ -102,11 +108,20 @@ public class ReviewLink extends BaseTimeEntity {
     @Column(length = 20, nullable = false)
     private ReviewLinkStatus status;
 
+    /**
+     * 링크가 살아 있는 <b>마지막 날</b>. (유효기간/이 날 끝까지 제출을 받는다)
+     *
+     * <p>{@code null} 이면 기간 제한이 없다. 유효 기간은 날짜 단위로만 지정하여
+     * 시:분은 두지 않으며, 발급일 당일·과거 날짜는 발급 시 거부한다(422 {@code C002}).
+     */
+    @Column(name = "expires_on")
+    private LocalDate expiresOn;
+
     @Builder
     private ReviewLink(ProjectSection projectSection, User createdBy, String tokenHash,
                        String sectionTitleSnapshot, String contentSnapshot, Integer contentVersion,
                        String authorIntentSnapshot, SectionAuthorIntent authorIntent,
-                       ReviewLinkStatus status) {
+                       ReviewLinkStatus status, LocalDate expiresOn) {
         this.projectSection = projectSection;
         this.createdBy = createdBy;
         this.tokenHash = tokenHash;
@@ -116,11 +131,39 @@ public class ReviewLink extends BaseTimeEntity {
         this.authorIntentSnapshot = authorIntentSnapshot;
         this.authorIntent = authorIntent;
         this.status = status;
+        this.expiresOn = expiresOn;
     }
 
-    /** 열람·제출을 받는 정상 상태인지. */
-    public boolean isActive() {
-        return status == ReviewLinkStatus.ACTIVE;
+    /** 유효 기간이 지났는지. (기간 미지정 링크는 언제나 {@code false}) */
+    public boolean isPastDue(LocalDate today) {
+        return expiresOn != null && today.isAfter(expiresOn);
+    }
+
+    /**
+     * {@code today} 기준으로 이 링크를 어떻게 안내해야 하는지. (저장된 상태 + 유효 기간 판정)
+     *
+     * <p>기간이 지난 {@code ACTIVE} 링크는 저장된 상태를 아직 정리하지 못했더라도
+     * {@link ReviewLinkStatus#EXPIRED} 로 읽힌다 — 조회 응답과 제출 거절 사유가 항상 일치한다.
+     */
+    public ReviewLinkStatus statusAsOf(LocalDate today) {
+        return isPastDue(today) && status == ReviewLinkStatus.ACTIVE
+                ? ReviewLinkStatus.EXPIRED
+                : status;
+    }
+
+    /**
+     * 유효 기간이 지난 {@code ACTIVE} 링크를 {@link ReviewLinkStatus#EXPIRED} 로 정리한다.
+     *
+     * <p>이미 끝난 링크(만료·종료)는 종결 사유를 덮지 않고 그대로 둔다.
+     *
+     * @return 이번 호출로 {@code EXPIRED} 가 됐으면 {@code true}
+     */
+    public boolean expireIfPastDue(LocalDate today) {
+        if (status == ReviewLinkStatus.ACTIVE && isPastDue(today)) {
+            this.status = ReviewLinkStatus.EXPIRED;
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -137,18 +180,25 @@ public class ReviewLink extends BaseTimeEntity {
      * 링크를 종료한다. (재발급 시 기존 ACTIVE 링크 종료 · 팀장의 수동 종료)
      *
      * <p><b>{@code ACTIVE} 링크만 종료할 수 있다.</b> 이미 끝난 링크는 상태를 그대로 둔 채
-     * 사유를 구분해 거절한다 — 종료({@code CLOSED})와 만료({@code OUTDATED})는 서로 다른 종결
-     * 상태이므로, 팀장이 "내가 방금 닫았다"고 오인하지 않도록 각각 다른 문구로 알린다.
-     * 예외가 던져지면 트랜잭션이 롤백되므로 어느 경우에도 기존 상태는 바뀌지 않는다.
+     * 사유를 구분해 거절한다 — 종료({@code CLOSED})와 만료({@code OUTDATED}·{@code EXPIRED})는
+     * 서로 다른 종결 상태이므로, 팀장이 "내가 방금 닫았다"고 오인하지 않도록 각각 다른 문구로 알린다.
+     * <b>거절 경로에서는 상태를 건드리지 않는다</b> — 롤백에 기대지 않아야 참여 트랜잭션에서도
+     * "거절 = 상태 유지"가 그대로 성립한다.
+     *
+     * <p>유효 기간 판정에는 {@code today} 를 쓴다({@link #statusAsOf}) — 저장된 상태가 아직
+     * {@code ACTIVE} 라도 기간이 지났으면 종료가 아니라
+     * {@link ErrorCode#REVIEW_LINK_CLOSE_ALREADY_EXPIRED} 로 거절한다.
      *
      * @throws BusinessException 이미 종료된 링크면 {@link ErrorCode#REVIEW_LINK_CLOSE_ALREADY_CLOSED},
-     *                           이미 만료된 링크면 {@link ErrorCode#REVIEW_LINK_CLOSE_ALREADY_OUTDATED}
+     *                           본문 수정으로 만료된 링크면 {@link ErrorCode#REVIEW_LINK_CLOSE_ALREADY_OUTDATED},
+     *                           유효 기간이 지나 만료된 링크면 {@link ErrorCode#REVIEW_LINK_CLOSE_ALREADY_EXPIRED}
      */
-    public void close() {
-        switch (status) {
+    public void close(LocalDate today) {
+        switch (statusAsOf(today)) {
             case ACTIVE -> this.status = ReviewLinkStatus.CLOSED;
             case CLOSED -> throw new BusinessException(ErrorCode.REVIEW_LINK_CLOSE_ALREADY_CLOSED);
             case OUTDATED -> throw new BusinessException(ErrorCode.REVIEW_LINK_CLOSE_ALREADY_OUTDATED);
+            case EXPIRED -> throw new BusinessException(ErrorCode.REVIEW_LINK_CLOSE_ALREADY_EXPIRED);
         }
     }
 }
