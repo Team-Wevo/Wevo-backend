@@ -3,6 +3,7 @@ package com.wevo.backend.review.dto.response;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wevo.backend.review.domain.ReviewLink;
 import com.wevo.backend.review.domain.ReviewLinkStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
 
 /**
@@ -25,6 +26,9 @@ import java.time.LocalDate;
  *                         응답에서 키가 생략된다
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(requiredProperties = {
+        "sectionId", "sectionTitle", "content", "contentVersion", "linkStatus", "alreadySubmitted"
+})
 public record ExternalReviewViewResponse(
         Long sectionId,
         String sectionTitle,
