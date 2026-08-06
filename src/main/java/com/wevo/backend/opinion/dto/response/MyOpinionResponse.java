@@ -2,6 +2,7 @@ package com.wevo.backend.opinion.dto.response;
 
 import com.wevo.backend.opinion.domain.Opinion;
 import com.wevo.backend.opinion.domain.OpinionStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 
 /**
@@ -12,8 +13,12 @@ import java.time.LocalDateTime;
  *
  * @param content               내 작업본 — 임시저장으로 갱신되는 본문 (재편집 중에는 제출본과 다를 수 있다)
  * @param hasUnsubmittedChanges 제출 후 재편집으로 작업본이 제출본과 다른지 (재제출 필요 힌트)
+ * <p>필수는 {@code exists} 하나뿐이다 — 의견을 아직 쓰지 않았으면 나머지가 전부 비어 있으므로,
+ * FE 는 {@code exists} 로 먼저 분기한 뒤에 다른 필드를 읽어야 한다.
+ *
  * @param submittedAt           최초 제출 시각 (§4.3 제출 이력의 근거) — 미제출이면 null
  */
+@Schema(requiredProperties = {"exists"})
 public record MyOpinionResponse(
         boolean exists,
         Long id,
