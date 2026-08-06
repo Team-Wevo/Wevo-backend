@@ -1,5 +1,6 @@
 package com.wevo.backend.project.controller;
 
+import com.wevo.backend.global.config.ApiExampleRefs;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.project.dto.request.ProjectCreateRequest;
@@ -11,6 +12,8 @@ import com.wevo.backend.project.dto.response.ProjectSummaryResponse;
 import com.wevo.backend.project.dto.response.SectionSummaryResponse;
 import com.wevo.backend.project.service.ProjectService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -47,9 +50,11 @@ public class ProjectController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "201", description = "PROJECT_CREATED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "400", description = "C001 — ideaText·resultType·audience 검증 실패"),
+                    responseCode = "400", description = "C001 — ideaText·resultType·audience 검증 실패",
+                    content = @Content(examples = @ExampleObject(name = "C001", ref = ApiExampleRefs.INVALID_INPUT))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "401", description = "A001 — 인증 필요"),
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "U001 — 토큰의 사용자를 찾을 수 없음")
     })

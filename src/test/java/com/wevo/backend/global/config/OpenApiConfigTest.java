@@ -78,4 +78,72 @@ class OpenApiConfigTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/api/auth/logout'].post.security").doesNotExist());
     }
+
+    @Test
+    @DisplayName("JSON 응답 Content-Type 이 application/json 으로 문서화된다")
+    void jsonResponsesDeclareApplicationJson() throws Exception {
+        // 지정하지 않으면 모든 응답이 `*/*` 로 나가 문서만 봐서는 JSON 인지 알 수 없다.
+        // 설정이 src/test/resources/application.yml 에도 있어야 테스트가 운영과 같은 문서를 본다.
+        mockMvc.perform(get(API_DOCS))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.paths['/api/projects'].get.responses['200'].content"
+                                + "['application/json']").exists());
+    }
+
+    @Test
+    @DisplayName("파일 응답은 실제 타입으로 문서화된다 — JSON 기본값에 묻히지 않는다")
+    void fileResponsesDeclareTheirOwnMediaType() throws Exception {
+        mockMvc.perform(get(API_DOCS))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.paths['/api/projects/{projectId}/final-output/download/plain-text']"
+                                + ".get.responses['200'].content['text/plain']").exists())
+                .andExpect(jsonPath(
+                        "$.paths['/api/projects/{projectId}/final-output/download/markdown']"
+                                + ".get.responses['200'].content['text/markdown']").exists());
+    }
+
+    @Test
+    @DisplayName("공통 실패 응답 예제가 components.examples 에 등록된다")
+    void commonFailureExamplesAreRegistered() throws Exception {
+        // 이름은 ApiExampleRefs 의 상수와 짝이 맞아야 한다 — 어긋나면 참조가 끊기는데,
+        // 애노테이션 값이라 컴파일은 통과하고 Swagger 화면에서 예제만 조용히 비어 보인다.
+        mockMvc.perform(get(API_DOCS))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.components.examples.invalidInput.value").exists())
+                .andExpect(jsonPath("$.components.examples.unauthorized.value").exists())
+                .andExpect(jsonPath("$.components.examples.forbidden.value").exists())
+                .andExpect(jsonPath("$.components.examples.projectNotFound.value").exists())
+                .andExpect(jsonPath("$.components.examples.sectionNotFound.value").exists())
+                .andExpect(jsonPath("$.components.examples.conflict.value").exists());
+    }
+
+    @Test
+    @DisplayName("실패 응답이 공통 예제를 참조한다 — ref 만 주고 name 을 빠뜨리면 실리지 않는다")
+    void failureResponsesReferenceCommonExamples() throws Exception {
+        mockMvc.perform(get(API_DOCS))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.paths['/api/projects'].post.responses['400'].content"
+                                + "['application/json'].examples.C001").exists())
+                .andExpect(jsonPath(
+                        "$.paths['/api/projects'].post.responses['401'].content"
+                                + "['application/json'].examples.A001").exists());
+    }
+
+    @Test
+    @DisplayName("성공 응답 예제를 붙여도 스키마 참조가 사라지지 않는다")
+    void successExampleKeepsSchemaReference() throws Exception {
+        // 응답에 @Content(examples=...) 를 직접 붙이면 자동 생성된 schema.$ref 가 통째로 덮인다.
+        // 그래서 성공 예제는 응답 DTO 타입의 @Schema(example=...) 로 준다 — 스키마와 required 가
+        // 그대로 남고 예제만 얹힌다.
+        mockMvc.perform(get(API_DOCS))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.paths['/api/projects'].post.responses['201'].content"
+                                + "['application/json'].schema").exists())
+                .andExpect(jsonPath("$.components.schemas.ProjectCreateResponse.example").exists())
+                .andExpect(jsonPath("$.components.schemas.ProjectCreateResponse.required").exists());
+    }
 }

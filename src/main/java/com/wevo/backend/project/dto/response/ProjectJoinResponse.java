@@ -13,7 +13,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * @param projectTitle 프로젝트 제목
  * @param role         내 역할 (신규 참여 시 {@code MEMBER}, 기존 멤버면 기존 역할)
  */
-@Schema(requiredProperties = {"projectId", "projectTitle", "role"})
+@Schema(requiredProperties = {"projectId", "projectTitle", "role"},
+        example = """
+                {"projectId": 3, "projectTitle": "위보 발표 준비", "role": "MEMBER"}""")
 public record ProjectJoinResponse(
         Long projectId,
         String projectTitle,

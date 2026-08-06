@@ -2,9 +2,11 @@ package com.wevo.backend.global.config;
 
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.examples.Example;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
+import java.util.Map;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -33,13 +35,101 @@ public class OpenApiConfig {
      */
     private static final String BEARER_SCHEME_NAME = "bearerAuth";
 
+    /**
+     * 공통 실패 응답 예제. 키가 곧 참조 이름이다
+     * ({@code @ExampleObject(ref = "#/components/examples/invalidInput")}).
+     *
+     * <p>예제를 실패 응답에 우선 붙이는 이유 — 성공 응답은 한 번 호출해보면 모양을 알 수 있지만,
+     * 실패는 조건을 만들어야 재현되므로 FE 가 확인하기 어렵다.
+     *
+     * <p>시각은 <b>오프셋 없는 KST</b> 다({@code CLAUDE.md §5.4}). {@code Z}·{@code +09:00} 이
+     * 붙지 않는다는 점이 타입만으로는 드러나지 않아 예제로 보여준다.
+     */
+    private static final Map<String, Example> COMMON_FAILURE_EXAMPLES = Map.of(
+            "invalidInput", failureExample(
+                    "요청 검증 실패 (C001) — 필드 단위 사유가 errors 에 담긴다",
+                    """
+                            {
+                              "success": false,
+                              "code": "C001",
+                              "message": "잘못된 요청입니다.",
+                              "errors": [
+                                { "field": "title", "reason": "공백일 수 없습니다" }
+                              ],
+                              "timestamp": "2026-08-06T18:10:00"
+                            }"""),
+            "unauthorized", failureExample(
+                    "인증 실패 (A001) — 토큰 없음·만료",
+                    """
+                            {
+                              "success": false,
+                              "code": "A001",
+                              "message": "인증이 필요합니다.",
+                              "timestamp": "2026-08-06T18:10:00"
+                            }"""),
+            "forbidden", failureExample(
+                    "권한 부족 (A002) — 멤버지만 OWNER 가 아님",
+                    """
+                            {
+                              "success": false,
+                              "code": "A002",
+                              "message": "접근 권한이 없습니다.",
+                              "timestamp": "2026-08-06T18:10:00"
+                            }"""),
+            "projectNotFound", failureExample(
+                    "프로젝트 없음 또는 비멤버 (P001) — 존재 숨김이라 둘을 같은 응답으로 돌려준다",
+                    """
+                            {
+                              "success": false,
+                              "code": "P001",
+                              "message": "프로젝트를 찾을 수 없습니다.",
+                              "timestamp": "2026-08-06T18:10:00"
+                            }"""),
+            "sectionNotFound", failureExample(
+                    "섹션 없음 또는 비멤버 (S001) — 존재 숨김",
+                    """
+                            {
+                              "success": false,
+                              "code": "S001",
+                              "message": "섹션을 찾을 수 없습니다.",
+                              "timestamp": "2026-08-06T18:10:00"
+                            }"""),
+            "conflict", failureExample(
+                    "상태·버전 충돌 (C003)",
+                    """
+                            {
+                              "success": false,
+                              "code": "C003",
+                              "message": "요청이 현재 상태와 충돌합니다.",
+                              "timestamp": "2026-08-06T18:10:00"
+                            }"""));
+
+    private static Example failureExample(String summary, String body) {
+        return new Example().summary(summary).value(body);
+    }
+
     @Bean
     public OpenAPI wevoOpenApi() {
         return new OpenAPI()
                 .info(info())
-                .components(new Components()
-                        .addSecuritySchemes(BEARER_SCHEME_NAME, bearerScheme()))
+                .components(commonComponents())
                 .addSecurityItem(new SecurityRequirement().addList(BEARER_SCHEME_NAME));
+    }
+
+    /**
+     * 여러 API 가 공유하는 실패 응답 예제를 한 곳에 등록한다.
+     *
+     * <p>컨트롤러에서는 {@code @ExampleObject(ref = "#/components/examples/이름")} 으로 참조한다 —
+     * 같은 본문을 각 컨트롤러에 복사하면 응답 계약이 바뀔 때 일부만 고쳐져 문서가 갈린다.
+     *
+     * <p><b>성공 응답 예제는 여기 두지 않는다.</b> {@code code}·{@code message}·{@code data} 가
+     * API 마다 달라 공유할 것이 없다. 각 컨트롤러에서 개별로 작성한다.
+     */
+    private Components commonComponents() {
+        Components components = new Components()
+                .addSecuritySchemes(BEARER_SCHEME_NAME, bearerScheme());
+        COMMON_FAILURE_EXAMPLES.forEach(components::addExamples);
+        return components;
     }
 
     /**
