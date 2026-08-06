@@ -1,5 +1,6 @@
 package com.wevo.backend.ai.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.UUID;
 
 /**
@@ -7,5 +8,6 @@ import java.util.UUID;
  *
  * @param requestId 비동기 AI 작업 요청 ID
  */
+@Schema(requiredProperties = {"requestId"})
 public record SynthesisAcceptedResponse(UUID requestId) {
 }

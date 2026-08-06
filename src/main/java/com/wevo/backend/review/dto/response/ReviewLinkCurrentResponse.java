@@ -3,6 +3,7 @@ package com.wevo.backend.review.dto.response;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wevo.backend.review.domain.ReviewLink;
 import com.wevo.backend.review.domain.ReviewLinkStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -27,6 +28,7 @@ import java.time.LocalDateTime;
  *                        이라 응답에서 키가 생략된다 — FE 는 키 유무로 "기간 제한 없음"을 판단한다
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(requiredProperties = {"reviewLinkId", "linkStatus", "contentVersion", "submissionCount", "issuedAt"})
 public record ReviewLinkCurrentResponse(
         Long reviewLinkId,
         ReviewLinkStatus linkStatus,

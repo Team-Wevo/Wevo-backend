@@ -40,6 +40,8 @@ public class AiJobController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400", description = "C001 — requestId 형식 오류"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "AI021 — 작업 없음 또는 비멤버")
     })
     @GetMapping("/{requestId}")

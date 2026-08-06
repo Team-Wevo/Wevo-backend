@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wevo.backend.review.domain.ReviewSubmission;
 import com.wevo.backend.review.domain.ReviewIntentComparison;
 import com.wevo.backend.review.domain.UnderstandingSignal;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 
 /**
@@ -23,6 +24,9 @@ import java.time.LocalDateTime;
  * @param submittedAt         제출 시각
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(requiredProperties = {
+        "submissionId", "understandingSignal", "contentVersion", "submittedAt", "comparison"
+})
 public record ExternalReviewItemResponse(
         Long submissionId,
         UnderstandingSignal understandingSignal,

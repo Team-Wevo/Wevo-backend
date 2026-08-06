@@ -5,6 +5,7 @@ import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.section.domain.ProjectSection;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
 
@@ -18,6 +19,7 @@ import java.util.List;
  * @param myRole     요청 사용자의 역할 (생성자 = OWNER)
  * @param sections   자동 생성된 고정 섹션 목록
  */
+@Schema(requiredProperties = {"projectId", "title", "resultType", "status", "myRole", "sections"})
 public record ProjectCreateResponse(
         Long projectId,
         String title,

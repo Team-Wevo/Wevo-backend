@@ -51,6 +51,8 @@ public class IssueController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400", description = "C001 — 결정 입력 오류"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403", description = "A002 — OWNER 권한 없음"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "I001 — 쟁점 없음 또는 비멤버"),
@@ -76,6 +78,8 @@ public class IssueController {
                     responseCode = "200", description = "EVIDENCE_REQUESTED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400", description = "C001 — 대상 사용자 오류"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403", description = "A002 — OWNER 권한 없음"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -105,6 +109,8 @@ public class IssueController {
                     responseCode = "200", description = "EVIDENCE_ANSWERED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400", description = "C001 — 답변 입력 오류"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403", description = "A002 — 지목된 팀원이 아님"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(

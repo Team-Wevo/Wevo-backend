@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.section.service.SectionConfirmationSummary;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
 /**
@@ -15,6 +16,7 @@ import java.util.List;
  * @param sections 확정본 목록 — {@code ready=true} 일 때만. 그 외에는 {@code null} 로 두어 직렬화에서 제외된다
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(requiredProperties = {"projectId", "title", "resultType", "ready", "confirmedCount", "totalCount"})
 public record FinalOutputResponse(
         Long projectId,
         String title,
@@ -53,6 +55,7 @@ public record FinalOutputResponse(
      * @param title   섹션 제목
      * @param content 확정본 본문 — 섹션의 {@code confirmedVersion} 에 해당하는 초안
      */
+    @Schema(requiredProperties = {"order", "title", "content"})
     public record SectionOutput(Integer order, String title, String content) {
     }
 }
