@@ -1,5 +1,6 @@
 package com.wevo.backend.section.dto.request;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -14,6 +15,13 @@ import jakarta.validation.constraints.Size;
  * @param baseVersion 클라이언트가 편집을 시작한 기준 본문 버전(= 섹션 조회의 {@code contentVersion}).
  *                    초안이 아직 없으면 {@code 0}. 서버의 최신 버전과 다르면 409 로 거부한다(낙관적 충돌).
  */
+@Schema(example = """
+        {
+          "content": "## 문제 정의
+
+        회의 뒤 결정이 흩어져 다시 논의하게 됩니다.",
+          "baseVersion": 3
+        }""")
 public record SectionDraftSaveRequest(
         @NotBlank @Size(max = SectionDraftSaveRequest.MAX_CONTENT_LENGTH) String content,
         @NotNull @PositiveOrZero Integer baseVersion

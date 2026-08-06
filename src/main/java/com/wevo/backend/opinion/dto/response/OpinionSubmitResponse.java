@@ -9,7 +9,12 @@ import java.time.LocalDateTime;
  *
  * @param submittedAt 최초 제출 시각 — 재제출해도 갱신되지 않는다 (§4.3 제출 이력)
  */
-@Schema(requiredProperties = {"id", "submittedAt"})
+@Schema(requiredProperties = {"id", "submittedAt"},
+        example = """
+                {
+                  "id": 41,
+                  "submittedAt": "2026-08-06T18:12:00"
+                }""")
 public record OpinionSubmitResponse(
         Long id,
         LocalDateTime submittedAt

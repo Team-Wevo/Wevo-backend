@@ -1,5 +1,6 @@
 package com.wevo.backend.opinion.controller;
 
+import com.wevo.backend.global.config.ApiExampleRefs;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
@@ -11,6 +12,8 @@ import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
 import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
 import com.wevo.backend.opinion.service.OpinionService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -67,11 +70,17 @@ public class OpinionController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "OPINION_DRAFT_SAVED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "400", description = "C001 — content 누락·공백·1,000자 초과"),
+                    responseCode = "400", description = "C001 — content 누락·공백·1,000자 초과",
+                    content = @Content(examples = @ExampleObject(
+                            name = "C001", ref = ApiExampleRefs.INVALID_INPUT))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "401", description = "A001 — 인증 필요"),
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)"),
+                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)",
+                    content = @Content(examples = @ExampleObject(
+                            name = "S001", ref = ApiExampleRefs.SECTION_NOT_FOUND))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409", description = "O003 — 의견 수집 마감됨")
     })
@@ -116,11 +125,17 @@ public class OpinionController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "OPINION_SUBMITTED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "401", description = "A001 — 인증 필요"),
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 / O001 — 임시저장한 의견 없음"),
+                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 / O001 — 임시저장한 의견 없음",
+                    content = @Content(examples = @ExampleObject(
+                            name = "S001", ref = ApiExampleRefs.SECTION_NOT_FOUND))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "409", description = "O003 — 의견 수집 마감됨"),
+                    responseCode = "409", description = "O003 — 의견 수집 마감됨",
+                    content = @Content(examples = @ExampleObject(
+                            name = "C003", ref = ApiExampleRefs.CONFLICT))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "422", description = "C002 — 제출 기준(20자) 미달")
     })

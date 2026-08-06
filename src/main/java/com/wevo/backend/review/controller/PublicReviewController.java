@@ -1,11 +1,14 @@
 package com.wevo.backend.review.controller;
 
+import com.wevo.backend.global.config.ApiExampleRefs;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.review.dto.request.ExternalReviewSubmitRequest;
 import com.wevo.backend.review.dto.response.ExternalReviewViewResponse;
 import com.wevo.backend.review.dto.response.ReviewSubmissionResponse;
 import com.wevo.backend.review.service.ReviewLinkService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -85,7 +88,9 @@ public class PublicReviewController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "201", description = "REVIEW_SUBMITTED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "400", description = "C001 — 이해도 누락·길이 초과·검토자 키 형식 오류"),
+                    responseCode = "400", description = "C001 — 이해도 누락·길이 초과·검토자 키 형식 오류",
+                    content = @Content(examples = @ExampleObject(
+                            name = "C001", ref = ApiExampleRefs.INVALID_INPUT))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "R001 — 토큰 무효"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(

@@ -8,7 +8,13 @@ import java.util.UUID;
 
 /** 결과 본문을 제외한 공통 AI 작업 상태 조회 응답. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@Schema(requiredProperties = {"requestId", "feature", "status"})
+@Schema(requiredProperties = {"requestId", "feature", "status"},
+        example = """
+                {
+                  "requestId": "0f7c1c1e-6a1f-4c39-9a1e-2b7c9d4e5f60",
+                  "feature": "SYNTHESIS",
+                  "status": "REQUESTED"
+                }""")
 public record AiJobResponse(
         UUID requestId,
         AiRequestFeature feature,

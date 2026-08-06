@@ -51,10 +51,12 @@ public class ProjectController {
                     responseCode = "201", description = "PROJECT_CREATED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400", description = "C001 — ideaText·resultType·audience 검증 실패",
-                    content = @Content(examples = @ExampleObject(name = "C001", ref = ApiExampleRefs.INVALID_INPUT))),
+                    content = @Content(examples = @ExampleObject(
+                            name = "C001", ref = ApiExampleRefs.INVALID_INPUT))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401", description = "A001 — 인증 필요",
-                    content = @Content(examples = @ExampleObject(name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "U001 — 토큰의 사용자를 찾을 수 없음")
     })
@@ -80,7 +82,9 @@ public class ProjectController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "OK"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "401", description = "A001 — 인증 필요")
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED)))
     })
     @GetMapping
     public ResponseEntity<ApiResponse<List<ProjectSummaryResponse>>> getMyProjects(
@@ -98,9 +102,13 @@ public class ProjectController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "OK"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "401", description = "A001 — 인증 필요"),
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "404", description = "P001 — 프로젝트 없음 또는 비멤버 (존재 숨김)")
+                    responseCode = "404", description = "P001 — 프로젝트 없음 또는 비멤버 (존재 숨김)",
+                    content = @Content(examples = @ExampleObject(
+                            name = "P001", ref = ApiExampleRefs.PROJECT_NOT_FOUND)))
     })
     @GetMapping("/{projectId}")
     public ResponseEntity<ApiResponse<ProjectDetailResponse>> getProject(

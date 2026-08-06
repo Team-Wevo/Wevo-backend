@@ -10,7 +10,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * @param submissionId        제출 식별자
  * @param understandingSignal 제출된 이해도
  */
-@Schema(requiredProperties = {"submissionId", "understandingSignal"})
+@Schema(requiredProperties = {"submissionId", "understandingSignal"},
+        example = """
+                {
+                  "submissionId": 7,
+                  "understandingSignal": "PARTIAL"
+                }""")
 public record ReviewSubmissionResponse(Long submissionId, UnderstandingSignal understandingSignal) {
 
     public static ReviewSubmissionResponse from(ReviewSubmission submission) {

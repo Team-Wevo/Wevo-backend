@@ -1,6 +1,7 @@
 package com.wevo.backend.review.dto.request;
 
 import com.wevo.backend.review.domain.UnderstandingSignal;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -33,6 +34,13 @@ import jakarta.validation.constraints.Size;
  * @param summary             이해한 핵심 한 문장 — CLEAR/PARTIAL 필수, UNCLEAR 선택
  * @param reviewerComment     추가 코멘트 — 항상 선택. 없으면 {@code null}
  */
+@Schema(example = """
+        {
+          "understandingSignal": "PARTIAL",
+          "reviewerName": "김검토",
+          "summary": "협업 중 결정이 사라지는 문제를 다루는 것으로 이해했습니다.",
+          "reviewerComment": "해결 방향이 조금 더 구체적이면 좋겠습니다."
+        }""")
 public record ExternalReviewSubmitRequest(
         @NotNull UnderstandingSignal understandingSignal,
         @Size(max = 100) String reviewerName,

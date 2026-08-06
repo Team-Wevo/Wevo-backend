@@ -1,5 +1,6 @@
 package com.wevo.backend.section.controller;
 
+import com.wevo.backend.global.config.ApiExampleRefs;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.section.dto.request.SectionDraftSaveRequest;
@@ -8,6 +9,8 @@ import com.wevo.backend.section.dto.response.SectionDraftReadResponse;
 import com.wevo.backend.section.dto.response.SectionDraftSaveResponse;
 import com.wevo.backend.section.service.SectionDraftService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -66,13 +69,21 @@ public class SectionDraftController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "DRAFT_SAVED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "400", description = "C001 — content·baseVersion 검증 실패 (최대 10,000자)"),
+                    responseCode = "400", description = "C001 — content·baseVersion 검증 실패 (최대 10,000자)",
+                    content = @Content(examples = @ExampleObject(
+                            name = "C001", ref = ApiExampleRefs.INVALID_INPUT))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "401", description = "A001 — 인증 필요"),
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)"),
+                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)",
+                    content = @Content(examples = @ExampleObject(
+                            name = "S001", ref = ApiExampleRefs.SECTION_NOT_FOUND))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "409", description = "C003 — baseVersion 충돌 / S002 — 초안 없는 단계 / S004 — 타인 편집 중 / S005 — 편집권 미보유")
+                    responseCode = "409", description = "C003 — baseVersion 충돌 / S002 — 초안 없는 단계 / S004 — 타인 편집 중 / S005 — 편집권 미보유",
+                    content = @Content(examples = @ExampleObject(
+                            name = "C003", ref = ApiExampleRefs.CONFLICT)))
     })
     @PutMapping("/{sectionId}/draft")
     public ResponseEntity<ApiResponse<SectionDraftSaveResponse>> saveDraft(
