@@ -16,7 +16,16 @@ import java.util.List;
  * @param sections 확정본 목록 — {@code ready=true} 일 때만. 그 외에는 {@code null} 로 두어 직렬화에서 제외된다
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@Schema(requiredProperties = {"projectId", "title", "resultType", "ready", "confirmedCount", "totalCount"})
+@Schema(requiredProperties = {"projectId", "title", "resultType", "ready", "confirmedCount", "totalCount"},
+        example = """
+                {
+                  "projectId": 3,
+                  "title": "위보 발표 준비",
+                  "resultType": "PRESENTATION",
+                  "ready": false,
+                  "confirmedCount": 2,
+                  "totalCount": 6
+                }""")
 public record FinalOutputResponse(
         Long projectId,
         String title,

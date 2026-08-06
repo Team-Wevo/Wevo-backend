@@ -26,7 +26,22 @@ import java.time.LocalDateTime;
  */
 @Schema(requiredProperties = {
         "projectId", "title", "resultType", "status", "myRole", "createdAt", "sectionProgress"
-})
+}, example = """
+        {
+          "projectId": 3,
+          "title": "위보 발표 준비",
+          "resultType": "PRESENTATION",
+          "status": "ACTIVE",
+          "myRole": "OWNER",
+          "createdAt": "2026-08-01T09:30:00",
+          "lastActiveSection": {
+            "sectionId": 13,
+            "order": 3,
+            "title": "해결 방향",
+            "sectionStatus": "DRAFTING"
+          },
+          "sectionProgress": { "total": 6, "confirmed": 2 }
+        }""")
 public record ProjectSummaryResponse(
         Long projectId,
         String title,

@@ -15,7 +15,16 @@ import java.util.List;
  * @param sectionStatus  저장 후 섹션 상태
  * @param driftedSections 확정 본문 변경으로 직접 영향받은 하위 섹션. 없으면 빈 배열
  */
-@Schema(requiredProperties = {"contentVersion", "updatedAt", "sectionStatus", "driftedSections"})
+@Schema(requiredProperties = {"contentVersion", "updatedAt", "sectionStatus", "driftedSections"},
+        example = """
+                {
+                  "contentVersion": 4,
+                  "updatedAt": "2026-08-06T18:20:00",
+                  "sectionStatus": "DRAFTING",
+                  "driftedSections": [
+                    { "sectionId": 15, "title": "기대 효과", "sectionStatus": "REVIEWING", "driftStatus": "REVIEW_REQUIRED" }
+                  ]
+                }""")
 public record SectionDraftSaveResponse(
         Integer contentVersion,
         LocalDateTime updatedAt,
