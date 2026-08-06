@@ -8,6 +8,7 @@ import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.service.SectionConfirmationSummary;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
 
@@ -18,8 +19,14 @@ import java.time.LocalDateTime;
  * {@link LastActiveSection} 과 {@link SectionProgress} 를 함께 담는다. 없으면 프로젝트마다
  * 섹션 목록 API 를 따로 불러야 해서, 카드 N개에 요청이 N+1번 나간다.
  *
+ * <p>{@code lastActiveSection} 만 필수에서 뺐다 — 섹션 생성이 실패한 비정상 프로젝트에서만
+ * {@code null} 이 되며, 그 경우 응답에서 키가 생략된다(§1.4).
+ *
  * @param myRole 해당 프로젝트에서의 내 역할
  */
+@Schema(requiredProperties = {
+        "projectId", "title", "resultType", "status", "myRole", "createdAt", "sectionProgress"
+})
 public record ProjectSummaryResponse(
         Long projectId,
         String title,
@@ -41,6 +48,7 @@ public record ProjectSummaryResponse(
      * 화면에서 매핑한다 — 서버가 문장을 만들면 문구를 고칠 때마다 배포가 필요하다.
      * ({@code UnderstandingSignal} 의 UI 라벨을 화면에서 매핑하기로 한 정책서 §8과 같은 방식)
      */
+    @Schema(requiredProperties = {"sectionId", "order", "title", "sectionStatus"})
     public record LastActiveSection(
             Long sectionId,
             Integer order,
@@ -64,6 +72,7 @@ public record ProjectSummaryResponse(
      * <p>{@code total == confirmed} 이면 전 섹션이 확정된 프로젝트라, 화면이 "완성"을 표시하고
      * 그렇지 않으면 진행률(3/6)을 표시할 수 있다.
      */
+    @Schema(requiredProperties = {"total", "confirmed"})
     public record SectionProgress(int total, int confirmed) {
 
         static SectionProgress from(SectionConfirmationSummary summary) {

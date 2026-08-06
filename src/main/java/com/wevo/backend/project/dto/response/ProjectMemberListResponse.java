@@ -5,6 +5,7 @@ import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.user.domain.User;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -18,6 +19,7 @@ import java.util.List;
  * @param maxMembers  최대 인원 (정책서 §2.1 — 4)
  * @param members     참여자 목록 (OWNER 우선, 같은 역할이면 참여 시각 오름차순)
  */
+@Schema(requiredProperties = {"memberCount", "maxMembers", "members"})
 public record ProjectMemberListResponse(
         int memberCount,
         int maxMembers,
@@ -34,6 +36,7 @@ public record ProjectMemberListResponse(
      * @param profileImageUrl 프로필 이미지 URL — 없으면 직렬화에서 제외된다
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Schema(requiredProperties = {"userId", "name", "role", "joinedAt"})
     public record MemberSummary(
             Long userId,
             String name,
