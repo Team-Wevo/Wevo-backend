@@ -47,15 +47,22 @@ public class PublicReviewController {
      * 토큰으로 섹션 초안 스냅샷을 읽기 전용으로 조회한다.
      *
      * <p>익명 검토자 키를 함께 심어(응답 쿠키), 이 브라우저가 이미 제출했는지를 {@code alreadySubmitted} 로 알려준다.
+     *
+     * <p><b>살아 있는 링크만 열린다</b> — 만료·종료된 링크는 제출({@link #submit})과 동일한 검사를
+     * 지나 같은 코드로 거절된다({@code R004}/{@code R013}/{@code R005}). 본문을 보여준 뒤에야
+     * 제출을 막는 일이 없도록 열람 단계에서 사유를 먼저 알린다.
      */
     @Operation(summary = "외부 검토 공개 열람 (비로그인) — 발급 시점 초안 스냅샷")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "OK"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400", description = "C001 — 검토자 키(X-Anonymous-Reviewer-Id) 형식 오류"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "R001 — 토큰 무효"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "409", description = "R004 — 본문 수정으로 만료 / R005 — 종료된 링크")
+                    responseCode = "409",
+                    description = "R004 — 본문 수정으로 만료 / R005 — 종료된 링크 / R013 — 유효 기간 만료")
     })
     @SecurityRequirements // 외부 검토자는 비로그인이므로 전역 Bearer 요구사항을 해제한다.
     @GetMapping("/{token}")
@@ -82,7 +89,9 @@ public class PublicReviewController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "R001 — 토큰 무효"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "409", description = "R002 — 중복 제출 / R003 — 정원 초과 / R004 — 만료 / R005 — 종료")
+                    responseCode = "409",
+                    description = "R002 — 중복 제출 / R003 — 정원 초과 / R004 — 본문 수정으로 만료 "
+                            + "/ R005 — 종료 / R013 — 유효 기간 만료")
     })
     @SecurityRequirements // 외부 검토자는 비로그인이므로 전역 Bearer 요구사항을 해제한다.
     @PostMapping("/{token}/submissions")
