@@ -75,10 +75,16 @@ public class InviteService {
         // 토큰은 저장값이 아니라 프로젝트 ID 에서 파생한다 — 해시만 저장하므로 기존 링크를 그대로
         // 돌려주려면 원문을 매번 다시 계산해야 한다. (InviteTokenFactory 참고)
         String rawToken = inviteTokenFactory.tokenFor(projectId);
-        if (inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(projectId).isEmpty()) {
-            inviteLinkRepository.save(InviteLink.issue(
-                    membership.getProject(), membership.getUser(), tokenHasher.hash(rawToken)));
-        }
+        String tokenHash = tokenHasher.hash(rawToken);
+
+        // 기존 행이 있으면 해시를 지금 값으로 맞춘다. 반환하는 토큰과 저장된 해시가 어긋나면
+        // 멀쩡해 보이는 URL 이 P003 으로 죽는데, 그 상태가 오류 없이 공유된다.
+        // (비밀키를 바꿨거나, 해시 도입 전에 원문으로 저장된 행이 남아 있는 경우)
+        inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(projectId)
+                .ifPresentOrElse(
+                        link -> link.refreshTokenHash(tokenHash),
+                        () -> inviteLinkRepository.save(InviteLink.issue(
+                                membership.getProject(), membership.getUser(), tokenHash)));
 
         return InviteLinkResponse.of(rawToken, buildInviteUrl(rawToken));
     }

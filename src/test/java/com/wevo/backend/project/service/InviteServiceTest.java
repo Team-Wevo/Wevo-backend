@@ -125,6 +125,26 @@ class InviteServiceTest {
     }
 
     @Test
+    @DisplayName("기존 행의 해시가 어긋나 있으면 현재 값으로 맞춘다 — 재발급으로 되살아난다")
+    void createInviteLink_realignsStaleTokenHash() {
+        // 비밀키를 바꿨거나, 해시 도입 전 원문으로 저장된 행이 남은 경우다.
+        // 맞춰주지 않으면 반환한 URL 이 P003 으로 죽는데 그 사실이 드러나지 않는다.
+        Project project = project();
+        User owner = user(OWNER_ID, "팀장");
+        InviteLink stale = InviteLink.issue(project, owner, "예전-비밀키로-만든-해시");
+        given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
+                .willReturn(Optional.of(member(project, owner, ProjectMemberRole.OWNER)));
+        given(inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(PROJECT_ID))
+                .willReturn(Optional.of(stale));
+
+        InviteLinkResponse response = inviteService.createInviteLink(OWNER_ID, PROJECT_ID);
+
+        assertThat(stale.getTokenHash()).isEqualTo(tokenHasher.hash(response.token()));
+        // 기존 행을 고치는 것이지 새로 만드는 것이 아니다 — 활성 링크는 프로젝트당 1개다.
+        verify(inviteLinkRepository, never()).save(any(InviteLink.class));
+    }
+
+    @Test
     @DisplayName("멤버가 아니면 PROJECT_NOT_FOUND (존재 숨김)")
     void createInviteLink_notMember_throwsProjectNotFound() {
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))

@@ -80,6 +80,23 @@ public class InviteLink extends BaseTimeEntity {
     }
 
     /**
+     * 저장된 토큰 해시를 현재 값으로 맞춘다.
+     *
+     * <p>원문 토큰은 {@code HMAC(비밀키, projectId)} 로 파생하므로 <b>비밀키가 바뀌면 값이 달라진다</b>.
+     * 그때 이 행을 그냥 두면 발급 API 가 새 비밀키로 만든 토큰을 돌려주는데 DB 에는 옛 해시가 남아,
+     * 그 링크로 들어가면 {@code P003} 이 난다 — <b>오류 없이 깨진 URL 이 공유되는</b> 상황이다.
+     * 발급 때마다 맞춰 두면 재발급 한 번으로 되살아난다.
+     *
+     * <p>같은 값이면 아무것도 하지 않는다. 평상시(비밀키 그대로)에는 UPDATE 가 나가지 않는다.
+     */
+    public void refreshTokenHash(String tokenHash) {
+        if (tokenHash == null || tokenHash.equals(this.tokenHash)) {
+            return;
+        }
+        this.tokenHash = tokenHash;
+    }
+
+    /**
      * 초대 링크를 비활성화한다. (API_SPEC §3.2.9 — 프로젝트 보관 시 새 멤버 합류 차단)
      *
      * <p>토큰 행은 지우지 않는다. 이미 공유된 링크로 접근하면 미리보기·참여가
