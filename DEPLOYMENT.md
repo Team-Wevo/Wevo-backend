@@ -57,8 +57,10 @@ git log -1 --oneline
 1. Gradle 테스트 실행
 2. GitHub OIDC로 단기 AWS 자격 증명 발급
 3. 커밋 SHA를 태그로 사용해 Docker 이미지 빌드 및 ECR Push
-4. Systems Manager Run Command로 EC2의 `/opt/wevo` 배포 실행
-5. 컨테이너 내부 Actuator 응답이 `UP`인지 확인
+4. 같은 커밋의 `compose.prod.yml`과 배포 스크립트를 Systems Manager Run Command로 EC2에 전달
+5. 서버의 `.env.prod`로 새 Compose를 사전 검증하고 필수 값이 빠졌으면 기존 app을 교체하지 않고 중단
+6. 검증된 Compose를 `/opt/wevo/compose.prod.yml`에 원자적으로 설치하고 app 재생성
+7. 컨테이너 내부 Actuator 응답이 `UP`인지 확인
 
 GitHub 저장소의 `Settings > Secrets and variables > Actions > Variables`에는 다음 Repository variable이
 등록되어 있어야 합니다. 이 값들은 비밀번호가 아니며 운영 비밀 값은 계속 EC2의 `.env.prod`에서만
@@ -78,12 +80,23 @@ GitHub Secrets에 등록하지 않습니다. EC2 인스턴스 역할에는 SSM A
 
 수동 실행은 Actions의 `Production CD` 워크플로에서 할 수 있지만, OIDC 신뢰 조건과 동일하게 `dev`
 브랜치에서만 배포 작업이 실행됩니다. 실패 시 해당 Actions 실행의 `Deploy through Systems Manager`
-단계에서 SSM 상태, 컨테이너 상태, 앱 최근 로그를 확인합니다. 자동 롤백은 하지 않으며 아래 수동 롤백
-절차를 사용합니다.
+단계에서 SSM 상태, 실패 단계, 해당 배포 시작 이후 앱 로그와 root-cause 발췌를 확인합니다.
+
+자동 배포는 이미지와 같은 커밋의 Compose SHA-256을 로그에 남기고, 기존 운영 Compose를
+`/opt/wevo/compose.prod.yml.previous`에 보존합니다. 신규 Compose의 필수 환경변수 검증은 image pull과
+app 재생성보다 먼저 수행하므로 설정 누락만으로 기존 정상 app을 내리지 않습니다. 자동 이미지 롤백은
+Flyway 전진 호환성을 보장할 수 없어 수행하지 않으며 아래 수동 롤백 절차를 사용합니다.
+
+CI의 `.github/scripts/test-production-deployment-assets.sh`는 정상 예시 환경에서 Compose 검증이
+통과하는지, DB·Redis·JWT·프론트 주소·초대·AI Provider 필수값을 하나씩 제거한 환경에서는 배포 전
+검증이 실패하는지, CD가 같은 commit의 Compose를 전달하는지 검사합니다.
 
 ## EC2 수동 배포
 
 Session Manager로 EC2에 접속한 뒤 실행합니다.
+새 필수 환경변수가 추가된 배포라면 먼저 `.env.prod`에 운영 값을 안전하게 등록하고 파일 권한 `600`을
+유지합니다. 실제 값이나 `.env.prod` 전체 내용을 출력하지 않습니다. 수동 배포에서도 반드시 배포할
+commit의 `compose.prod.yml`을 `/opt/wevo/compose.prod.yml`에 먼저 동기화해야 합니다.
 
 ```bash
 cd /opt/wevo
@@ -99,7 +112,7 @@ sudo docker compose --env-file .env.prod -f compose.prod.yml ps
 Redis 인증을 최초 적용할 때는 위 명령처럼 Redis와 앱을 함께 재생성해야 합니다.
 
 ```bash
-sudo docker compose --env-file .env.prod -f compose.prod.yml logs --tail=100 app
+sudo docker compose --env-file .env.prod -f compose.prod.yml logs --tail=500 app
 sudo docker compose --env-file .env.prod -f compose.prod.yml exec -T app \
   wget -qO- http://127.0.0.1:8081/actuator/health
 curl -sS -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:8080/v3/api-docs
@@ -140,7 +153,7 @@ sudo certbot renew --dry-run
 ```bash
 cd /opt/wevo
 sudo docker compose --env-file .env.prod -f compose.prod.yml ps
-sudo docker compose --env-file .env.prod -f compose.prod.yml logs --tail=100 app
+sudo docker compose --env-file .env.prod -f compose.prod.yml logs --tail=500 app
 sudo docker compose --env-file .env.prod -f compose.prod.yml logs --tail=100 redis
 sudo journalctl -u nginx --since "30 minutes ago" --no-pager
 ```
