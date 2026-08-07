@@ -37,6 +37,10 @@ jobs:
       - name: Grant execute permission for Gradle wrapper
         run: chmod +x gradlew
 
+      - name: Validate production deployment assets
+        shell: bash
+        run: bash .github/scripts/test-production-deployment-assets.sh
+
       - name: Run tests
         run: ./gradlew test --no-daemon
 
@@ -114,10 +118,12 @@ jobs:
             SSM_DELIVERY_TIMEOUT_SECONDS + SSM_EXECUTION_TIMEOUT_SECONDS
           ) / SSM_POLL_INTERVAL_SECONDS + 1))
 
-          script_payload="$(base64 -w 0 .github/scripts/deploy-on-ec2.sh)"
+          script_payload="$(gzip -c .github/scripts/deploy-on-ec2.sh | base64 -w 0)"
+          compose_payload="$(gzip -c compose.prod.yml | base64 -w 0)"
           parameters="$(
             jq -cn \
               --arg script "$script_payload" \
+              --arg compose "$compose_payload" \
               --arg image "$IMAGE_URI" \
               --arg region "$AWS_REGION" \
               --arg registry "$ECR_REGISTRY" \
@@ -125,13 +131,16 @@ jobs:
               '{
                 commands: [
                   "set -eu",
-                  "trap '\''rm -f /tmp/wevo-deploy.sh'\'' EXIT",
-                  ("printf %s " + ($script | @sh) + " | base64 --decode > /tmp/wevo-deploy.sh"),
+                  "trap '\''rm -f /tmp/wevo-deploy.sh /tmp/wevo-compose.prod.yml'\'' EXIT",
+                  ("printf %s " + ($script | @sh) + " | base64 --decode | gzip --decompress > /tmp/wevo-deploy.sh"),
+                  ("printf %s " + ($compose | @sh) + " | base64 --decode | gzip --decompress > /tmp/wevo-compose.prod.yml"),
                   "chmod 700 /tmp/wevo-deploy.sh",
+                  "chmod 600 /tmp/wevo-compose.prod.yml",
                   ("/usr/bin/env bash /tmp/wevo-deploy.sh "
                     + ($image | @sh) + " "
                     + ($region | @sh) + " "
-                    + ($registry | @sh))
+                    + ($registry | @sh) + " "
+                    + "/tmp/wevo-compose.prod.yml")
                 ],
                 executionTimeout: [$execution_timeout]
               }'
