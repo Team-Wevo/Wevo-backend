@@ -1,16 +1,20 @@
 package com.wevo.backend.user.controller;
 
+import com.wevo.backend.global.config.ApiExampleRefs;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.user.dto.request.ProfileUpdateRequest;
 import com.wevo.backend.user.dto.response.MyProfileResponse;
 import com.wevo.backend.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -69,5 +73,35 @@ public class UserController {
     ) {
         MyProfileResponse response = userService.updateMyProfile(principal.userId(), request);
         return ResponseEntity.ok(ApiResponse.success("USER_UPDATED", "프로필이 수정되었습니다.", response));
+    }
+
+    /**
+     * 회원 탈퇴 — 계정을 소프트 삭제하고 개인 식별정보를 지운다.
+     *
+     * <p>의견·초안·검토는 팀 공동 결과물이라 지우지 않는다. 작성자 표시만 "탈퇴한 사용자"로 바뀐다.
+     *
+     * <p>본문 없이 204 를 반환한다. 이미 탈퇴한 계정으로 다시 호출해도 멱등하게 성공한다.
+     */
+    @Operation(summary = "회원 탈퇴 — 소프트 삭제. 작성물은 보존하고 개인정보만 삭제. OWNER 인 프로젝트가 "
+            + "남아 있으면 거부")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "204", description = "본문 없음"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "U001 — 토큰의 사용자를 찾을 수 없음"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "409",
+                    description = "U003 — 보관되지 않은 프로젝트의 OWNER 라 탈퇴 불가")
+    })
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> withdraw(
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        userService.withdraw(principal.userId());
+        return ResponseEntity.noContent().build();
     }
 }

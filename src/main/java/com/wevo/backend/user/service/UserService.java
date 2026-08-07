@@ -3,9 +3,11 @@ package com.wevo.backend.user.service;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.user.domain.User;
+import com.wevo.backend.user.domain.UserWithdrawnEvent;
 import com.wevo.backend.user.dto.request.ProfileUpdateRequest;
 import com.wevo.backend.user.dto.response.MyProfileResponse;
 import com.wevo.backend.user.repository.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,9 +19,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final ProjectOwnershipQuery projectOwnershipQuery;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public UserService(UserRepository userRepository) {
+    public UserService(UserRepository userRepository,
+                       ProjectOwnershipQuery projectOwnershipQuery,
+                       ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
+        this.projectOwnershipQuery = projectOwnershipQuery;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -37,6 +45,35 @@ public class UserService {
         User user = findUser(userId);
         user.updateName(request.name());
         return MyProfileResponse.from(user);
+    }
+
+    /**
+     * 회원 탈퇴를 처리한다. (API_SPEC §3.3.3)
+     *
+     * <p>팀장으로 있는 프로젝트가 남아 있으면 {@code U003} 으로 거부한다. MVP 에는 팀장 위임이
+     * 없어서(정책서 §1.2) OWNER 가 빠지면 그 프로젝트를 삭제할 사람이 사라지기 때문이다.
+     * 프로젝트를 대신 보관해 버리는 방식은 쓰지 않는다 — 남은 팀원 3명의 작업물이 예고 없이
+     * 목록에서 사라진다. 사용자가 먼저 정리하도록 안내하는 편이 낫다는 <b>팀 결정</b>이다.
+     *
+     * <p>이미 탈퇴한 사용자의 재호출은 오류가 아니라 <b>멱등 성공</b>으로 둔다. 탈퇴 직후에도
+     * 남은 Access Token 이 30분간 살아 있어 재시도가 실제로 들어올 수 있고, 그때 실패를 돌려주면
+     * 화면이 "탈퇴에 실패했다"고 표시하는데 계정은 이미 탈퇴 상태다.
+     *
+     * @throws BusinessException 보관되지 않은 프로젝트의 OWNER 이면 {@link ErrorCode#USER_OWNS_ACTIVE_PROJECT}
+     */
+    @Transactional
+    public void withdraw(Long userId) {
+        User user = findUser(userId);
+        if (user.isWithdrawn()) {
+            return;
+        }
+        if (projectOwnershipQuery.hasActiveOwnedProject(userId)) {
+            throw new BusinessException(ErrorCode.USER_OWNS_ACTIVE_PROJECT);
+        }
+
+        user.withdraw();
+        // 소셜 연결 해제·Refresh Token 폐기는 auth 도메인이 받아서 처리한다. (같은 트랜잭션)
+        eventPublisher.publishEvent(new UserWithdrawnEvent(userId));
     }
 
     /**
