@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wevo.backend.ai.domain.AiRequestStatus;
 import com.wevo.backend.issue.domain.IssueStatus;
 import com.wevo.backend.issue.domain.IssueType;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -67,6 +68,10 @@ public record SynthesisResponse(
      *
      * @param setId 세트 식별자 = 세트를 만든 실행의 {@code requestId}
      */
+    @Schema(
+            name = "SynthesisCurrentSetResponse",
+            requiredProperties = {"setId", "consensusSummary", "issues", "inheritedGapAnswers"}
+    )
     public record CurrentSetResponse(
             UUID setId,
             String consensusSummary,

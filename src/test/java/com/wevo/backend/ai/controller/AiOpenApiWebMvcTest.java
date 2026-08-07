@@ -51,6 +51,114 @@ class AiOpenApiWebMvcTest {
         assertResponse(paths, "/api/issues/{issueId}/decision", "post", "200");
     }
 
+    @Test
+    void documentsNestedResponseRecordsWithDistinctSchemaNames() throws Exception {
+        String content = mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode schemas = objectMapper.readTree(content).path("components").path("schemas");
+
+        assertSchemaReference(
+                schemas,
+                "SynthesisResponse",
+                "currentSet",
+                "SynthesisCurrentSetResponse"
+        );
+        assertSchemaProperties(
+                schemas,
+                "SynthesisCurrentSetResponse",
+                "setId",
+                "consensusSummary",
+                "issues",
+                "inheritedGapAnswers"
+        );
+        assertRequiredProperties(
+                schemas,
+                "SynthesisCurrentSetResponse",
+                "setId",
+                "consensusSummary",
+                "issues",
+                "inheritedGapAnswers"
+        );
+
+        assertSchemaReference(
+                schemas,
+                "OpinionClusteringResponse",
+                "currentSet",
+                "OpinionClusteringCurrentSetResponse"
+        );
+        assertSchemaProperties(
+                schemas,
+                "OpinionClusteringCurrentSetResponse",
+                "setId",
+                "sourceGateGeneration",
+                "totalOpinionCount",
+                "coveredCount",
+                "createdAt",
+                "clusters"
+        );
+        assertRequiredProperties(
+                schemas,
+                "OpinionClusteringCurrentSetResponse",
+                "setId",
+                "sourceGateGeneration",
+                "totalOpinionCount",
+                "coveredCount",
+                "createdAt",
+                "clusters"
+        );
+
+        assertArrayItemReference(
+                schemas,
+                "CurrentResultResponse",
+                "findings",
+                "PrecheckFindingResponse"
+        );
+        assertSchemaProperties(
+                schemas,
+                "PrecheckFindingResponse",
+                "type",
+                "targetExcerpt",
+                "comment",
+                "suggestion"
+        );
+        assertRequiredProperties(
+                schemas,
+                "PrecheckFindingResponse",
+                "type",
+                "targetExcerpt",
+                "comment",
+                "suggestion"
+        );
+
+        assertArrayItemReference(
+                schemas,
+                "ResultResponse",
+                "findings",
+                "ProjectFlowFindingResponse"
+        );
+        assertSchemaProperties(
+                schemas,
+                "ProjectFlowFindingResponse",
+                "order",
+                "type",
+                "sections",
+                "description",
+                "suggestion"
+        );
+        assertRequiredProperties(
+                schemas,
+                "ProjectFlowFindingResponse",
+                "order",
+                "type",
+                "sections",
+                "description",
+                "suggestion"
+        );
+    }
+
     private void assertResponse(
             JsonNode paths,
             String path,
@@ -60,5 +168,57 @@ class AiOpenApiWebMvcTest {
         assertThat(paths.path(path).path(method).path("responses").has(responseCode))
                 .as("%s %s 응답 %s가 OpenAPI에 있어야 한다", method, path, responseCode)
                 .isTrue();
+    }
+
+    private void assertSchemaReference(
+            JsonNode schemas,
+            String schemaName,
+            String propertyName,
+            String referencedSchemaName
+    ) {
+        assertThat(schemas.path(schemaName)
+                .path("properties")
+                .path(propertyName)
+                .path("$ref")
+                .stringValue())
+                .isEqualTo("#/components/schemas/" + referencedSchemaName);
+    }
+
+    private void assertArrayItemReference(
+            JsonNode schemas,
+            String schemaName,
+            String propertyName,
+            String referencedSchemaName
+    ) {
+        assertThat(schemas.path(schemaName)
+                .path("properties")
+                .path(propertyName)
+                .path("items")
+                .path("$ref")
+                .stringValue())
+                .isEqualTo("#/components/schemas/" + referencedSchemaName);
+    }
+
+    private void assertSchemaProperties(
+            JsonNode schemas,
+            String schemaName,
+            String... propertyNames
+    ) {
+        JsonNode properties = schemas.path(schemaName).path("properties");
+        assertThat(properties.propertyNames())
+                .as("%s 스키마의 필드 구성이 정확해야 한다", schemaName)
+                .containsExactlyInAnyOrder(propertyNames);
+    }
+
+    private void assertRequiredProperties(
+            JsonNode schemas,
+            String schemaName,
+            String... propertyNames
+    ) {
+        assertThat(schemas.path(schemaName).path("required").values().stream()
+                .map(JsonNode::stringValue)
+                .toList())
+                .as("%s 스키마의 필수 필드 구성이 정확해야 한다", schemaName)
+                .containsExactlyInAnyOrder(propertyNames);
     }
 }

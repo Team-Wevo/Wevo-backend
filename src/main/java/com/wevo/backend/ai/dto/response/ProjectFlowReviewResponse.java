@@ -3,6 +3,7 @@ package com.wevo.backend.ai.dto.response;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wevo.backend.ai.domain.AiRequestStatus;
 import com.wevo.backend.ai.domain.ProjectFlowFindingType;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -25,6 +26,10 @@ public record ProjectFlowReviewResponse(
                                  List<FindingResponse> findings) { }
     public record CheckedSectionResponse(Long sectionId, String sectionKey, String title,
                                          int confirmedVersion) { }
+    @Schema(
+            name = "ProjectFlowFindingResponse",
+            requiredProperties = {"order", "type", "sections", "description", "suggestion"}
+    )
     public record FindingResponse(int order, ProjectFlowFindingType type,
                                   List<SectionExcerptResponse> sections,
                                   String description, String suggestion) { }

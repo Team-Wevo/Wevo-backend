@@ -2,6 +2,7 @@ package com.wevo.backend.ai.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wevo.backend.ai.domain.AiRequestStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -39,6 +40,17 @@ public record OpinionClusteringResponse(
     public record FailureResponse(String errorCode, String message) {
     }
 
+    @Schema(
+            name = "OpinionClusteringCurrentSetResponse",
+            requiredProperties = {
+                    "setId",
+                    "sourceGateGeneration",
+                    "totalOpinionCount",
+                    "coveredCount",
+                    "createdAt",
+                    "clusters"
+            }
+    )
     public record CurrentSetResponse(
             UUID setId,
             long sourceGateGeneration,

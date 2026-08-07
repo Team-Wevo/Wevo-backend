@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wevo.backend.ai.domain.AiRequestStatus;
 import com.wevo.backend.ai.domain.AiSectionFindingType;
 import com.wevo.backend.section.domain.AiCheckStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import java.util.UUID;
 
@@ -50,6 +51,10 @@ public record PrecheckResponse(
     ) {
     }
 
+    @Schema(
+            name = "PrecheckFindingResponse",
+            requiredProperties = {"type", "targetExcerpt", "comment", "suggestion"}
+    )
     public record FindingResponse(
             AiSectionFindingType type,
             String targetExcerpt,
