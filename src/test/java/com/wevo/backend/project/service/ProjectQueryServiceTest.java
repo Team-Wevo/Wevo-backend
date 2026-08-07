@@ -4,6 +4,7 @@ import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
+import com.wevo.backend.project.dto.request.ProjectSearchCondition;
 import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.domain.ProjectStatus;
@@ -72,7 +73,7 @@ class ProjectQueryServiceTest {
                 .willReturn(sectionsOf(membership.getProject(),
                         ProjectSectionStatus.CONFIRMED, ProjectSectionStatus.COLLECTING));
 
-        List<ProjectSummaryResponse> projects = projectService.getMyProjects(USER_ID);
+        List<ProjectSummaryResponse> projects = projectService.getMyProjects(USER_ID, ProjectSearchCondition.none());
 
         assertThat(projects).hasSize(1);
         assertThat(projects.get(0).projectId()).isEqualTo(PROJECT_ID);
@@ -94,7 +95,7 @@ class ProjectQueryServiceTest {
         given(projectSectionRepository.findAllByProjectIdsOrderByLastActivity(List.of(PROJECT_ID)))
                 .willReturn(sections);
 
-        List<ProjectSummaryResponse> projects = projectService.getMyProjects(USER_ID);
+        List<ProjectSummaryResponse> projects = projectService.getMyProjects(USER_ID, ProjectSearchCondition.none());
 
         assertThat(projects.get(0).lastActiveSection().order()).isEqualTo(1);
         assertThat(projects.get(0).lastActiveSection().title()).isEqualTo("섹션 1");
@@ -121,7 +122,7 @@ class ProjectQueryServiceTest {
         given(projectSectionRepository.findAllByProjectIdsOrderByLastActivity(List.of(200L, 100L)))
                 .willReturn(List.of(touchedNow, touchedEarlier));
 
-        List<ProjectSummaryResponse> projects = projectService.getMyProjects(USER_ID);
+        List<ProjectSummaryResponse> projects = projectService.getMyProjects(USER_ID, ProjectSearchCondition.none());
 
         assertThat(projects).extracting(ProjectSummaryResponse::title)
                 .containsExactly("먼저 만든 프로젝트", "나중에 만든 프로젝트");
@@ -132,7 +133,7 @@ class ProjectQueryServiceTest {
     void getMyProjects_noProjects_skipsSectionQuery() {
         given(projectMemberRepository.findAllWithProjectByUserId(USER_ID)).willReturn(List.of());
 
-        assertThat(projectService.getMyProjects(USER_ID)).isEmpty();
+        assertThat(projectService.getMyProjects(USER_ID, ProjectSearchCondition.none())).isEmpty();
 
         verify(projectSectionRepository, never()).findAllByProjectIdsOrderByLastActivity(any());
     }
@@ -151,9 +152,42 @@ class ProjectQueryServiceTest {
                         section(second.getProject(), 1, ProjectSectionStatus.COLLECTING,
                                 LocalDateTime.of(2026, 8, 4, 10, 0))));
 
-        projectService.getMyProjects(USER_ID);
+        projectService.getMyProjects(USER_ID, ProjectSearchCondition.none());
 
         verify(projectSectionRepository, times(1)).findAllByProjectIdsOrderByLastActivity(any());
+    }
+
+    @Test
+    @DisplayName("검색어로 거르면 걸러진 프로젝트의 섹션은 조회하지 않는다")
+    void getMyProjects_filtersBeforeSectionQuery() {
+        ProjectMember hit = membership(ProjectMemberRole.OWNER, 100L, "위보 발표 준비");
+        ProjectMember miss = membership(ProjectMemberRole.OWNER, 200L, "동아리 제안서");
+        given(projectMemberRepository.findAllWithProjectByUserId(USER_ID))
+                .willReturn(List.of(hit, miss));
+        given(projectSectionRepository.findAllByProjectIdsOrderByLastActivity(List.of(100L)))
+                .willReturn(List.of(section(hit.getProject(), 1, ProjectSectionStatus.COLLECTING,
+                        LocalDateTime.of(2026, 8, 5, 10, 0))));
+
+        List<ProjectSummaryResponse> projects = projectService.getMyProjects(
+                USER_ID, new ProjectSearchCondition("발표", null, null));
+
+        assertThat(projects).extracting(ProjectSummaryResponse::title)
+                .containsExactly("위보 발표 준비");
+        // 걸러낸 프로젝트의 ID 가 섹션 조회에 섞이면 안 된다.
+        verify(projectSectionRepository).findAllByProjectIdsOrderByLastActivity(List.of(100L));
+    }
+
+    @Test
+    @DisplayName("조건에 맞는 프로젝트가 없으면 섹션을 조회하지 않고 빈 목록을 반환한다")
+    void getMyProjects_noMatch_skipsSectionQuery() {
+        given(projectMemberRepository.findAllWithProjectByUserId(USER_ID))
+                .willReturn(List.of(membership(ProjectMemberRole.OWNER, 100L, "위보 발표 준비")));
+
+        List<ProjectSummaryResponse> projects = projectService.getMyProjects(
+                USER_ID, new ProjectSearchCondition("없는키워드", null, null));
+
+        assertThat(projects).isEmpty();
+        verify(projectSectionRepository, never()).findAllByProjectIdsOrderByLastActivity(any());
     }
 
     @Test
