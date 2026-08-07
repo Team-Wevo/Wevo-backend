@@ -135,6 +135,9 @@ app:
       - ${FRONTEND_ORIGIN}
   invite:
     base-url: ${INVITE_BASE_URL}
+  review:
+    # 운영은 HTTPS이므로 항상 켠다. 환경 변수는 HTTPS가 아직 없는 임시 배포에서만 끄기 위한 것이다.
+    cookie-secure: ${REVIEW_COOKIE_SECURE:true}
 
 logging:
   level:

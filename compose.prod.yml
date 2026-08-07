@@ -50,6 +50,9 @@ services:
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
       INVITE_BASE_URL: ${INVITE_BASE_URL}
+      # 초대 토큰 파생용 HMAC 비밀키. 누락되면 기동에 실패한다 — 기본값을 두면 누구나
+      # 계산 가능한 토큰이 조용히 발급되므로 의도적으로 필수다.
+      INVITE_TOKEN_SECRET: ${INVITE_TOKEN_SECRET:?INVITE_TOKEN_SECRET must be set}
       AI_PROVIDER: ${AI_PROVIDER:?AI_PROVIDER must be set}
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
       NVIDIA_API_BASE_URL: ${NVIDIA_API_BASE_URL:-https://integrate.api.nvidia.com}

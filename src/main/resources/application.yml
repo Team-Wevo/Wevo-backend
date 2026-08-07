@@ -132,6 +132,14 @@ app:
   invite:
     # 공유용 초대 링크 접두어. 사용자가 클릭할 프론트 초대 페이지 URL의 앞부분이며, 뒤에 토큰이 붙는다.
     base-url: ${INVITE_BASE_URL:http://localhost:3000/invite/}
+    # 초대 토큰 파생용 HMAC 비밀키. 기본값을 두지 않는다 — 비어 있으면 기동 시점에 실패시켜
+    # 누구나 계산 가능한 토큰이 조용히 발급되는 상황을 막는다. (CLAUDE.md §0)
+    token-secret: ${INVITE_TOKEN_SECRET}
+  review:
+    # 익명 검토자 키 쿠키(wevo_reviewer_id)의 Secure 속성. HTTPS에서만 쿠키를 보내게 한다.
+    # 기본값이 false인 이유는 로컬이 HTTP이기 때문이다 — 켜면 브라우저가 쿠키를 저장하지 않아
+    # 검토자 키가 매 요청 새로 발급되고 중복 제출 차단이 무력화된다. prod에서는 true다.
+    cookie-secure: ${REVIEW_COOKIE_SECURE:false}
 
 # OpenAiChatModel은 빈 choices 경고에 Prompt 객체를 포함하므로 원문 노출을 막는다.
 logging:
