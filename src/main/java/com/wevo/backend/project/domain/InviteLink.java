@@ -35,9 +35,17 @@ public class InviteLink extends BaseTimeEntity {
     @JoinColumn(name = "created_by_user_id")
     private User createdBy;
 
-    /** 공개 조회 키이므로 DB에서도 중복을 허용하지 않는다. */
-    @Column(length = 255, nullable = false, unique = true)
-    private String token;
+    /**
+     * 원문 토큰의 SHA-256 해시. <b>원문은 저장하지 않는다.</b>
+     *
+     * <p>DB 가 유출돼도 초대 링크를 그대로 쓸 수 없게 하기 위해서다. 원문은
+     * {@link com.wevo.backend.project.service.InviteTokenFactory} 가 프로젝트 ID 로부터 다시
+     * 계산하므로, 해시만 저장해도 같은 링크를 계속 돌려줄 수 있다.
+     *
+     * <p>공개 조회 키이므로 DB에서도 중복을 허용하지 않는다.
+     */
+    @Column(name = "token_hash", length = 64, nullable = false, unique = true)
+    private String tokenHash;
 
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
@@ -46,11 +54,11 @@ public class InviteLink extends BaseTimeEntity {
     private Boolean isActive;
 
     @Builder
-    private InviteLink(Project project, User createdBy, String token,
+    private InviteLink(Project project, User createdBy, String tokenHash,
                        LocalDateTime expiresAt, Boolean isActive) {
         this.project = project;
         this.createdBy = createdBy;
-        this.token = token;
+        this.tokenHash = tokenHash;
         this.expiresAt = expiresAt;
         this.isActive = isActive;
     }
@@ -58,12 +66,14 @@ public class InviteLink extends BaseTimeEntity {
     /**
      * 재사용 초대 링크를 발급한다. MVP에서는 만료를 두지 않으므로 {@code expiresAt=null},
      * 활성 상태({@code isActive=true})로 생성한다. (제품 정책서 §2.1 — 만료·비활성화는 MVP 이후)
+     *
+     * @param tokenHash 원문 토큰의 SHA-256 해시. 원문을 넘기지 않도록 호출측에서 해시해 전달한다.
      */
-    public static InviteLink issue(Project project, User createdBy, String token) {
+    public static InviteLink issue(Project project, User createdBy, String tokenHash) {
         return InviteLink.builder()
                 .project(project)
                 .createdBy(createdBy)
-                .token(token)
+                .tokenHash(tokenHash)
                 .expiresAt(null)
                 .isActive(true)
                 .build();

@@ -3,6 +3,7 @@ package com.wevo.backend.review.service;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.global.response.FieldError;
+import com.wevo.backend.global.security.TokenHasher;
 import com.wevo.backend.project.service.ProjectAccessGuard;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.review.domain.ReviewLink;
@@ -73,7 +74,7 @@ public class ReviewLinkService {
     private final ReviewLinkRepository reviewLinkRepository;
     private final ReviewSubmissionRepository reviewSubmissionRepository;
     private final UserRepository userRepository;
-    private final ReviewTokenHasher tokenHasher;
+    private final TokenHasher tokenHasher;
     private final SectionAuthorIntentQueryService authorIntentQueryService;
     private final ReviewIntentComparisonCoordinator comparisonCoordinator;
 
@@ -83,7 +84,7 @@ public class ReviewLinkService {
                              ReviewLinkRepository reviewLinkRepository,
                              ReviewSubmissionRepository reviewSubmissionRepository,
                              UserRepository userRepository,
-                             ReviewTokenHasher tokenHasher,
+                             TokenHasher tokenHasher,
                              SectionAuthorIntentQueryService authorIntentQueryService,
                              ReviewIntentComparisonCoordinator comparisonCoordinator) {
         this.sectionAccessGuard = sectionAccessGuard;

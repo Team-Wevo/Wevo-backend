@@ -34,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "jwt.secret=test-secret-key-for-wevo-backend-that-is-long-enough-000000",
                 "app.cors.allowed-origins[0]=http://localhost",
                 "app.invite.base-url=http://localhost/invite/",
+                "app.invite.token-secret=test-invite-token-secret-that-is-long-enough-000000",
                 // 운영 프로파일은 누락을 허용하지 않는다. 이 테스트는 의도적 AI 비활성 상태다.
                 "wevo.ai.provider=none",
                 "wevo.ai.audit.recovery-enabled=false"

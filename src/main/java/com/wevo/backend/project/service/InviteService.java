@@ -2,6 +2,7 @@ package com.wevo.backend.project.service;
 
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.global.security.TokenHasher;
 import com.wevo.backend.project.domain.InviteLink;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectMember;
@@ -20,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.UUID;
 
 /**
  * 프로젝트 초대 링크 생성·참여. (제품 정책서 §2.1)
@@ -39,17 +39,23 @@ public class InviteService {
     private final ProjectMemberRepository projectMemberRepository;
     private final InviteLinkRepository inviteLinkRepository;
     private final UserRepository userRepository;
+    private final InviteTokenFactory inviteTokenFactory;
+    private final TokenHasher tokenHasher;
     private final String inviteBaseUrl;
 
     public InviteService(ProjectRepository projectRepository,
                          ProjectMemberRepository projectMemberRepository,
                          InviteLinkRepository inviteLinkRepository,
                          UserRepository userRepository,
+                         InviteTokenFactory inviteTokenFactory,
+                         TokenHasher tokenHasher,
                          @Value("${app.invite.base-url:http://localhost:3000/invite/}") String inviteBaseUrl) {
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.inviteLinkRepository = inviteLinkRepository;
         this.userRepository = userRepository;
+        this.inviteTokenFactory = inviteTokenFactory;
+        this.tokenHasher = tokenHasher;
         this.inviteBaseUrl = inviteBaseUrl;
     }
 
@@ -66,11 +72,15 @@ public class InviteService {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
 
-        InviteLink link = inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(projectId)
-                .orElseGet(() -> inviteLinkRepository.save(
-                        InviteLink.issue(membership.getProject(), membership.getUser(), generateToken())));
+        // 토큰은 저장값이 아니라 프로젝트 ID 에서 파생한다 — 해시만 저장하므로 기존 링크를 그대로
+        // 돌려주려면 원문을 매번 다시 계산해야 한다. (InviteTokenFactory 참고)
+        String rawToken = inviteTokenFactory.tokenFor(projectId);
+        if (inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(projectId).isEmpty()) {
+            inviteLinkRepository.save(InviteLink.issue(
+                    membership.getProject(), membership.getUser(), tokenHasher.hash(rawToken)));
+        }
 
-        return InviteLinkResponse.of(link.getToken(), buildInviteUrl(link.getToken()));
+        return InviteLinkResponse.of(rawToken, buildInviteUrl(rawToken));
     }
 
     /**
@@ -79,7 +89,7 @@ public class InviteService {
      * @throws BusinessException INVITE_LINK_NOT_FOUND(토큰 무효/비활성)
      */
     public InvitePreviewResponse getInvitePreview(String token) {
-        InviteLink link = inviteLinkRepository.findActiveWithProjectByToken(token)
+        InviteLink link = inviteLinkRepository.findActiveWithProjectByTokenHash(tokenHasher.hash(token))
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVITE_LINK_NOT_FOUND));
         Project project = link.getProject();
         long memberCount = projectMemberRepository.countByProjectId(project.getId());
@@ -96,7 +106,7 @@ public class InviteService {
      */
     @Transactional
     public ProjectJoinResponse joinByToken(Long userId, String token) {
-        InviteLink link = inviteLinkRepository.findActiveWithProjectByToken(token)
+        InviteLink link = inviteLinkRepository.findActiveWithProjectByTokenHash(tokenHasher.hash(token))
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVITE_LINK_NOT_FOUND));
 
         // 인원 체크~저장을 직렬화하기 위해 프로젝트 행을 잠금 조회한다.
@@ -136,7 +146,4 @@ public class InviteService {
         return base + token;
     }
 
-    private String generateToken() {
-        return UUID.randomUUID().toString().replace("-", "");
-    }
 }
