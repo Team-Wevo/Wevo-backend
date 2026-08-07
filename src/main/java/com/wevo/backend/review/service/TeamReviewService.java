@@ -3,9 +3,8 @@ package com.wevo.backend.review.service;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.global.response.FieldError;
-import com.wevo.backend.project.domain.ProjectMember;
-import com.wevo.backend.project.domain.ProjectMemberRole;
-import com.wevo.backend.project.repository.ProjectMemberRepository;
+import com.wevo.backend.project.service.ProjectMemberRosterQueryService;
+import com.wevo.backend.project.service.ProjectMemberSummary;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.review.domain.TeamReview;
 import com.wevo.backend.review.domain.TeamReviewStatus;
@@ -17,7 +16,6 @@ import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionDraft;
 import com.wevo.backend.section.repository.SectionDraftRepository;
-import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.repository.UserRepository;
 import java.util.List;
 import java.util.Map;
@@ -42,18 +40,18 @@ public class TeamReviewService {
 
     private final SectionAccessGuard sectionAccessGuard;
     private final TeamReviewRepository teamReviewRepository;
-    private final ProjectMemberRepository projectMemberRepository;
+    private final ProjectMemberRosterQueryService memberRosterQueryService;
     private final SectionDraftRepository sectionDraftRepository;
     private final UserRepository userRepository;
 
     public TeamReviewService(SectionAccessGuard sectionAccessGuard,
                              TeamReviewRepository teamReviewRepository,
-                             ProjectMemberRepository projectMemberRepository,
+                             ProjectMemberRosterQueryService memberRosterQueryService,
                              SectionDraftRepository sectionDraftRepository,
                              UserRepository userRepository) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.teamReviewRepository = teamReviewRepository;
-        this.projectMemberRepository = projectMemberRepository;
+        this.memberRosterQueryService = memberRosterQueryService;
         this.sectionDraftRepository = sectionDraftRepository;
         this.userRepository = userRepository;
     }
@@ -78,10 +76,8 @@ public class TeamReviewService {
         Map<Long, TeamReview> reviewByReviewer = teamReviewRepository.findByProjectSection_Id(sectionId).stream()
                 .collect(Collectors.toMap(review -> review.getReviewer().getId(), Function.identity()));
 
-        List<TeamReviewItemResponse> items = projectMemberRepository
-                .findAllWithUserByProjectIdAndRole(projectId, ProjectMemberRole.MEMBER).stream()
-                .map(ProjectMember::getUser)
-                .map(member -> toItem(member, reviewByReviewer.get(member.getId())))
+        List<TeamReviewItemResponse> items = memberRosterQueryService.getTeamMembers(projectId).stream()
+                .map(member -> toItem(member, reviewByReviewer.get(member.userId())))
                 .toList();
 
         Integer currentContentVersion = sectionDraftRepository
@@ -153,7 +149,8 @@ public class TeamReviewService {
             review.apply(request.status(), reason, reviewedVersion);
         }
 
-        return TeamReviewItemResponse.of(review, review.getReviewer());
+        return TeamReviewItemResponse.of(
+                review, review.getReviewer().getId(), review.getReviewer().getName());
     }
 
     /**
@@ -175,7 +172,8 @@ public class TeamReviewService {
         }
 
         review.updateResolved(resolved);
-        return TeamReviewItemResponse.of(review, review.getReviewer());
+        return TeamReviewItemResponse.of(
+                review, review.getReviewer().getId(), review.getReviewer().getName());
     }
 
     /**
@@ -197,7 +195,7 @@ public class TeamReviewService {
         List<TeamReview> reviews = teamReviewRepository.findByProjectSection_Id(sectionId);
 
         // 팀장 1명 = 전체 멤버 1명 (프로젝트에는 OWNER가 정확히 1명) → 1인 프로젝트 예외
-        boolean memberApprovalSatisfied = projectMemberRepository.countByProjectId(projectId) == 1
+        boolean memberApprovalSatisfied = memberRosterQueryService.countParticipants(projectId) == 1
                 || reviews.stream()
                         .anyMatch(review -> review.getStatus() == TeamReviewStatus.APPROVED
                                 && !review.isOutdated());
@@ -226,9 +224,9 @@ public class TeamReviewService {
         teamReviewRepository.findByProjectSection_Id(sectionId).forEach(TeamReview::markOutdated);
     }
 
-    private TeamReviewItemResponse toItem(User member, TeamReview review) {
+    private TeamReviewItemResponse toItem(ProjectMemberSummary member, TeamReview review) {
         return review == null
-                ? TeamReviewItemResponse.pending(member)
-                : TeamReviewItemResponse.of(review, member);
+                ? TeamReviewItemResponse.pending(member.userId(), member.name())
+                : TeamReviewItemResponse.of(review, member.userId(), member.name());
     }
 }

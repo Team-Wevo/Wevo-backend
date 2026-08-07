@@ -172,7 +172,7 @@ public class OpinionService {
 
         return OpinionCollectionStatusResponse.of(
                 section.getStatus() == ProjectSectionStatus.COLLECTING,
-                memberRosterQueryService.getRoster(section.getProject().getId()),
+                memberRosterQueryService.getParticipants(section.getProject().getId()),
                 opinionByAuthorId);
     }
 

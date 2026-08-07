@@ -1,6 +1,7 @@
 package com.wevo.backend.project.service;
 
 import com.wevo.backend.project.domain.ProjectMember;
+import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.repository.ProjectMemberRepository;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -29,15 +30,37 @@ public class ProjectMemberRosterQueryService {
     }
 
     /**
-     * 프로젝트의 전체 멤버를 <b>OWNER 우선 → 참여 시각 오름차순</b>으로 조회한다.
+     * 프로젝트의 <b>참여자 전원</b>(OWNER + MEMBER)을 OWNER 우선 → 참여 시각 오름차순으로 조회한다.
      *
-     * <p>역할과 무관하게 전원을 담는다. 역할별 로스터가 필요하면 별도 메서드를 추가하고,
-     * 이 메서드의 의미(= 프로젝트 참여자 전원)를 바꾸지 않는다.
+     * <p>의견 수집 현황(§4.5)처럼 "팀장도 작성·제출하는 참여자"인 기능의 분모다.
      */
-    public List<ProjectMemberSummary> getRoster(Long projectId) {
+    public List<ProjectMemberSummary> getParticipants(Long projectId) {
         return projectMemberRepository.findAllWithUserByProjectId(projectId).stream()
                 .map(ProjectMemberRosterQueryService::toSummary)
                 .toList();
+    }
+
+    /**
+     * 프로젝트의 <b>팀원(MEMBER)만</b> 조회한다. 팀장(OWNER)은 빠진다.
+     *
+     * <p>팀 검토(§6.1)처럼 "팀장은 검토자가 아니라 확정 실행자"인 기능의 분모다.
+     * {@link #getParticipants} 와 결과가 다른 것은 <b>의도된 차이</b>이므로 한쪽으로 통일하지 않는다.
+     */
+    public List<ProjectMemberSummary> getTeamMembers(Long projectId) {
+        return projectMemberRepository
+                .findAllWithUserByProjectIdAndRole(projectId, ProjectMemberRole.MEMBER).stream()
+                .map(ProjectMemberRosterQueryService::toSummary)
+                .toList();
+    }
+
+    /**
+     * 프로젝트의 참여자 수(OWNER 포함)를 센다.
+     *
+     * <p>1인 프로젝트 판정(§6.3.1 — 팀장 혼자면 팀원 동의 조건 면제)처럼 명단이 아니라 인원수만
+     * 필요한 경로가 로스터 전체를 읽지 않도록 분리해 둔다.
+     */
+    public long countParticipants(Long projectId) {
+        return projectMemberRepository.countByProjectId(projectId);
     }
 
     private static ProjectMemberSummary toSummary(ProjectMember member) {

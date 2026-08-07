@@ -1,6 +1,7 @@
 package com.wevo.backend.review;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -87,7 +88,13 @@ class TeamReviewIntegrationTest {
                 .andExpect(jsonPath("$.data.approvedCount").value(1))
                 .andExpect(jsonPath("$.data.pendingCount").value(1))
                 .andExpect(jsonPath("$.data.unresolvedChangesRequestedCount").value(0))
-                .andExpect(jsonPath("$.data.items.length()").value(2));
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                // 검토자 식별 정보는 멤버 로스터에서 채워진다 — 목록 순서는 계약이 아니므로
+                // 순서 무관하게 검증한다. (id 자리에 이름이 들어가는 식의 매핑 사고 방지)
+                .andExpect(jsonPath("$.data.items[*].reviewerUserId",
+                        containsInAnyOrder(m1.getId().intValue(), m2.getId().intValue())))
+                .andExpect(jsonPath("$.data.items[*].reviewerName",
+                        containsInAnyOrder("m1", "m2")));
     }
 
     @Test

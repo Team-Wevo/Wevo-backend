@@ -82,7 +82,7 @@ class OpinionServiceTest {
         User notStarted = user(3L, "박지훈");
         given(sectionAccessGuard.requireParticipantSection(SECTION_ID, USER_ID))
                 .willReturn(section(ProjectSectionStatus.COLLECTING));
-        given(memberRosterQueryService.getRoster(PROJECT_ID)).willReturn(List.of(
+        given(memberRosterQueryService.getParticipants(PROJECT_ID)).willReturn(List.of(
                 summary(owner), summary(drafting), summary(notStarted)));
         given(opinionRepository.findAllWithAuthorByProjectSectionId(SECTION_ID)).willReturn(List.of(
                 opinionOf(owner, CONTENT, OpinionStatus.SUBMITTED),
@@ -114,7 +114,7 @@ class OpinionServiceTest {
         reediting.updateContent(REVISED_CONTENT); // 제출본은 유지, 작업본만 갱신 (§4.1)
         given(sectionAccessGuard.requireParticipantSection(SECTION_ID, USER_ID))
                 .willReturn(section(ProjectSectionStatus.COLLECTING));
-        given(memberRosterQueryService.getRoster(PROJECT_ID)).willReturn(List.of(summary(author)));
+        given(memberRosterQueryService.getParticipants(PROJECT_ID)).willReturn(List.of(summary(author)));
         given(opinionRepository.findAllWithAuthorByProjectSectionId(SECTION_ID))
                 .willReturn(List.of(reediting));
 
@@ -136,7 +136,7 @@ class OpinionServiceTest {
         User author = user(USER_ID, "김민준");
         given(sectionAccessGuard.requireParticipantSection(SECTION_ID, USER_ID))
                 .willReturn(section(ProjectSectionStatus.SYNTHESIZING));
-        given(memberRosterQueryService.getRoster(PROJECT_ID)).willReturn(List.of(summary(author)));
+        given(memberRosterQueryService.getParticipants(PROJECT_ID)).willReturn(List.of(summary(author)));
         given(opinionRepository.findAllWithAuthorByProjectSectionId(SECTION_ID))
                 .willReturn(List.of(opinionOf(author, CONTENT, OpinionStatus.SUBMITTED)));
 
