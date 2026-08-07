@@ -77,7 +77,7 @@ class ProjectServiceTest {
         ProjectCreateRequest request = new ProjectCreateRequest(
                 "발표 프로젝트", "우리 팀 아이디어 발표를 준비합니다.", OutputType.PRESENTATION, "심사위원");
 
-        given(userRepository.findById(userId)).willReturn(Optional.of(owner));
+        given(userRepository.findByIdForUpdate(userId)).willReturn(Optional.of(owner));
         given(projectRepository.save(any(Project.class))).willAnswer(invocation -> {
             Project project = invocation.getArgument(0);
             ReflectionTestUtils.setField(project, "id", 100L);
@@ -112,7 +112,7 @@ class ProjectServiceTest {
         ProjectCreateRequest request = new ProjectCreateRequest(
                 "  ", "우리 팀 아이디어 발표를 준비합니다.", OutputType.PRESENTATION, "심사위원");
 
-        given(userRepository.findById(userId)).willReturn(Optional.of(owner));
+        given(userRepository.findByIdForUpdate(userId)).willReturn(Optional.of(owner));
         given(projectRepository.save(any(Project.class))).willAnswer(invocation -> {
             Project project = invocation.getArgument(0);
             ReflectionTestUtils.setField(project, "id", 100L);
@@ -132,7 +132,7 @@ class ProjectServiceTest {
     @Test
     @DisplayName("존재하지 않는 사용자가 생성하면 USER_NOT_FOUND 예외를 던진다")
     void create_userNotFound_throws() {
-        given(userRepository.findById(99L)).willReturn(Optional.empty());
+        given(userRepository.findByIdForUpdate(99L)).willReturn(Optional.empty());
 
         BusinessException exception = assertThrows(BusinessException.class, () -> projectService.create(
                 99L, new ProjectCreateRequest(null, "아이디어 텍스트", OutputType.PROPOSAL, null)));
@@ -147,7 +147,7 @@ class ProjectServiceTest {
         User owner = User.builder().name("Wevo").status(UserStatus.ACTIVE).build();
         ReflectionTestUtils.setField(owner, "id", userId);
 
-        given(userRepository.findById(userId)).willReturn(Optional.of(owner));
+        given(userRepository.findByIdForUpdate(userId)).willReturn(Optional.of(owner));
         given(projectRepository.save(any(Project.class))).willAnswer(invocation -> invocation.getArgument(0));
         given(sectionTemplateRepository.findByResultTypeOrderByOrderNo(OutputType.PRESENTATION))
                 .willReturn(sixTemplates());
