@@ -26,6 +26,8 @@ public enum ErrorCode {
     // User
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U001", "사용자를 찾을 수 없습니다."),
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "U002", "이미 다른 방식으로 가입된 이메일입니다."),
+    USER_OWNS_ACTIVE_PROJECT(HttpStatus.CONFLICT, "U003",
+            "팀장으로 있는 프로젝트가 남아 있어 탈퇴할 수 없어요. 프로젝트를 먼저 삭제해 주세요."),
 
     // Project
     PROJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "P001", "프로젝트를 찾을 수 없습니다."),

@@ -13,6 +13,19 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Lo
 
     Optional<ProjectMember> findByProjectIdAndUserId(Long projectId, Long userId);
 
+    /**
+     * 이 사용자가 <b>보관되지 않은</b> 프로젝트의 OWNER 로 남아 있는지 확인한다. (회원 탈퇴 차단 조건)
+     *
+     * <p>MVP 에는 팀장 위임이 없으므로(정책서 §1.2) OWNER 가 그냥 빠지면 프로젝트를 삭제할 사람이
+     * 사라진다. 보관(ARCHIVED)된 프로젝트는 이미 정리된 것이라 제외한다 — 포함하면 한 번이라도
+     * 프로젝트를 만든 사용자는 영영 탈퇴할 수 없다.
+     */
+    @Query("SELECT COUNT(pm) > 0 FROM ProjectMember pm "
+            + "WHERE pm.user.id = :userId "
+            + "AND pm.role = com.wevo.backend.project.domain.ProjectMemberRole.OWNER "
+            + "AND pm.project.status <> com.wevo.backend.project.domain.ProjectStatus.ARCHIVED")
+    boolean existsActiveOwnedProject(@Param("userId") Long userId);
+
     boolean existsByProjectIdAndUserId(Long projectId, Long userId);
 
     long countByProjectId(Long projectId);
