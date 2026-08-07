@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
@@ -41,6 +42,19 @@ public class AnonymousReviewerResolver {
     private static final Duration COOKIE_MAX_AGE = Duration.ofDays(365);
     private static final Pattern UUID_V4 = Pattern.compile(
             "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$");
+
+    private final boolean cookieSecure;
+
+    /**
+     * @param cookieSecure {@code Secure} 속성 적용 여부. 운영은 HTTPS 라 {@code true} 여야 하지만,
+     *                     로컬은 HTTP 라 켜면 브라우저가 쿠키를 아예 저장하지 않아 검토자 키가 매 요청
+     *                     새로 발급된다(중복 제출 차단이 무력화). 그래서 프로파일별 설정값으로 나눈다
+     *                     — 기본값은 로컬 기준 {@code false} 이고 {@code prod} 에서 {@code true} 다.
+     */
+    public AnonymousReviewerResolver(
+            @Value("${app.review.cookie-secure:false}") boolean cookieSecure) {
+        this.cookieSecure = cookieSecure;
+    }
 
     /**
      * 요청에서 익명 검토자 키를 해석한다. 없으면 새로 발급해 응답 쿠키로 심는다.
@@ -79,9 +93,19 @@ public class AnonymousReviewerResolver {
                 .orElse(null);
     }
 
+    /**
+     * 검토자 키 쿠키를 만든다. (API_SPEC §3.5.3)
+     *
+     * <p>이 키가 중복 제출 차단({@code R002})과 {@code alreadySubmitted} 판정의 기준이라, 평문
+     * HTTP 로 새어 나가면 다른 검토자를 사칭할 수 있다. {@code Secure} 는 그래서 붙인다.
+     *
+     * <p>{@code Path} 는 명세의 {@code /} 가 아니라 {@code /public} 이다 — 이 키를 쓰는 API 가
+     * {@code /public/**} 뿐이라 더 좁혀도 기능이 같고, 다른 경로 요청에 실려 나가지 않는다.
+     */
     private ResponseCookie buildCookie(String value) {
         return ResponseCookie.from(COOKIE_NAME, value)
                 .httpOnly(true)
+                .secure(cookieSecure)
                 .path("/public")
                 .maxAge(COOKIE_MAX_AGE)
                 .sameSite("Lax")
