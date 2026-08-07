@@ -92,6 +92,8 @@ app:
   cors:
     allowed-origins:
       - http://localhost:3000
+  invite:
+    token-secret: test-invite-token-secret-that-is-long-enough-000000
 
 logging:
   level:

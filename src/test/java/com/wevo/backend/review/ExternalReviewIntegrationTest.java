@@ -29,7 +29,7 @@ import com.wevo.backend.review.domain.ReviewLink;
 import com.wevo.backend.review.repository.ReviewLinkRepository;
 import com.wevo.backend.review.repository.ReviewIntentComparisonRepository;
 import com.wevo.backend.review.service.ReviewLinkService;
-import com.wevo.backend.review.service.ReviewTokenHasher;
+import com.wevo.backend.global.security.TokenHasher;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionAuthorIntent;
@@ -95,7 +95,7 @@ class ExternalReviewIntegrationTest {
     @Autowired
     private ReviewIntentComparisonRepository comparisonRepository;
     @Autowired
-    private ReviewTokenHasher tokenHasher;
+    private TokenHasher tokenHasher;
 
     @PersistenceContext
     private EntityManager em;

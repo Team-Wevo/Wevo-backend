@@ -2,6 +2,7 @@ package com.wevo.backend.project.service;
 
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.global.security.TokenHasher;
 import com.wevo.backend.project.domain.InviteLink;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectMember;
@@ -42,6 +43,11 @@ class InviteServiceTest {
     private static final Long JOINER_ID = 3L;
     private static final String BASE_URL = "http://localhost:3000/invite/";
     private static final String TOKEN = "tok123abc";
+    private static final String SECRET = "test-invite-token-secret-that-is-long-enough-000000";
+
+    /** 파생·해싱은 순수 계산이라 모킹하지 않는다 — 실제 값이 맞물리는지까지 확인한다. */
+    private final InviteTokenFactory inviteTokenFactory = new InviteTokenFactory(SECRET);
+    private final TokenHasher tokenHasher = new TokenHasher();
 
     @Mock
     private ProjectRepository projectRepository;
@@ -57,7 +63,8 @@ class InviteServiceTest {
     @BeforeEach
     void setUp() {
         inviteService = new InviteService(
-                projectRepository, projectMemberRepository, inviteLinkRepository, userRepository, BASE_URL);
+                projectRepository, projectMemberRepository, inviteLinkRepository, userRepository,
+                inviteTokenFactory, tokenHasher, BASE_URL);
     }
 
     // ---------- 초대 링크 생성 ----------
@@ -85,17 +92,18 @@ class InviteServiceTest {
     void createInviteLink_normalizesTrailingSlash() {
         InviteService noSlash = new InviteService(
                 projectRepository, projectMemberRepository, inviteLinkRepository, userRepository,
-                "http://host/invite"); // 끝에 슬래시 없음
+                inviteTokenFactory, tokenHasher, "http://host/invite"); // 끝에 슬래시 없음
         Project project = project();
         User owner = user(OWNER_ID, "팀장");
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
                 .willReturn(Optional.of(member(project, owner, ProjectMemberRole.OWNER)));
         given(inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(PROJECT_ID))
-                .willReturn(Optional.of(InviteLink.issue(project, owner, TOKEN)));
+                .willReturn(Optional.of(InviteLink.issue(project, owner, tokenHasher.hash(TOKEN))));
 
         InviteLinkResponse response = noSlash.createInviteLink(OWNER_ID, PROJECT_ID);
 
-        assertThat(response.inviteUrl()).isEqualTo("http://host/invite/" + TOKEN);
+        assertThat(response.inviteUrl())
+                .isEqualTo("http://host/invite/" + inviteTokenFactory.tokenFor(PROJECT_ID));
     }
 
     @Test
@@ -106,12 +114,33 @@ class InviteServiceTest {
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
                 .willReturn(Optional.of(member(project, owner, ProjectMemberRole.OWNER)));
         given(inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(PROJECT_ID))
-                .willReturn(Optional.of(InviteLink.issue(project, owner, TOKEN)));
+                .willReturn(Optional.of(InviteLink.issue(project, owner, tokenHasher.hash(TOKEN))));
 
         InviteLinkResponse response = inviteService.createInviteLink(OWNER_ID, PROJECT_ID);
 
-        assertThat(response.token()).isEqualTo(TOKEN);
-        assertThat(response.inviteUrl()).isEqualTo(BASE_URL + TOKEN);
+        // 저장된 것은 해시뿐이라, 재호출에서도 같은 URL 을 주려면 원문을 다시 파생해야 한다.
+        assertThat(response.token()).isEqualTo(inviteTokenFactory.tokenFor(PROJECT_ID));
+        assertThat(response.inviteUrl()).isEqualTo(BASE_URL + response.token());
+        verify(inviteLinkRepository, never()).save(any(InviteLink.class));
+    }
+
+    @Test
+    @DisplayName("기존 행의 해시가 어긋나 있으면 현재 값으로 맞춘다 — 재발급으로 되살아난다")
+    void createInviteLink_realignsStaleTokenHash() {
+        // 비밀키를 바꿨거나, 해시 도입 전 원문으로 저장된 행이 남은 경우다.
+        // 맞춰주지 않으면 반환한 URL 이 P003 으로 죽는데 그 사실이 드러나지 않는다.
+        Project project = project();
+        User owner = user(OWNER_ID, "팀장");
+        InviteLink stale = InviteLink.issue(project, owner, "예전-비밀키로-만든-해시");
+        given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
+                .willReturn(Optional.of(member(project, owner, ProjectMemberRole.OWNER)));
+        given(inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(PROJECT_ID))
+                .willReturn(Optional.of(stale));
+
+        InviteLinkResponse response = inviteService.createInviteLink(OWNER_ID, PROJECT_ID);
+
+        assertThat(stale.getTokenHash()).isEqualTo(tokenHasher.hash(response.token()));
+        // 기존 행을 고치는 것이지 새로 만드는 것이 아니다 — 활성 링크는 프로젝트당 1개다.
         verify(inviteLinkRepository, never()).save(any(InviteLink.class));
     }
 
@@ -148,8 +177,8 @@ class InviteServiceTest {
     @DisplayName("유효한 토큰이면 프로젝트명·인원과 함께 미리보기를 반환한다")
     void getInvitePreview_validToken_returnsPreview() {
         Project project = project();
-        given(inviteLinkRepository.findActiveWithProjectByToken(TOKEN))
-                .willReturn(Optional.of(InviteLink.issue(project, user(OWNER_ID, "팀장"), TOKEN)));
+        given(inviteLinkRepository.findActiveWithProjectByTokenHash(tokenHasher.hash(TOKEN)))
+                .willReturn(Optional.of(InviteLink.issue(project, user(OWNER_ID, "팀장"), tokenHasher.hash(TOKEN))));
         given(projectMemberRepository.countByProjectId(PROJECT_ID)).willReturn(2L);
 
         InvitePreviewResponse response = inviteService.getInvitePreview(TOKEN);
@@ -164,7 +193,7 @@ class InviteServiceTest {
     @Test
     @DisplayName("무효/비활성 토큰이면 INVITE_LINK_NOT_FOUND")
     void getInvitePreview_invalidToken_throws() {
-        given(inviteLinkRepository.findActiveWithProjectByToken("bad")).willReturn(Optional.empty());
+        given(inviteLinkRepository.findActiveWithProjectByTokenHash(tokenHasher.hash("bad"))).willReturn(Optional.empty());
 
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> inviteService.getInvitePreview("bad"));
@@ -179,8 +208,8 @@ class InviteServiceTest {
     void joinByToken_newMember_joinsAsMember() {
         Project project = project();
         User joiner = user(JOINER_ID, "새멤버");
-        given(inviteLinkRepository.findActiveWithProjectByToken(TOKEN))
-                .willReturn(Optional.of(InviteLink.issue(project, user(OWNER_ID, "팀장"), TOKEN)));
+        given(inviteLinkRepository.findActiveWithProjectByTokenHash(tokenHasher.hash(TOKEN)))
+                .willReturn(Optional.of(InviteLink.issue(project, user(OWNER_ID, "팀장"), tokenHasher.hash(TOKEN))));
         given(projectRepository.findByIdForUpdate(PROJECT_ID)).willReturn(Optional.of(project));
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, JOINER_ID)).willReturn(Optional.empty());
         given(projectMemberRepository.countByProjectId(PROJECT_ID)).willReturn(2L);
@@ -199,8 +228,8 @@ class InviteServiceTest {
     void joinByToken_alreadyMember_idempotent() {
         Project project = project();
         User owner = user(OWNER_ID, "팀장");
-        given(inviteLinkRepository.findActiveWithProjectByToken(TOKEN))
-                .willReturn(Optional.of(InviteLink.issue(project, owner, TOKEN)));
+        given(inviteLinkRepository.findActiveWithProjectByTokenHash(tokenHasher.hash(TOKEN)))
+                .willReturn(Optional.of(InviteLink.issue(project, owner, tokenHasher.hash(TOKEN))));
         given(projectRepository.findByIdForUpdate(PROJECT_ID)).willReturn(Optional.of(project));
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
                 .willReturn(Optional.of(member(project, owner, ProjectMemberRole.OWNER)));
@@ -215,8 +244,8 @@ class InviteServiceTest {
     @DisplayName("인원이 상한(4)에 도달하면 PROJECT_MEMBER_LIMIT_EXCEEDED")
     void joinByToken_full_throwsLimitExceeded() {
         Project project = project();
-        given(inviteLinkRepository.findActiveWithProjectByToken(TOKEN))
-                .willReturn(Optional.of(InviteLink.issue(project, user(OWNER_ID, "팀장"), TOKEN)));
+        given(inviteLinkRepository.findActiveWithProjectByTokenHash(tokenHasher.hash(TOKEN)))
+                .willReturn(Optional.of(InviteLink.issue(project, user(OWNER_ID, "팀장"), tokenHasher.hash(TOKEN))));
         given(projectRepository.findByIdForUpdate(PROJECT_ID)).willReturn(Optional.of(project));
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, JOINER_ID)).willReturn(Optional.empty());
         given(projectMemberRepository.countByProjectId(PROJECT_ID)).willReturn((long) Project.MAX_MEMBERS);
@@ -231,7 +260,7 @@ class InviteServiceTest {
     @Test
     @DisplayName("무효/비활성 토큰으로 참여하면 INVITE_LINK_NOT_FOUND")
     void joinByToken_invalidToken_throws() {
-        given(inviteLinkRepository.findActiveWithProjectByToken("bad")).willReturn(Optional.empty());
+        given(inviteLinkRepository.findActiveWithProjectByTokenHash(tokenHasher.hash("bad"))).willReturn(Optional.empty());
 
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> inviteService.joinByToken(JOINER_ID, "bad"));
