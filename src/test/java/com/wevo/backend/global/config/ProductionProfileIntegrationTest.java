@@ -58,6 +58,20 @@ class ProductionProfileIntegrationTest {
     }
 
     @Test
+    void productionProfileIssuesReviewerCookieWithSecureAttribute() throws Exception {
+        // 쿠키 속성 자체는 AnonymousReviewerResolverTest 가 검증한다. 여기서는 application-prod.yml
+        // 의 app.review.cookie-secure 가 실제로 그 빈까지 닿는지(배선)를 확인한다.
+        // 토큰이 없어 404(R001)로 끝나지만, 검토자 키는 조회 전에 발급되므로 헤더는 실려 나간다.
+        HttpResponse<String> response = get(serverPort, "/public/review-links/no-such-token");
+
+        assertThat(response.statusCode()).isEqualTo(404);
+        assertThat(response.headers().allValues("Set-Cookie"))
+                .anySatisfy(cookie -> assertThat(cookie)
+                        .startsWith("wevo_reviewer_id=")
+                        .contains("Secure"));
+    }
+
+    @Test
     void internalHealthEndpointReportsRedisFailureWithoutAuthentication() throws Exception {
         HttpResponse<String> response = get(managementPort, "/actuator/health");
 
