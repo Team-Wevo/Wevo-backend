@@ -16,7 +16,7 @@ import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionDraft;
 import com.wevo.backend.section.repository.SectionDraftRepository;
-import com.wevo.backend.user.repository.UserRepository;
+import com.wevo.backend.user.service.UserService;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -42,18 +42,18 @@ public class TeamReviewService {
     private final TeamReviewRepository teamReviewRepository;
     private final ProjectMemberRosterQueryService memberRosterQueryService;
     private final SectionDraftRepository sectionDraftRepository;
-    private final UserRepository userRepository;
+    private final UserService userService;
 
     public TeamReviewService(SectionAccessGuard sectionAccessGuard,
                              TeamReviewRepository teamReviewRepository,
                              ProjectMemberRosterQueryService memberRosterQueryService,
                              SectionDraftRepository sectionDraftRepository,
-                             UserRepository userRepository) {
+                             UserService userService) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.teamReviewRepository = teamReviewRepository;
         this.memberRosterQueryService = memberRosterQueryService;
         this.sectionDraftRepository = sectionDraftRepository;
-        this.userRepository = userRepository;
+        this.userService = userService;
     }
 
     /**
@@ -139,7 +139,7 @@ public class TeamReviewService {
         if (review == null) {
             review = TeamReview.builder()
                     .projectSection(section)
-                    .reviewer(userRepository.getReferenceById(userId))
+                    .reviewer(userService.getUserReference(userId))
                     .status(request.status())
                     .changeRequestReason(reason)
                     .reviewedContentVersion(reviewedVersion)
