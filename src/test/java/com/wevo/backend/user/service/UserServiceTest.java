@@ -94,7 +94,7 @@ class UserServiceTest {
     @DisplayName("탈퇴하면 상태가 WITHDRAWN 이 되고 개인 식별정보가 지워진다")
     void withdraw_scrubsPersonalData() {
         User user = user("호석", "user@wevo.com");
-        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.of(user));
         given(projectOwnershipQuery.hasActiveOwnedProject(USER_ID)).willReturn(false);
 
         userService.withdraw(USER_ID);
@@ -111,7 +111,7 @@ class UserServiceTest {
     @DisplayName("보관되지 않은 프로젝트의 OWNER 면 탈퇴를 거부한다")
     void withdraw_ownsActiveProject_throws() {
         User user = user("호석", "user@wevo.com");
-        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.of(user));
         given(projectOwnershipQuery.hasActiveOwnedProject(USER_ID)).willReturn(true);
 
         BusinessException exception =
@@ -130,7 +130,7 @@ class UserServiceTest {
         // 탈퇴 직후에도 남은 Access Token 이 30분간 유효해 재시도가 실제로 들어올 수 있다.
         User user = user("호석", "user@wevo.com");
         user.withdraw();
-        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.of(user));
 
         userService.withdraw(USER_ID);
 
@@ -143,7 +143,7 @@ class UserServiceTest {
     @Test
     @DisplayName("존재하지 않는 사용자가 탈퇴하면 USER_NOT_FOUND 예외를 던진다")
     void withdraw_userNotFound_throws() {
-        given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+        given(userRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.empty());
 
         BusinessException exception =
                 assertThrows(BusinessException.class, () -> userService.withdraw(USER_ID));

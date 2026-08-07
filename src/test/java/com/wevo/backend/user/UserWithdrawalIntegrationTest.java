@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.then;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -29,6 +30,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -136,8 +138,34 @@ class UserWithdrawalIntegrationTest {
                         .with(authenticationOf(owner)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.memberCount").value(2))
+                // 필터 표현식이라 JsonPath 는 리스트를 돌려주지만, JsonPathExpectationsHelper 가
+                // 원소 하나짜리 리스트를 벗겨 비교한다. 여러 개가 걸리면 그 자리에서 실패한다.
                 .andExpect(jsonPath("$.data.members[?(@.userId == " + leaver.getId() + ")].name")
                         .value(User.WITHDRAWN_NAME));
+    }
+
+    @Test
+    @DisplayName("탈퇴한 계정은 새 프로젝트를 만들 수 없다 — OWNER 로 되살아나는 경로를 막는다")
+    void withdrawnUserCannotCreateProject() throws Exception {
+        // 탈퇴 직후에도 Access Token 이 30분간 유효해 실제로 요청이 들어올 수 있다.
+        // 막지 않으면 "탈퇴자가 활성 프로젝트의 OWNER" 라는, U003 이 막으려던 상태가 다시 생긴다.
+        User user = persistUser("나가는사람", "leaver-create@wevo.com");
+        mockMvc.perform(delete("/api/users/me").with(authenticationOf(user)))
+                .andExpect(status().isNoContent());
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(post("/api/projects")
+                        .with(authenticationOf(user))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "ideaText": "팀 의견을 모아 하나의 결과물로 만든다.",
+                                  "resultType": "PROPOSAL",
+                                  "audience": "교내 심사위원"
+                                }"""))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("U001"));
     }
 
     private User persistUser(String name, String email) {

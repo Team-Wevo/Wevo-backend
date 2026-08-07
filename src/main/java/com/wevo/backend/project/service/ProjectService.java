@@ -73,10 +73,25 @@ public class ProjectService {
         this.inviteLinkRepository = inviteLinkRepository;
     }
 
+    /**
+     * 프로젝트를 만들고 생성자를 OWNER 로 등록한다.
+     *
+     * <p>사용자 행을 <b>배타 잠금</b>으로 잡는다. 회원 탈퇴(§3.3.3)가 "이 사용자가 활성 프로젝트의
+     * OWNER 인가"를 검사한 뒤 상태를 바꾸므로, 잠그지 않으면 그 검사와 저장 사이에 이 메서드가
+     * 끼어들어 <b>탈퇴한 사용자가 OWNER 로 남는</b> 상태가 만들어진다. MVP 에 팀장 위임이 없어
+     * (정책서 §1.2) 그 프로젝트는 삭제할 사람이 영영 없어진다.
+     *
+     * <p>탈퇴한 계정은 거부한다. 탈퇴 직후에도 남은 Access Token 이 30분간 유효해 실제로 요청이
+     * 들어올 수 있고, 그대로 두면 방금 막은 상태가 그 창에서 그대로 만들어진다. 계정이 소프트
+     * 삭제됐으므로 {@code U001} 로 응답한다.
+     */
     @Transactional
     public ProjectCreateResponse create(Long userId, ProjectCreateRequest request) {
-        User owner = userRepository.findById(userId)
+        User owner = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        if (owner.isWithdrawn()) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
 
         String title = (request.title() == null || request.title().isBlank())
                 ? DEFAULT_TITLE

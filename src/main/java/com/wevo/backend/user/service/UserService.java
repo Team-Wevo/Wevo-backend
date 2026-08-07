@@ -59,11 +59,17 @@ public class UserService {
      * 남은 Access Token 이 30분간 살아 있어 재시도가 실제로 들어올 수 있고, 그때 실패를 돌려주면
      * 화면이 "탈퇴에 실패했다"고 표시하는데 계정은 이미 탈퇴 상태다.
      *
+     * <p>사용자 행을 <b>배타 잠금</b>으로 잡고 시작한다. 잠그지 않으면 "소유 프로젝트 없음" 확인과
+     * {@code WITHDRAWN} 저장 사이에 프로젝트 생성이 끼어들어, 탈퇴한 사용자가 활성 프로젝트의
+     * OWNER 로 남는다({@link com.wevo.backend.user.repository.UserRepository#findByIdForUpdate}).
+     * 프로젝트 생성도 같은 행을 먼저 잡으므로 두 경로가 직렬화된다.
+     *
      * @throws BusinessException 보관되지 않은 프로젝트의 OWNER 이면 {@link ErrorCode#USER_OWNS_ACTIVE_PROJECT}
      */
     @Transactional
     public void withdraw(Long userId) {
-        User user = findUser(userId);
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         if (user.isWithdrawn()) {
             return;
         }
