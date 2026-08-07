@@ -2,6 +2,7 @@ package com.wevo.backend.review.controller;
 
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
+import com.wevo.backend.review.dto.request.ReviewLinkIssueRequest;
 import com.wevo.backend.review.dto.request.ReviewLinkStatusUpdateRequest;
 import com.wevo.backend.review.dto.response.ReviewLinkResponse;
 import com.wevo.backend.review.service.ReviewLinkService;
@@ -41,11 +42,17 @@ public class ReviewLinkController {
 
     /**
      * 섹션 외부 검토 링크를 발급한다. (팀장 전용)
+     *
+     * <p>요청 본문은 선택이다 — 생략하면 유효 기간 없는 링크를 발급하고, {@code expiresOn} 을 주면
+     * 그 날까지만 제출을 받는다. {@code expiresOn} 의 {@code null} 과 빈 문자열도 생략과 같게
+     * "기간 제한 없음"으로 읽는다. 발급 후 기간 변경은 지원하지 않으며 재발급으로 대체한다.
      */
-    @Operation(summary = "외부 검토 링크 발급 — 섹션당 ACTIVE 1개, 재발급 시 대체 발급 (OWNER 만)")
+    @Operation(summary = "외부 검토 링크 발급 — 섹션당 ACTIVE 1개, 재발급 시 대체 발급, 유효 기간 선택 (OWNER 만)")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "201", description = "REVIEW_LINK_CREATED — 원문 토큰은 이 응답으로만 반환"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400", description = "C001 — expiresOn 날짜 형식 오류"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401", description = "A001 — 인증 필요"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -53,14 +60,20 @@ public class ReviewLinkController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "409", description = "R009 — 초안이 없어 발급 불가")
+                    responseCode = "409",
+                    description = "R009 — 초안이 없어 발급 불가 / R010 — 확정된 작성자 의도가 없어 발급 불가 "
+                            + "/ C003 — 동시 발급 경합 (섹션당 ACTIVE 1개 위반, 재시도하면 성공)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "422", description = "C002 — expiresOn 이 발급일보다 1일 이상 뒤가 아님")
     })
     @PostMapping("/project-sections/{sectionId}/review-links")
     public ResponseEntity<ApiResponse<ReviewLinkResponse>> issueExternalLink(
             @PathVariable Long sectionId,
+            @RequestBody(required = false) ReviewLinkIssueRequest request,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
-        ReviewLinkResponse response = reviewLinkService.issueExternalLink(sectionId, principal.userId());
+        ReviewLinkResponse response =
+                reviewLinkService.issueExternalLink(sectionId, principal.userId(), request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("REVIEW_LINK_CREATED", "외부 검토 링크가 발급되었습니다.", response));
     }
@@ -69,7 +82,8 @@ public class ReviewLinkController {
      * 외부 검토 링크를 수동으로 종료한다. (팀장 전용)
      *
      * <p>{@code ACTIVE} 링크에서만 성공한다. 이미 종료된 링크는 409({@code R011}), 본문 수정으로
-     * 만료된 링크는 409({@code R012})로 거절하며 어느 경우에도 기존 상태는 바뀌지 않는다.
+     * 만료된 링크는 409({@code R012}), 유효 기간이 지난 링크는 409({@code R014})로 거절하며
+     * 어느 경우에도 기존 상태는 바뀌지 않는다.
      * 종료된 링크는 다시 살릴 수 없고 새 본문의 외부 검토는 재발급으로만 가능하다.
      */
     @Operation(summary = "외부 검토 링크 비활성화 — CLOSED 로 종료 (OWNER 만)")
@@ -86,7 +100,7 @@ public class ReviewLinkController {
                     responseCode = "404", description = "R001 — 링크 없음 또는 비멤버 (존재 숨김)"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409",
-                    description = "R011 — 이미 종료된 링크 / R012 — 이미 만료된 링크")
+                    description = "R011 — 이미 종료된 링크 / R012 — 이미 만료된 링크 / R014 — 유효 기간이 지난 링크")
     })
     @PatchMapping("/review-links/{reviewLinkId}")
     public ResponseEntity<ApiResponse<Void>> updateStatus(

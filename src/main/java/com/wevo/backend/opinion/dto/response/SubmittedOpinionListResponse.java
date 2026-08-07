@@ -2,6 +2,7 @@ package com.wevo.backend.opinion.dto.response;
 
 import com.wevo.backend.opinion.domain.Opinion;
 import com.wevo.backend.user.domain.User;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -11,6 +12,7 @@ import java.util.List;
  * <p>요청자가 아직 제출하지 않았으면({@code everSubmitted=false}) 목록은 비우고
  * 제출 건수만 공개한다 — 베끼기 방지.
  */
+@Schema(requiredProperties = {"everSubmitted", "totalSubmittedCount", "opinions"})
 public record SubmittedOpinionListResponse(
         boolean everSubmitted,
         int totalSubmittedCount,
@@ -31,6 +33,8 @@ public record SubmittedOpinionListResponse(
         return new SubmittedOpinionListResponse(false, totalSubmittedCount, List.of());
     }
 
+    @Schema(requiredProperties = {"id", "author", "content", "submittedAt"})
+
     public record SubmittedOpinionResponse(
             Long id,
             AuthorResponse author,
@@ -48,6 +52,8 @@ public record SubmittedOpinionListResponse(
             );
         }
     }
+
+    @Schema(requiredProperties = {"id", "name"})
 
     public record AuthorResponse(
             Long id,

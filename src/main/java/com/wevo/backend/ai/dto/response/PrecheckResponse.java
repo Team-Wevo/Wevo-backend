@@ -10,6 +10,7 @@ import java.util.UUID;
 
 /** 최신 precheck 실행과 마지막 성공 결과를 분리한 조회 모델. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(requiredProperties = {"exists"})
 public record PrecheckResponse(
         boolean exists,
         AiCheckStatus aiCheckStatus,
@@ -30,6 +31,7 @@ public record PrecheckResponse(
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Schema(requiredProperties = {"requestId", "status"})
     public record LatestJobResponse(
             UUID requestId,
             AiRequestStatus status,
@@ -37,10 +39,12 @@ public record PrecheckResponse(
     ) {
     }
 
+    @Schema(requiredProperties = {"errorCode", "message"})
     public record FailureResponse(String errorCode, String message) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Schema(requiredProperties = {"resultId", "checkedContentVersion", "findings", "rewriteApplied"})
     public record CurrentResultResponse(
             UUID resultId,
             Integer checkedContentVersion,
@@ -62,6 +66,8 @@ public record PrecheckResponse(
             String suggestion
     ) {
     }
+
+    @Schema(requiredProperties = {"content", "changedCount"})
 
     public record RewriteResponse(String content, Integer changedCount) {
     }

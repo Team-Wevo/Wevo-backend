@@ -34,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "jwt.secret=test-secret-key-for-wevo-backend-that-is-long-enough-000000",
                 "app.cors.allowed-origins[0]=http://localhost",
                 "app.invite.base-url=http://localhost/invite/",
+                "app.invite.token-secret=test-invite-token-secret-that-is-long-enough-000000",
                 // 운영 프로파일은 누락을 허용하지 않는다. 이 테스트는 의도적 AI 비활성 상태다.
                 "wevo.ai.provider=none",
                 "wevo.ai.audit.recovery-enabled=false"
@@ -55,6 +56,20 @@ class ProductionProfileIntegrationTest {
         HttpResponse<String> response = get(serverPort, "/v3/api-docs");
 
         assertThat(response.statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void productionProfileIssuesReviewerCookieWithSecureAttribute() throws Exception {
+        // 쿠키 속성 자체는 AnonymousReviewerResolverTest 가 검증한다. 여기서는 application-prod.yml
+        // 의 app.review.cookie-secure 가 실제로 그 빈까지 닿는지(배선)를 확인한다.
+        // 토큰이 없어 404(R001)로 끝나지만, 검토자 키는 조회 전에 발급되므로 헤더는 실려 나간다.
+        HttpResponse<String> response = get(serverPort, "/public/review-links/no-such-token");
+
+        assertThat(response.statusCode()).isEqualTo(404);
+        assertThat(response.headers().allValues("Set-Cookie"))
+                .anySatisfy(cookie -> assertThat(cookie)
+                        .startsWith("wevo_reviewer_id=")
+                        .contains("Secure"));
     }
 
     @Test

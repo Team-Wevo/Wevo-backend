@@ -2,6 +2,7 @@ package com.wevo.backend.section.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wevo.backend.section.domain.ConfirmReadinessCheck;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
 /**
@@ -14,6 +15,7 @@ import java.util.List;
  * <p>{@code checks}는 조건별 충족 여부와 미충족 사유(§6.3.2)를 담는다 — 충족된 조건의 {@code reason}은
  * {@code null}이라 직렬화에서 생략된다.
  */
+@Schema(requiredProperties = {"ready", "canConfirm", "checks"})
 public record SectionConfirmReadinessResponse(
         boolean ready,
         boolean canConfirm,
@@ -33,6 +35,7 @@ public record SectionConfirmReadinessResponse(
      * @param reason    미충족 사유 (충족이면 {@code null} — 응답에서 생략)
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Schema(requiredProperties = {"key", "satisfied"})
     public record CheckResponse(String key, boolean satisfied, String reason) {
 
         public static CheckResponse of(ConfirmReadinessCheck check, boolean satisfied) {

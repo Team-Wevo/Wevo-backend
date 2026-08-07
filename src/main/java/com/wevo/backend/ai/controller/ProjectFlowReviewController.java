@@ -35,6 +35,8 @@ public class ProjectFlowReviewController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "202", description = "PROJECT_FLOW_REVIEW_REQUESTED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "503", description = "AI008 — AI Provider 비활성·연결 불가")
     })
     public ResponseEntity<ApiResponse<AiJobAcceptedResponse>> request(
@@ -45,7 +47,15 @@ public class ProjectFlowReviewController {
                 new AiJobAcceptedResponse(requestId)));
     }
     @GetMapping("/{projectId}/flow-check")
-    @Operation(summary = "최종 결과물 전체 흐름 점검 조회")
+    @Operation(summary = "최종 결과물 전체 흐름 점검 조회 — 최신 실행 상태와 결과")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "OK"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "P001 — 프로젝트 없음 또는 비멤버 (존재 숨김)")
+    })
     public ResponseEntity<ApiResponse<ProjectFlowReviewResponse>> get(
             @PathVariable Long projectId, @AuthenticationPrincipal AuthPrincipal principal) {
         return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.",

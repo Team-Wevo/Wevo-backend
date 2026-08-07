@@ -137,3 +137,13 @@ policy selection to AI jobs and copies the operational selection identifiers int
 rows receive explicit conservative snapshot values during migration; new rows must always provide
 the full selection. Feature/rollout indexes support model rollout comparison without using project,
 section, user, or request identifiers as metric labels.
+
+`V18__add_review_link_expiry.sql` adds the optional external review link expiry date and the
+`EXPIRED` terminal status. `expires_on` is a `DATE` because the expiry is agreed in whole days
+(KST); `NULL` keeps the existing "no expiry" behaviour, so existing rows need no backfill. The
+"at least one day after issue" rule is enforced in the service against KST rather than by a CHECK,
+because `created_at` is written in the server JVM zone and a midnight-boundary request would
+otherwise fail the constraint. The widened status CHECK is added as `NOT VALID`;
+`V19__validate_review_link_status_constraint.sql` validates existing rows after V18 commits so the
+scan does not retain V18's stronger lock. The new CHECK is a superset of the previous one, so no
+existing row can violate it.

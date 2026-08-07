@@ -2,6 +2,7 @@ package com.wevo.backend.section.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wevo.backend.section.domain.SectionDraft;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 
 /**
@@ -11,6 +12,7 @@ import java.time.LocalDateTime;
  *                     직렬화에서 제외된다. 화면의 "OO님 편집 중" 표시에 쓴다. (정책서 §5.2)
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(requiredProperties = {"content", "contentVersion", "updatedAt"})
 public record SectionDraftReadResponse(
         String content,
         Integer contentVersion,
@@ -29,6 +31,7 @@ public record SectionDraftReadResponse(
     /**
      * 편집권을 보유한 사용자.
      */
+    @Schema(requiredProperties = {"userId", "name"})
     public record ActiveEditor(Long userId, String name) {
     }
 }

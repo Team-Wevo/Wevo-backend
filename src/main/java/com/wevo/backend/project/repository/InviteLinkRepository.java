@@ -19,13 +19,16 @@ public interface InviteLinkRepository extends JpaRepository<InviteLink, Long> {
     Optional<InviteLink> findFirstByProjectIdAndIsActiveTrue(Long projectId);
 
     /**
-     * 토큰으로 활성 초대 링크를 프로젝트와 함께 조회한다.
+     * 토큰 해시로 활성 초대 링크를 프로젝트와 함께 조회한다.
+     *
+     * <p>원문이 아니라 해시로 찾는다 — DB 에는 해시만 저장하므로 호출측이 요청 토큰을 같은 방식으로
+     * 해시해 넘긴다. 원문 토큰이 이 계층까지 내려오지 않게 하려는 의도도 있다.
      *
      * <p>미리보기·참여에서 곧바로 프로젝트 정보가 필요하므로 {@code JOIN FETCH} 로 미리 로딩한다.
      */
     @Query("SELECT i FROM InviteLink i JOIN FETCH i.project "
-            + "WHERE i.token = :token AND i.isActive = true")
-    Optional<InviteLink> findActiveWithProjectByToken(@Param("token") String token);
+            + "WHERE i.tokenHash = :tokenHash AND i.isActive = true")
+    Optional<InviteLink> findActiveWithProjectByTokenHash(@Param("tokenHash") String tokenHash);
 
     /**
      * 프로젝트의 활성 초대 링크를 모두 조회한다. (보관 처리 시 일괄 비활성화 — §3.2.9)

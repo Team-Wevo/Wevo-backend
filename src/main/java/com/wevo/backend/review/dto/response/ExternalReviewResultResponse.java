@@ -3,6 +3,7 @@ package com.wevo.backend.review.dto.response;
 import com.wevo.backend.review.domain.ReviewSubmission;
 import com.wevo.backend.review.domain.ReviewIntentComparison;
 import com.wevo.backend.review.domain.UnderstandingSignal;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,9 @@ import java.util.function.Function;
  * @param byVersion     검토한 본문 버전별 집계 (최신 버전 먼저)
  * @param items         제출 목록(최신순)
  */
+@Schema(requiredProperties = {
+        "totalCount", "clearCount", "partialCount", "unclearCount", "byVersion", "items"
+})
 public record ExternalReviewResultResponse(
         long totalCount,
         long clearCount,
@@ -45,6 +49,9 @@ public record ExternalReviewResultResponse(
      * @param partialCount   애매함(PARTIAL) 수
      * @param unclearCount   이해 어려움(UNCLEAR) 수
      */
+    @Schema(requiredProperties = {
+            "contentVersion", "totalCount", "clearCount", "partialCount", "unclearCount"
+    })
     public record VersionCountResponse(
             Integer contentVersion,
             long totalCount,

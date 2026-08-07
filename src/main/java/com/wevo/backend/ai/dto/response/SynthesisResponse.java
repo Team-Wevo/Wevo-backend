@@ -21,6 +21,7 @@ import java.util.UUID;
  * @param currentSet     최신 성공 실행의 결과 — 성공 이력이 없으면 생략
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(requiredProperties = {"exists", "synthesisStale"})
 public record SynthesisResponse(
         boolean exists,
         Boolean synthesisStale,
@@ -47,6 +48,7 @@ public record SynthesisResponse(
      * @param failure 실패 사유 — 진행 중·성공이면 {@code null}
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Schema(requiredProperties = {"requestId", "status"})
     public record LatestJobResponse(
             UUID requestId,
             AiRequestStatus status,
@@ -60,6 +62,7 @@ public record SynthesisResponse(
      * @param errorCode 외부 실패 코드 (`AI0xx`)
      * @param message   사용자에게 그대로 노출해도 되는 사유 — 제공자 원문은 담지 않는다 (CLAUDE.md §7)
      */
+    @Schema(requiredProperties = {"errorCode", "message"})
     public record FailureResponse(String errorCode, String message) {
     }
 
@@ -86,6 +89,9 @@ public record SynthesisResponse(
      * {@code GAP}은 {@code evidenceRequested}·{@code answer}를 갖는다.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Schema(requiredProperties = {
+            "issueId", "type", "status", "description", "relatedOpinions", "evidenceRequested"
+    })
     public record IssueResponse(
             Long issueId,
             IssueType type,
@@ -101,6 +107,7 @@ public record SynthesisResponse(
     }
 
     /** 관련 의견 작성자 ID는 GAP 추가 근거 요청의 {@code targetUserId}로 사용한다. */
+    @Schema(requiredProperties = {"opinionId", "authorUserId", "authorName", "excerpt"})
     public record RelatedOpinionResponse(
             Long opinionId,
             Long authorUserId,
@@ -111,6 +118,7 @@ public record SynthesisResponse(
 
     /** 결정 결과 — {@code selectedOption}과 {@code customInput} 중 값이 있는 쪽만 담긴다. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Schema(requiredProperties = {"decidedAt"})
     public record DecisionResponse(
             String selectedOption,
             String customInput,
@@ -118,6 +126,7 @@ public record SynthesisResponse(
     ) {
     }
 
+    @Schema(requiredProperties = {"answerId", "authorName", "content", "answeredAt"})
     public record AnswerResponse(
             Long answerId,
             String authorName,
@@ -127,6 +136,7 @@ public record SynthesisResponse(
     }
 
     /** 이 세트 생성에 입력으로 승계된 이전 세트 답변의 원본 참조. */
+    @Schema(requiredProperties = {"issueId", "answerId"})
     public record InheritedGapAnswerResponse(Long issueId, Long answerId) {
     }
 }

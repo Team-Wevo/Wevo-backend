@@ -26,6 +26,8 @@ public enum ErrorCode {
     // User
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U001", "사용자를 찾을 수 없습니다."),
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "U002", "이미 다른 방식으로 가입된 이메일입니다."),
+    USER_OWNS_ACTIVE_PROJECT(HttpStatus.CONFLICT, "U003",
+            "팀장으로 있는 프로젝트가 남아 있어 탈퇴할 수 없어요. 프로젝트를 먼저 삭제해 주세요."),
 
     // Project
     PROJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "P001", "프로젝트를 찾을 수 없습니다."),
@@ -101,6 +103,10 @@ public enum ErrorCode {
     // 팀장 화면은 두 사유를 각각 다른 문구로 보여줘야 하므로 클라이언트가 분기할 코드가 필요하다. (CLAUDE.md §5.8)
     REVIEW_LINK_CLOSE_ALREADY_CLOSED(HttpStatus.CONFLICT, "R011", "이미 종료된 링크입니다."),
     REVIEW_LINK_CLOSE_ALREADY_OUTDATED(HttpStatus.CONFLICT, "R012", "이미 만료된 링크입니다."),
+    // 유효 기간(발급 시 지정, API_SPEC §3.5.1) 만료 — 외부 검토자용(R013)과 팀장용(R014)을 나눈다.
+    // 본문 수정 만료(R004/R012)와 사유가 달라 안내 문구가 다르므로 코드를 합치지 않는다.
+    REVIEW_LINK_EXPIRED(HttpStatus.CONFLICT, "R013", "외부 검토 링크의 유효 기간이 지났어요."),
+    REVIEW_LINK_CLOSE_ALREADY_EXPIRED(HttpStatus.CONFLICT, "R014", "유효 기간이 지난 링크입니다."),
 
     // Export
     FINAL_OUTPUT_ASSEMBLY_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "E001", "완성본을 조립할 수 없습니다. 잠시 후 다시 시도해주세요.");

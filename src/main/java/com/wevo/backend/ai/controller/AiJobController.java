@@ -2,9 +2,12 @@ package com.wevo.backend.ai.controller;
 
 import com.wevo.backend.ai.dto.response.AiJobResponse;
 import com.wevo.backend.ai.service.AiJobQueryService;
+import com.wevo.backend.global.config.ApiExampleRefs;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.UUID;
@@ -39,6 +42,10 @@ public class AiJobController {
                     responseCode = "200", description = "OK"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400", description = "C001 — requestId 형식 오류"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "AI021 — 작업 없음 또는 비멤버")
     })

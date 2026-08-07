@@ -2,6 +2,7 @@ package com.wevo.backend.project.dto.response;
 
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * 섹션 요약 응답. (프로젝트 생성/조회 시 섹션 목록에 사용 — B/프론트 계약)
@@ -17,6 +18,8 @@ import com.wevo.backend.section.domain.ProjectSectionStatus;
  * @param keyQuestion   기본 핵심 질문
  * @param guide         작성 가이드
  */
+// keyQuestion·guide 는 템플릿이 연결되지 않은 섹션에서 null 이 되므로 필수에서 뺀다.
+@Schema(requiredProperties = {"sectionId", "order", "title", "sectionStatus"})
 public record SectionSummaryResponse(
         Long sectionId,
         Integer order,

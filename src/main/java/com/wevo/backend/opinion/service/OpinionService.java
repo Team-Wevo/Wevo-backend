@@ -172,7 +172,11 @@ public class OpinionService {
                         ))
                 ));
         validateContentForSubmit(opinion.getContent());
-        opinion.submit(LocalDateTime.now(KST));
+        LocalDateTime submittedAt = LocalDateTime.now(KST);
+        opinion.submit(submittedAt);
+        // 의견 수집 단계에서 유일하게 사람이 남기는 흔적이라, 이걸 빼면 수집 기간 내내
+        // 목록 카드의 "마지막 작업" 지점이 프로젝트 생성 시각에 멈춘다. (API_SPEC §3.2.2)
+        section.recordActivity(submittedAt);
         return OpinionSubmitResponse.from(opinion);
     }
 

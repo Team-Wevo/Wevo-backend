@@ -3,6 +3,7 @@ package com.wevo.backend.review.dto.response;
 import com.wevo.backend.review.domain.TeamReview;
 import com.wevo.backend.review.domain.TeamReviewStatus;
 import com.wevo.backend.user.domain.User;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 
 /**
@@ -10,6 +11,9 @@ import java.time.LocalDateTime;
  *
  * <p>아직 제출하지 않은 팀원은 {@link #pending(User)} 로 만들어 {@code PENDING} 으로 노출한다.
  * (미제출 상태는 별도 행을 만들지 않는다.)
+ *
+ * <p>그래서 {@code reviewId}·{@code changeRequestReason}·{@code reviewedContentVersion}·
+ * {@code reviewedAt} 은 필수가 아니다 — 미제출 팀원 항목에서는 비어 있다.
  *
  * @param reviewId              검토 식별자 (미제출이면 null)
  * @param reviewerUserId        검토자(팀원) ID
@@ -21,6 +25,7 @@ import java.time.LocalDateTime;
  * @param outdated              본문 수정으로 만료됐는지 (이전 본문 기준 검토)
  * @param reviewedAt            제출·갱신 시각
  */
+@Schema(requiredProperties = {"reviewerUserId", "reviewerName", "status", "resolved", "outdated"})
 public record TeamReviewItemResponse(
         Long reviewId,
         Long reviewerUserId,

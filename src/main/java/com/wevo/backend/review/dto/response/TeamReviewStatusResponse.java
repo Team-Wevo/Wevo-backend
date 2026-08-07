@@ -1,6 +1,7 @@
 package com.wevo.backend.review.dto.response;
 
 import com.wevo.backend.review.domain.TeamReviewStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
 /**
@@ -25,6 +26,10 @@ import java.util.List;
  *                                        확정 조건 {@code NO_UNRESOLVED_REQUEST}와 같은 기준 (§6.3)
  * @param items                           팀원별 검토 항목
  */
+@Schema(requiredProperties = {
+        "currentContentVersion", "totalMembers", "approvedCount", "changesRequestedCount", "pendingCount",
+        "outdatedCount", "unresolvedChangesRequestedCount", "items"
+})
 public record TeamReviewStatusResponse(
         Integer currentContentVersion,
         long totalMembers,

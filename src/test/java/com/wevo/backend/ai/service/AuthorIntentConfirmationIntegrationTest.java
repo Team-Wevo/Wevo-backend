@@ -110,8 +110,8 @@ class AuthorIntentConfirmationIntegrationTest {
                     ownerId);
             Long sectionId = jdbcTemplate.queryForObject(
                     """
-                    INSERT INTO project_sections (project_id, title, section_order, status)
-                    VALUES (?, 'intent-section', 1, 'DRAFTING')
+                    INSERT INTO project_sections (project_id, title, section_order, status, last_activity_at)
+                    VALUES (?, 'intent-section', 1, 'DRAFTING', NOW())
                     RETURNING id
                     """,
                     Long.class,

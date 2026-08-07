@@ -1,7 +1,10 @@
 package com.wevo.backend.review.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wevo.backend.review.domain.ReviewLink;
 import com.wevo.backend.review.domain.ReviewLinkStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -21,13 +24,18 @@ import java.time.LocalDateTime;
  * @param contentVersion  링크가 고정한 발급 시점 본문 버전
  * @param submissionCount 이 <b>링크에</b> 쌓인 외부 검토 제출 수 (링크당 20개 상한)
  * @param issuedAt        링크 발급 시각
+ * @param expiresOn       링크가 살아 있는 마지막 날 (KST 날짜). 기간을 지정하지 않았으면 {@code null}
+ *                        이라 응답에서 키가 생략된다 — FE 는 키 유무로 "기간 제한 없음"을 판단한다
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(requiredProperties = {"reviewLinkId", "linkStatus", "contentVersion", "submissionCount", "issuedAt"})
 public record ReviewLinkCurrentResponse(
         Long reviewLinkId,
         ReviewLinkStatus linkStatus,
         Integer contentVersion,
         long submissionCount,
-        LocalDateTime issuedAt
+        LocalDateTime issuedAt,
+        LocalDate expiresOn
 ) {
 
     public static ReviewLinkCurrentResponse of(ReviewLink link, long submissionCount) {
@@ -36,6 +44,7 @@ public record ReviewLinkCurrentResponse(
                 link.getStatus(),
                 link.getContentVersion(),
                 submissionCount,
-                link.getCreatedAt());
+                link.getCreatedAt(),
+                link.getExpiresOn());
     }
 }

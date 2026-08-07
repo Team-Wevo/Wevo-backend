@@ -1,5 +1,6 @@
 package com.wevo.backend.export.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 /**
  * 완성본을 클립보드에 그대로 넣을 수 있게 조립한 문자열 응답. (§3.6.2 텍스트 · §3.6.3 마크다운)
  *
@@ -9,5 +10,6 @@ package com.wevo.backend.export.dto.response;
  *
  * @param content 조립된 완성본 전체 문자열
  */
+@Schema(requiredProperties = {"content"})
 public record FinalOutputContentResponse(String content) {
 }

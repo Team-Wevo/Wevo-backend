@@ -56,6 +56,8 @@ public class PrecheckController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "202", description = "PRECHECK_REQUESTED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "S001 — 존재 숨김, S003 — 초안 없음"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409", description = "S002 — 실행할 수 없는 섹션 상태"),
@@ -83,6 +85,8 @@ public class PrecheckController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "OK"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버")
     })
     @GetMapping("/{sectionId}/precheck")
@@ -107,6 +111,8 @@ public class PrecheckController {
                     responseCode = "200", description = "PRECHECK_REWRITE_APPLIED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400", description = "C001 — 요청 값 누락·형식 오류"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(

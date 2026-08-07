@@ -1,5 +1,6 @@
 package com.wevo.backend.project.controller;
 
+import com.wevo.backend.global.config.ApiExampleRefs;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.project.dto.request.ProjectCreateRequest;
@@ -11,6 +12,8 @@ import com.wevo.backend.project.dto.response.ProjectSummaryResponse;
 import com.wevo.backend.project.dto.response.SectionSummaryResponse;
 import com.wevo.backend.project.service.ProjectService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -47,9 +50,13 @@ public class ProjectController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "201", description = "PROJECT_CREATED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "400", description = "C001 — ideaText·resultType·audience 검증 실패"),
+                    responseCode = "400", description = "C001 — ideaText·resultType·audience 검증 실패",
+                    content = @Content(examples = @ExampleObject(
+                            name = "C001", ref = ApiExampleRefs.INVALID_INPUT))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "401", description = "A001 — 인증 필요"),
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "U001 — 토큰의 사용자를 찾을 수 없음")
     })
@@ -65,14 +72,19 @@ public class ProjectController {
     }
 
     /**
-     * 내 프로젝트 목록 조회 — 내가 멤버로 속한 프로젝트만 최신순으로 반환한다.
+     * 내 프로젝트 목록 조회 — 내가 멤버로 속한 프로젝트만 최근 작업순으로 반환한다.
+     *
+     * <p>대시보드 카드가 한 번의 요청으로 그려지도록 마지막 활동 섹션과 확정 진행도를 함께 담는다.
      */
-    @Operation(summary = "내 프로젝트 목록 — 멤버인 것만, 보관(ARCHIVED) 제외, 최신순")
+    @Operation(summary = "내 프로젝트 목록 — 멤버인 것만, 보관(ARCHIVED) 제외, 최근 작업순 "
+            + "(마지막 활동 섹션·확정 진행도 포함)")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "OK"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "401", description = "A001 — 인증 필요")
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED)))
     })
     @GetMapping
     public ResponseEntity<ApiResponse<List<ProjectSummaryResponse>>> getMyProjects(
@@ -90,9 +102,13 @@ public class ProjectController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "OK"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "401", description = "A001 — 인증 필요"),
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "404", description = "P001 — 프로젝트 없음 또는 비멤버 (존재 숨김)")
+                    responseCode = "404", description = "P001 — 프로젝트 없음 또는 비멤버 (존재 숨김)",
+                    content = @Content(examples = @ExampleObject(
+                            name = "P001", ref = ApiExampleRefs.PROJECT_NOT_FOUND)))
     })
     @GetMapping("/{projectId}")
     public ResponseEntity<ApiResponse<ProjectDetailResponse>> getProject(

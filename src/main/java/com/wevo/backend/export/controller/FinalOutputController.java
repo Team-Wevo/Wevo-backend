@@ -5,10 +5,14 @@ import com.wevo.backend.export.dto.response.FinalOutputResponse;
 import com.wevo.backend.export.service.FinalOutputFile;
 import com.wevo.backend.export.service.FinalOutputFormat;
 import com.wevo.backend.export.service.FinalOutputService;
+import com.wevo.backend.global.config.ApiExampleRefs;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.nio.charset.StandardCharsets;
@@ -54,9 +58,13 @@ public class FinalOutputController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "OK — ready=false 면 sections 생략"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "401", description = "A001 — 인증 필요"),
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "404", description = "P001 — 프로젝트 없음 또는 비멤버 (존재 숨김)")
+                    responseCode = "404", description = "P001 — 프로젝트 없음 또는 비멤버 (존재 숨김)",
+                    content = @Content(examples = @ExampleObject(
+                            name = "P001", ref = ApiExampleRefs.PROJECT_NOT_FOUND)))
     })
     @GetMapping("/{projectId}/final-output")
     public ResponseEntity<ApiResponse<FinalOutputResponse>> getFinalOutput(
@@ -75,6 +83,19 @@ public class FinalOutputController {
      *
      * <p>전 섹션 확정 시에만 제공한다 — 미확정이면 409. 멤버가 아니면 404(존재 숨김).
      */
+    @Operation(summary = "완성본 텍스트 복사 — 전 섹션 확정 시에만 제공 (JSON 응답)")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "OK"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "P001 — 프로젝트 없음 또는 비멤버 (존재 숨김)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "409", description = "C003 — 확정되지 않은 섹션이 남아 있음"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "500", description = "E001 — 확정 섹션 수와 확정본 수 불일치 (조립 실패)")
+    })
     @GetMapping("/{projectId}/final-output/plain-text")
     public ResponseEntity<ApiResponse<FinalOutputContentResponse>> getPlainText(
             @AuthenticationPrincipal AuthPrincipal principal,
@@ -93,6 +114,19 @@ public class FinalOutputController {
      * <p>파일 다운로드가 아니라 복사용 조회이므로 응답은 JSON({@code ApiResponse} 래퍼)이다.
      * 파일 응답은 별도 계약으로 아래 다운로드 API 가 담당한다. (CLAUDE.md §5.3)
      */
+    @Operation(summary = "완성본 마크다운 복사 — 전 섹션 확정 시에만 제공 (JSON 응답)")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "OK"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "P001 — 프로젝트 없음 또는 비멤버 (존재 숨김)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "409", description = "C003 — 확정되지 않은 섹션이 남아 있음"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "500", description = "E001 — 확정 섹션 수와 확정본 수 불일치 (조립 실패)")
+    })
     @GetMapping("/{projectId}/final-output/markdown")
     public ResponseEntity<ApiResponse<FinalOutputContentResponse>> getMarkdown(
             @AuthenticationPrincipal AuthPrincipal principal,
@@ -114,7 +148,9 @@ public class FinalOutputController {
     @Operation(summary = "완성본 txt 파일 다운로드 — 성공은 파일, 실패는 JSON")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "200", description = "text/plain 파일 (ApiResponse 래퍼 미적용)"),
+                    responseCode = "200", description = "text/plain 파일 (ApiResponse 래퍼 미적용)",
+                    content = @Content(mediaType = "text/plain",
+                            schema = @Schema(type = "string", format = "binary"))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401", description = "A001 — 인증 필요"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -145,7 +181,9 @@ public class FinalOutputController {
     @Operation(summary = "완성본 마크다운 파일 다운로드 — 성공은 파일, 실패는 JSON")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "200", description = "text/markdown 파일 (ApiResponse 래퍼 미적용)"),
+                    responseCode = "200", description = "text/markdown 파일 (ApiResponse 래퍼 미적용)",
+                    content = @Content(mediaType = "text/markdown",
+                            schema = @Schema(type = "string", format = "binary"))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401", description = "A001 — 인증 필요"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(

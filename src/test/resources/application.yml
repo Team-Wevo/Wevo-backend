@@ -92,7 +92,16 @@ app:
   cors:
     allowed-origins:
       - http://localhost:3000
+  invite:
+    token-secret: test-invite-token-secret-that-is-long-enough-000000
 
 logging:
   level:
     org.springframework.ai.openai: ERROR
+
+# 테스트 클래스패스의 application.yml 이 main 의 것을 대체하므로, 문서 생성 설정을 여기에도 둔다.
+# 없으면 테스트가 보는 OpenAPI 문서가 운영과 달라(응답 Content-Type 이 `*/*`) 문서 검증이
+# 실제와 다른 산출물을 확인하게 된다. main/resources/application.yml 과 같은 값을 유지할 것.
+springdoc:
+  default-produces-media-type: application/json
+  default-consumes-media-type: application/json

@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,6 +33,21 @@ public interface ProjectSectionRepository extends JpaRepository<ProjectSection, 
     List<ProjectSection> findAllByProjectIdForUpdate(@Param("projectId") Long projectId);
 
     List<ProjectSection> findByProjectIdOrderBySectionOrder(Long projectId);
+
+    /**
+     * 여러 프로젝트의 섹션을 한 번에 읽는다. (프로젝트 목록의 마지막 활동 섹션·진행도 계산용)
+     *
+     * <p>프로젝트마다 섹션을 따로 조회하면 목록 화면에서 N+1 이 된다. 섹션은 유형별 고정 6개이고
+     * 사용자당 프로젝트도 소수라(§3.2.2 확정) 전부 읽어 메모리에서 집계하는 편이 단순하다.
+     *
+     * <p>정렬을 고정해 두면 같은 활동 시각이 여러 섹션에 걸렸을 때(예: 프로젝트 생성 직후) 어떤
+     * 섹션이 뽑힐지 흔들리지 않는다 — 호출측은 이 순서에서 <b>먼저 오는 것</b>을 고른다.
+     */
+    @Query("SELECT s FROM ProjectSection s "
+            + "WHERE s.project.id IN :projectIds "
+            + "ORDER BY s.lastActivityAt DESC, s.sectionOrder ASC")
+    List<ProjectSection> findAllByProjectIdsOrderByLastActivity(
+            @Param("projectIds") Collection<Long> projectIds);
 
     List<ProjectSection> findByProject_IdAndTemplate_IdInOrderBySectionOrderAscIdAsc(
             Long projectId, List<Long> templateIds);

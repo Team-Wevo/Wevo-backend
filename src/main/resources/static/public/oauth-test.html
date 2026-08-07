@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wevo 소셜 로그인 테스트 (개발용)</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, "Malgun Gothic", sans-serif; background: #f4f5f7; color: #222;
+           min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.08);
+            width: 100%; max-width: 560px; padding: 32px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: #888; font-size: 13px; margin: 0 0 24px; }
+    .badge { display:inline-block; background:#fff3cd; color:#8a6d00; font-size:11px; font-weight:600;
+             padding:2px 8px; border-radius:999px; margin-left:6px; }
+    button { width: 100%; border: 0; border-radius: 10px; padding: 14px; font-size: 15px; font-weight: 600;
+             cursor: pointer; margin-bottom: 12px; display:flex; align-items:center; justify-content:center; gap:8px; }
+    .google { background: #fff; border: 1px solid #ddd; color: #222; }
+    .google:hover { background:#f7f7f7; }
+    .kakao { background: #FEE500; color: #191600; }
+    .kakao:hover { filter: brightness(0.97); }
+    pre { background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: 10px; overflow-x: auto;
+          font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+    .row { display:flex; gap:8px; margin-top:8px; }
+    .ok { color: #16a34a; font-weight: 600; }
+    .err { color: #dc2626; font-weight: 600; }
+    a.reset { display:inline-block; margin-top:14px; font-size:13px; color:#2563eb; text-decoration:none; }
+    .field { font-size:12px; color:#999; margin-top:16px; word-break:break-all; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Wevo 소셜 로그인 테스트 <span class="badge">개발용</span></h1>
+    <p class="sub">실제 Google·Kakao 로그인 → 백엔드 <code>/api/auth/login</code> → JWT 발급 전 구간을 검증합니다.</p>
+
+    <div id="buttons">
+      <button class="google" onclick="loginGoogle()">🔵 구글로 로그인</button>
+      <button class="kakao" onclick="loginKakao()">🟡 카카오로 로그인</button>
+      <p class="field">redirect_uri: <span id="redir"></span><br>이 주소를 Google·Kakao 콘솔에 등록해야 합니다.</p>
+    </div>
+
+    <div id="result" style="display:none;">
+      <div id="status"></div>
+      <pre id="output"></pre>
+      <a class="reset" href="?">↩ 다시 로그인</a>
+    </div>
+  </div>
+
+  <script>
+    // ── 설정 (client_id 는 공개 값이라 노출돼도 안전 / secret 은 백엔드에서만 사용) ──
+    const GOOGLE_CLIENT_ID = "1050979597770-dopcu8g6ek36p1t11mv53q1qjsgtdvcn.apps.googleusercontent.com";
+    const KAKAO_REST_KEY   = "e7b1aa32269f36fc70249844dba6bce7";
+    const REDIRECT_URI     = window.location.origin + "/public/oauth-test.html";
+    const API_BASE         = window.location.origin;
+
+    document.getElementById("redir").textContent = REDIRECT_URI;
+
+    function loginGoogle() {
+      const q = new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        redirect_uri: REDIRECT_URI,
+        response_type: "code",
+        scope: "openid email profile",
+        state: "GOOGLE"
+      });
+      location.href = "https://accounts.google.com/o/oauth2/v2/auth?" + q;
+    }
+
+    function loginKakao() {
+      const q = new URLSearchParams({
+        client_id: KAKAO_REST_KEY,
+        redirect_uri: REDIRECT_URI,
+        response_type: "code",
+        state: "KAKAO"
+      });
+      location.href = "https://kauth.kakao.com/oauth/authorize?" + q;
+    }
+
+    // ── 콜백 처리: provider 콘솔이 ?code=...&state=PROVIDER 로 되돌려보냄 ──
+    (function handleCallback() {
+      const p = new URLSearchParams(location.search);
+      const code = p.get("code");
+      const provider = p.get("state");
+      const oauthError = p.get("error");
+
+      if (!code && !oauthError) return; // 첫 진입: 버튼 화면
+
+      document.getElementById("buttons").style.display = "none";
+      document.getElementById("result").style.display = "block";
+      const statusEl = document.getElementById("status");
+      const outEl = document.getElementById("output");
+
+      if (oauthError) {
+        statusEl.innerHTML = '<span class="err">제공자 인가 실패</span>';
+        outEl.textContent = "error: " + oauthError + "\nerror_description: " + (p.get("error_description") || "");
+        return;
+      }
+
+      statusEl.textContent = provider + " 인가코드 수신 → 백엔드에 로그인 요청 중...";
+
+      fetch(API_BASE + "/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: provider, code: code, redirectUri: REDIRECT_URI })
+      })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (res.ok && body.success) {
+          statusEl.innerHTML = '<span class="ok">✅ 로그인 성공 — JWT 발급됨</span>';
+        } else {
+          statusEl.innerHTML = '<span class="err">❌ 로그인 실패 (HTTP ' + res.status + ')</span>';
+        }
+        outEl.textContent = JSON.stringify(body, null, 2);
+      })
+      .catch((e) => {
+        statusEl.innerHTML = '<span class="err">요청 실패</span>';
+        outEl.textContent = String(e) + "\n\n백엔드(localhost:8080)가 실행 중인지 확인하세요.";
+      });
+    })();
+  </script>
+</body>
+</html>
