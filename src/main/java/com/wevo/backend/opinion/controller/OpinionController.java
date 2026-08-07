@@ -5,6 +5,7 @@ import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
+import com.wevo.backend.opinion.dto.response.OpinionCollectionStatusResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
 import com.wevo.backend.opinion.dto.response.OpinionGateCloseResponse;
 import com.wevo.backend.opinion.dto.response.OpinionGateReopenResponse;
@@ -114,6 +115,34 @@ public class OpinionController {
     ) {
         SubmittedOpinionListResponse response =
                 opinionService.getSubmittedOpinions(projectSectionId, principal.userId());
+        return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", response));
+    }
+
+    /**
+     * 섹션의 의견 수집 현황을 조회한다. (제출 N/M + 멤버별 진행 상태)
+     *
+     * <p>본문은 담지 않으므로 공개 게이트와 무관하게 참여자 전체가 조회할 수 있다.
+     */
+    @Operation(summary = "의견 수집 현황 — 제출 N/M·미제출 인원·멤버별 진행 상태 (본문 미포함)")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "OK"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)",
+                    content = @Content(examples = @ExampleObject(
+                            name = "S001", ref = ApiExampleRefs.SECTION_NOT_FOUND)))
+    })
+    @GetMapping("/{projectSectionId}/opinion-collection-status")
+    public ResponseEntity<ApiResponse<OpinionCollectionStatusResponse>> getCollectionStatus(
+            @PathVariable Long projectSectionId,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        OpinionCollectionStatusResponse response =
+                opinionService.getCollectionStatus(projectSectionId, principal.userId());
         return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", response));
     }
 
