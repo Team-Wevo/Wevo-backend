@@ -3,7 +3,7 @@ package com.wevo.backend.review.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 
-import com.wevo.backend.project.repository.ProjectMemberRepository;
+import com.wevo.backend.project.service.ProjectMemberRosterQueryService;
 import com.wevo.backend.review.domain.TeamReview;
 import com.wevo.backend.review.domain.TeamReviewStatus;
 import com.wevo.backend.review.repository.TeamReviewRepository;
@@ -30,13 +30,13 @@ class TeamReviewServiceTest {
     @Mock
     private TeamReviewRepository teamReviewRepository;
     @Mock
-    private ProjectMemberRepository projectMemberRepository;
+    private ProjectMemberRosterQueryService memberRosterQueryService;
 
     @InjectMocks
     private TeamReviewService teamReviewService;
 
     private void givenMembers(long count) {
-        given(projectMemberRepository.countByProjectId(PROJECT_ID)).willReturn(count);
+        given(memberRosterQueryService.countParticipants(PROJECT_ID)).willReturn(count);
     }
 
     private void givenReviews(TeamReview... reviews) {

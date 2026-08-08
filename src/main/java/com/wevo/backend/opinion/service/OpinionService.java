@@ -7,12 +7,14 @@ import com.wevo.backend.opinion.domain.Opinion;
 import com.wevo.backend.opinion.domain.OpinionStatus;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
+import com.wevo.backend.opinion.dto.response.OpinionCollectionStatusResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
 import com.wevo.backend.opinion.dto.response.OpinionGateCloseResponse;
 import com.wevo.backend.opinion.dto.response.OpinionGateReopenResponse;
 import com.wevo.backend.opinion.dto.response.OpinionSubmitResponse;
 import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
 import com.wevo.backend.opinion.repository.OpinionRepository;
+import com.wevo.backend.project.service.ProjectMemberRosterQueryService;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
@@ -22,8 +24,11 @@ import com.wevo.backend.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,17 +63,20 @@ public class OpinionService {
     private final DraftLeaseService draftLeaseService;
     private final SectionStatusService sectionStatusService;
     private final UserRepository userRepository;
+    private final ProjectMemberRosterQueryService memberRosterQueryService;
 
     public OpinionService(SectionAccessGuard sectionAccessGuard,
                           OpinionRepository opinionRepository,
                           DraftLeaseService draftLeaseService,
                           SectionStatusService sectionStatusService,
-                          UserRepository userRepository) {
+                          UserRepository userRepository,
+                          ProjectMemberRosterQueryService memberRosterQueryService) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.opinionRepository = opinionRepository;
         this.draftLeaseService = draftLeaseService;
         this.sectionStatusService = sectionStatusService;
         this.userRepository = userRepository;
+        this.memberRosterQueryService = memberRosterQueryService;
     }
 
     /**
@@ -137,6 +145,35 @@ public class OpinionService {
             return SubmittedOpinionListResponse.hidden(submitted.size());
         }
         return SubmittedOpinionListResponse.visible(submitted);
+    }
+
+    /**
+     * 섹션의 의견 수집 현황을 조회한다. (제출 N/M + 멤버별 진행 상태 — 정책서 §4.5)
+     *
+     * <p>팀장이 마감 전에 미제출 인원을 확인하는 것이 1차 용도이지만
+     * (§4.5 — "미제출 멤버가 있으면 팀장에게 'N명 작성 중' 경고 후 마감 진행"),
+     * <b>권한은 참여자 전체</b>로 연다. 수집이 어디까지 왔는지는 팀원도 공유해야 할 진행 정보이고,
+     * 응답에 의견 <b>본문이 없어</b> 공개 게이트(§4.3 베끼기 방지)가 지키려는 대상과 무관하기 때문이다.
+     * 같은 이유로 팀 검토 현황(§6.1)도 멤버별 {@code PENDING} 을 참여자 전체에 노출한다.
+     *
+     * <p>분모는 <b>OWNER 를 포함한 멤버 전원</b>이다 — 팀장도 의견을 작성·제출하는 참여자다.
+     * (팀 검토 분모가 팀장을 빼는 것과 다르며, 이는 의도된 차이다.)
+     *
+     * <p>수집이 마감된 뒤에도 조회할 수 있다 — 마감 시점의 참여율은 정리(SYNTHESIZING) 이후에도
+     * "이 결과가 몇 명의 의견에서 나왔는지"를 설명하는 근거이므로 섹션 상태로 막지 않고,
+     * 게이트 개방 여부는 {@code collectionOpen} 으로 함께 내려 화면이 분기하게 한다.
+     */
+    public OpinionCollectionStatusResponse getCollectionStatus(Long projectSectionId, Long userId) {
+        ProjectSection section = sectionAccessGuard.requireParticipantSection(projectSectionId, userId);
+
+        Map<Long, Opinion> opinionByAuthorId = opinionRepository
+                .findAllWithAuthorByProjectSectionId(projectSectionId).stream()
+                .collect(Collectors.toMap(opinion -> opinion.getAuthor().getId(), Function.identity()));
+
+        return OpinionCollectionStatusResponse.of(
+                section.getStatus() == ProjectSectionStatus.COLLECTING,
+                memberRosterQueryService.getParticipants(section.getProject().getId()),
+                opinionByAuthorId);
     }
 
     /**
