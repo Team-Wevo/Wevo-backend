@@ -129,6 +129,65 @@ class OpinionRepositoryIntegrationTest {
     }
 
     @Test
+    @DisplayName("수집 현황 조회는 DRAFT 와 SUBMITTED 를 모두 작성자와 함께 가져온다")
+    void findAllWithAuthorByProjectSectionId_returnsEveryStatus() {
+        User submitter = userRepository.save(User.builder()
+                .name("이서연")
+                .email("submitter@wevo.com")
+                .status(UserStatus.ACTIVE)
+                .build());
+        opinionRepository.saveAndFlush(Opinion.builder()
+                .projectSection(section)
+                .author(author)
+                .content(CONTENT)
+                .status(OpinionStatus.DRAFT)
+                .build());
+        // 제출은 반드시 submit() 을 거친다 — DB 가 SUBMITTED 행에 제출본을 요구한다
+        // (chk_opinions_submitted_content). 빌더로 상태만 SUBMITTED 로 세운 행은 실제로 존재할 수 없다.
+        Opinion submitted = opinionRepository.saveAndFlush(Opinion.builder()
+                .projectSection(section)
+                .author(submitter)
+                .content(CONTENT)
+                .status(OpinionStatus.DRAFT)
+                .build());
+        submitted.submit(LocalDateTime.of(2026, 7, 14, 12, 5));
+        opinionRepository.flush();
+        entityManager.clear();
+
+        List<Opinion> found = opinionRepository.findAllWithAuthorByProjectSectionId(section.getId());
+
+        // 상태로 거르지 않아야 "작성 중"과 "미착수"가 구분된다 (정책서 §4.5)
+        assertThat(found).hasSize(2)
+                .extracting(Opinion::getStatus)
+                .containsExactlyInAnyOrder(OpinionStatus.DRAFT, OpinionStatus.SUBMITTED);
+        // JOIN FETCH 로 작성자가 이미 로딩돼 있어야 로스터 대조에서 N+1 이 나지 않는다
+        assertThat(found)
+                .extracting(opinion -> opinion.getAuthor().getName())
+                .containsExactlyInAnyOrder("김민준", "이서연");
+    }
+
+    @Test
+    @DisplayName("다른 섹션의 의견은 수집 현황 조회에 섞이지 않는다")
+    void findAllWithAuthorByProjectSectionId_isScopedToSection() {
+        ProjectSection otherSection = projectSectionRepository.save(ProjectSection.builder()
+                .project(section.getProject())
+                .title("해결 방안")
+                .sectionOrder(2)
+                .status(ProjectSectionStatus.COLLECTING)
+                .build());
+        opinionRepository.saveAndFlush(Opinion.builder()
+                .projectSection(otherSection)
+                .author(author)
+                .content(CONTENT)
+                .status(OpinionStatus.DRAFT)
+                .build());
+        entityManager.clear();
+
+        assertThat(opinionRepository.findAllWithAuthorByProjectSectionId(section.getId())).isEmpty();
+        assertThat(opinionRepository.findAllWithAuthorByProjectSectionId(otherSection.getId())).hasSize(1);
+    }
+
+    @Test
     @DisplayName("최초 제출 시 SUBMITTED 상태와 제출 시각이 저장되고 재호출해도 시각이 유지된다")
     void submit_persistsStatusAndKeepsFirstSubmittedAt() {
         Opinion opinion = opinionRepository.saveAndFlush(Opinion.builder()

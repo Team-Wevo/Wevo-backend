@@ -3,9 +3,11 @@ package com.wevo.backend.opinion.service;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.opinion.domain.Opinion;
+import com.wevo.backend.opinion.domain.OpinionCollectionState;
 import com.wevo.backend.opinion.domain.OpinionStatus;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
+import com.wevo.backend.opinion.dto.response.OpinionCollectionStatusResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
 import com.wevo.backend.opinion.dto.response.OpinionGateCloseResponse;
 import com.wevo.backend.opinion.dto.response.OpinionGateReopenResponse;
@@ -14,6 +16,8 @@ import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
 import com.wevo.backend.opinion.repository.OpinionRepository;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectStatus;
+import com.wevo.backend.project.service.ProjectMemberRosterQueryService;
+import com.wevo.backend.project.service.ProjectMemberSummary;
 import com.wevo.backend.project.service.SectionAccessGuard;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
@@ -64,9 +68,121 @@ class OpinionServiceTest {
     private SectionStatusService sectionStatusService;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private ProjectMemberRosterQueryService memberRosterQueryService;
 
     @InjectMocks
     private OpinionService opinionService;
+
+    @Test
+    @DisplayName("수집 현황은 멤버 로스터를 분모로 제출·작성중·미착수를 나눠 센다")
+    void getCollectionStatus_classifiesEveryMemberAgainstRoster() {
+        User owner = user(USER_ID, "김민준");
+        User drafting = user(2L, "이서연");
+        User notStarted = user(3L, "박지훈");
+        given(sectionAccessGuard.requireParticipantSection(SECTION_ID, USER_ID))
+                .willReturn(section(ProjectSectionStatus.COLLECTING));
+        given(memberRosterQueryService.getParticipants(PROJECT_ID)).willReturn(List.of(
+                summary(owner), summary(drafting), summary(notStarted)));
+        given(opinionRepository.findAllWithAuthorByProjectSectionId(SECTION_ID)).willReturn(List.of(
+                opinionOf(owner, CONTENT, OpinionStatus.SUBMITTED),
+                opinionOf(drafting, CONTENT, OpinionStatus.DRAFT)));
+
+        OpinionCollectionStatusResponse response =
+                opinionService.getCollectionStatus(SECTION_ID, USER_ID);
+
+        assertThat(response.collectionOpen()).isTrue();
+        assertThat(response.totalMembers()).isEqualTo(3);
+        assertThat(response.submittedCount()).isEqualTo(1);
+        assertThat(response.draftingCount()).isEqualTo(1);
+        assertThat(response.notStartedCount()).isEqualTo(1);
+        // 미제출 인원 = 작성 중 + 미착수 (정책서 §4.5 마감 경고 문구가 쓰는 값)
+        assertThat(response.pendingCount()).isEqualTo(2);
+        assertThat(response.items())
+                .extracting(item -> item.userId(), item -> item.state())
+                .containsExactly(
+                        org.assertj.core.api.Assertions.tuple(USER_ID, OpinionCollectionState.SUBMITTED),
+                        org.assertj.core.api.Assertions.tuple(2L, OpinionCollectionState.DRAFTING),
+                        org.assertj.core.api.Assertions.tuple(3L, OpinionCollectionState.NOT_STARTED));
+    }
+
+    @Test
+    @DisplayName("제출 후 재편집 중이면 제출로 세고 재제출 필요 플래그를 세운다")
+    void getCollectionStatus_countsReeditingMemberAsSubmitted() {
+        User author = user(USER_ID, "김민준");
+        Opinion reediting = opinionOf(author, CONTENT, OpinionStatus.SUBMITTED);
+        reediting.updateContent(REVISED_CONTENT); // 제출본은 유지, 작업본만 갱신 (§4.1)
+        given(sectionAccessGuard.requireParticipantSection(SECTION_ID, USER_ID))
+                .willReturn(section(ProjectSectionStatus.COLLECTING));
+        given(memberRosterQueryService.getParticipants(PROJECT_ID)).willReturn(List.of(summary(author)));
+        given(opinionRepository.findAllWithAuthorByProjectSectionId(SECTION_ID))
+                .willReturn(List.of(reediting));
+
+        OpinionCollectionStatusResponse response =
+                opinionService.getCollectionStatus(SECTION_ID, USER_ID);
+
+        assertThat(response.submittedCount()).isEqualTo(1);
+        assertThat(response.pendingCount()).isZero();
+        assertThat(response.items()).singleElement()
+                .satisfies(item -> {
+                    assertThat(item.state()).isEqualTo(OpinionCollectionState.SUBMITTED);
+                    assertThat(item.hasUnsubmittedChanges()).isTrue();
+                });
+    }
+
+    @Test
+    @DisplayName("수집 마감 후에도 현황을 조회하되 게이트는 닫힌 것으로 내린다")
+    void getCollectionStatus_readableAfterGateClosed() {
+        User author = user(USER_ID, "김민준");
+        given(sectionAccessGuard.requireParticipantSection(SECTION_ID, USER_ID))
+                .willReturn(section(ProjectSectionStatus.SYNTHESIZING));
+        given(memberRosterQueryService.getParticipants(PROJECT_ID)).willReturn(List.of(summary(author)));
+        given(opinionRepository.findAllWithAuthorByProjectSectionId(SECTION_ID))
+                .willReturn(List.of(opinionOf(author, CONTENT, OpinionStatus.SUBMITTED)));
+
+        OpinionCollectionStatusResponse response =
+                opinionService.getCollectionStatus(SECTION_ID, USER_ID);
+
+        assertThat(response.collectionOpen()).isFalse();
+        assertThat(response.submittedCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("비멤버의 수집 현황 조회는 섹션 존재를 숨겨 404로 막는다")
+    void getCollectionStatus_hidesSectionFromNonMember() {
+        willThrow(new BusinessException(ErrorCode.SECTION_NOT_FOUND))
+                .given(sectionAccessGuard).requireParticipantSection(SECTION_ID, USER_ID);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> opinionService.getCollectionStatus(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
+        verifyNoInteractions(memberRosterQueryService);
+    }
+
+    private ProjectMemberSummary summary(User user) {
+        return new ProjectMemberSummary(user.getId(), user.getName(), user.getProfileImageUrl());
+    }
+
+    /**
+     * 수집 현황 테스트용 — 작성자를 지정해 의견을 만든다.
+     *
+     * <p>제출 상태는 빌더로 세우지 않고 {@link Opinion#submit} 을 거친다. DB 가 SUBMITTED 행에
+     * 제출본을 요구하므로(chk_opinions_submitted_content) 빌더로 상태만 바꾼 행은 실제로 존재할 수
+     * 없고, 그런 픽스처로 검증하면 재편집 판정(제출본 대비 작업본 비교)이 실제와 다르게 동작한다.
+     */
+    private Opinion opinionOf(User author, String content, OpinionStatus status) {
+        Opinion opinion = Opinion.builder()
+                .projectSection(section(ProjectSectionStatus.COLLECTING))
+                .author(author)
+                .content(content)
+                .status(OpinionStatus.DRAFT)
+                .build();
+        if (status == OpinionStatus.SUBMITTED) {
+            opinion.submit(LocalDateTime.of(2026, 7, 14, 12, 5));
+        }
+        return opinion;
+    }
 
     @Test
     @DisplayName("의견이 없으면 DRAFT 상태로 새로 생성한다")

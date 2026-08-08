@@ -4,9 +4,12 @@ import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.global.response.FieldError;
 import com.wevo.backend.global.security.AuthPrincipal;
+import com.wevo.backend.opinion.domain.OpinionCollectionState;
 import com.wevo.backend.opinion.domain.OpinionStatus;
 import com.wevo.backend.opinion.dto.request.OpinionDraftRequest;
 import com.wevo.backend.opinion.dto.response.MyOpinionResponse;
+import com.wevo.backend.opinion.dto.response.OpinionCollectionStatusResponse;
+import com.wevo.backend.opinion.dto.response.OpinionCollectionStatusResponse.MemberCollectionStateResponse;
 import com.wevo.backend.opinion.dto.response.OpinionDraftResponse;
 import com.wevo.backend.opinion.dto.response.OpinionGateCloseResponse;
 import com.wevo.backend.opinion.dto.response.OpinionGateReopenResponse;
@@ -50,6 +53,8 @@ class OpinionControllerWebMvcTest {
     private static final String OPINIONS_URL = "/api/project-sections/10/opinions";
     private static final String CLOSE_GATE_URL = "/api/project-sections/10/opinion-gate/close";
     private static final String REOPEN_GATE_URL = "/api/project-sections/10/opinion-gate/reopen";
+    private static final String COLLECTION_STATUS_URL =
+            "/api/project-sections/10/opinion-collection-status";
     private static final String VALID_CONTENT = "타겟을 공모전 참가 대학생 팀으로 좁히는 게 좋겠습니다.";
 
     @Autowired
@@ -369,6 +374,51 @@ class OpinionControllerWebMvcTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("S004"))
                 .andExpect(jsonPath("$.errors").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("수집 현황은 집계와 멤버별 상태를 함께 반환한다")
+    void getCollectionStatus_returnsCountsAndItems() throws Exception {
+        given(opinionService.getCollectionStatus(eq(10L), eq(7L)))
+                .willReturn(new OpinionCollectionStatusResponse(
+                        true, 3, 1, 1, 1, 2,
+                        List.of(
+                                new MemberCollectionStateResponse(
+                                        7L, "김민준", null, OpinionCollectionState.SUBMITTED, false),
+                                new MemberCollectionStateResponse(
+                                        8L, "이서연", null, OpinionCollectionState.DRAFTING, false),
+                                new MemberCollectionStateResponse(
+                                        9L, "박지훈", null, OpinionCollectionState.NOT_STARTED, false))));
+
+        mockMvc.perform(get(COLLECTION_STATUS_URL).with(authenticatedUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data.collectionOpen").value(true))
+                .andExpect(jsonPath("$.data.totalMembers").value(3))
+                .andExpect(jsonPath("$.data.submittedCount").value(1))
+                .andExpect(jsonPath("$.data.pendingCount").value(2))
+                .andExpect(jsonPath("$.data.items[2].state").value("NOT_STARTED"))
+                // profileImageUrl 은 null 이면 직렬화에서 빠진다 (CLAUDE.md §5.4)
+                .andExpect(jsonPath("$.data.items[0].profileImageUrl").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("인증 없이 수집 현황을 호출하면 A001 을 반환한다")
+    void getCollectionStatus_withoutAuthentication_returnsA001() throws Exception {
+        mockMvc.perform(get(COLLECTION_STATUS_URL))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("A001"));
+    }
+
+    @Test
+    @DisplayName("비멤버의 수집 현황 조회는 S001 로 섹션 존재를 숨긴다")
+    void getCollectionStatus_nonMember_returnsS001() throws Exception {
+        given(opinionService.getCollectionStatus(eq(10L), eq(7L)))
+                .willThrow(new BusinessException(ErrorCode.SECTION_NOT_FOUND));
+
+        mockMvc.perform(get(COLLECTION_STATUS_URL).with(authenticatedUser()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("S001"));
     }
 
     private RequestPostProcessor authenticatedUser() {

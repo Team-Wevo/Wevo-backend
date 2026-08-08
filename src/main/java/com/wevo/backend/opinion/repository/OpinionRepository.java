@@ -35,6 +35,19 @@ public interface OpinionRepository extends JpaRepository<Opinion, Long> {
             @Param("status") OpinionStatus status);
 
     /**
+     * 섹션의 <b>모든</b> 의견을 작성자와 함께 조회한다. (수집 현황 — API_SPEC §3.4.7)
+     *
+     * <p>상태로 거르지 않는 것이 핵심이다 — 수집 현황은 제출자뿐 아니라 "임시저장만 한 사람"과
+     * "아직 시작도 안 한 사람"을 갈라야 하는데, {@code SUBMITTED} 만 읽으면 뒤의 둘이 구분되지 않는다.
+     *
+     * <p>{@code JOIN FETCH} 로 작성자를 함께 로딩해, 멤버 로스터와 대조할 때 작성자 지연 로딩이
+     * 의견 수만큼 나가는 N+1 을 막는다.
+     */
+    @Query("SELECT o FROM Opinion o JOIN FETCH o.author "
+            + "WHERE o.projectSection.id = :projectSectionId")
+    List<Opinion> findAllWithAuthorByProjectSectionId(@Param("projectSectionId") Long projectSectionId);
+
+    /**
      * AI 내부 입력용 제출 의견. 사용자 공개 gate와 작성자 profile fetch를 사용하지 않으며,
      * project 소속을 쿼리에서 제한하고 동률까지 결정적으로 정렬한다.
      */

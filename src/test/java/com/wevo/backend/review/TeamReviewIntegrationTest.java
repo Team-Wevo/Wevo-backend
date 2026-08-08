@@ -1,6 +1,7 @@
 package com.wevo.backend.review;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -87,7 +88,14 @@ class TeamReviewIntegrationTest {
                 .andExpect(jsonPath("$.data.approvedCount").value(1))
                 .andExpect(jsonPath("$.data.pendingCount").value(1))
                 .andExpect(jsonPath("$.data.unresolvedChangesRequestedCount").value(0))
-                .andExpect(jsonPath("$.data.items.length()").value(2));
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                // 검토자 식별 정보는 멤버 로스터에서 채워진다. id 목록과 이름 목록을 따로 비교하면
+                // m1 의 id 에 m2 의 이름이 붙어도 통과하므로, 같은 항목 안에서 짝지어졌는지 본다.
+                // (목록 순서는 계약이 아니라 필터로 항목을 찾는다.)
+                .andExpect(jsonPath(itemBy(m1) + ".reviewerName", contains("m1")))
+                .andExpect(jsonPath(itemBy(m1) + ".status", contains("APPROVED")))
+                .andExpect(jsonPath(itemBy(m2) + ".reviewerName", contains("m2")))
+                .andExpect(jsonPath(itemBy(m2) + ".status", contains("PENDING")));
     }
 
     @Test
@@ -411,6 +419,11 @@ class TeamReviewIntegrationTest {
     private UsernamePasswordAuthenticationToken authOf(User user) {
         return new UsernamePasswordAuthenticationToken(
                 new AuthPrincipal(user.getId()), null, AuthorityUtils.NO_AUTHORITIES);
+    }
+
+    /** 검토자 ID 로 현황 목록의 해당 항목을 찾는 JSONPath. (목록 순서에 기대지 않기 위함) */
+    private String itemBy(User reviewer) {
+        return "$.data.items[?(@.reviewerUserId == " + reviewer.getId() + ")]";
     }
 
     private User persistUser(String email) {
