@@ -15,9 +15,13 @@ import java.util.List;
  *
  * <p>정원이 최대 4명({@link Project#MAX_MEMBERS} — 정책서 §2.1)이라 페이지네이션 없이 전원을 반환한다.
  *
- * @param memberCount 현재 참여 인원
+ * @param memberCount <b>현재 참여 인원 — 탈퇴자를 뺀 수</b>. {@code maxMembers} 와 짝이 되어
+ *                    "몇 자리가 남았는지"를 뜻하므로 활성 계정만 센다
  * @param maxMembers  최대 인원 (정책서 §2.1 — 4)
- * @param members     참여자 목록 (OWNER 우선, 같은 역할이면 참여 시각 오름차순)
+ * @param members     참여자 목록 (OWNER 우선, 같은 역할이면 참여 시각 오름차순).
+ *                    <b>탈퇴자도 포함</b>하므로 {@code memberCount} 와 길이가 다를 수 있다 —
+ *                    이 목록은 의견·검토의 작성자를 {@code userId} 로 매칭하는 용도라 과거
+ *                    참여자가 빠지면 작성자를 찾지 못한다 (§3.3.3)
  */
 @Schema(requiredProperties = {"memberCount", "maxMembers", "members"})
 public record ProjectMemberListResponse(
@@ -56,9 +60,15 @@ public record ProjectMemberListResponse(
         }
     }
 
-    public static ProjectMemberListResponse from(List<ProjectMember> members) {
+    /**
+     * @param activeMemberCount 탈퇴자를 뺀 현재 인원. {@code members.size()} 를 쓰지 않는 이유는
+     *                          목록에는 탈퇴자가 남기 때문이다
+     * @param members           탈퇴자를 포함한 참여자 전원
+     */
+    public static ProjectMemberListResponse of(long activeMemberCount, List<ProjectMember> members) {
         return new ProjectMemberListResponse(
-                members.size(),
+                // 정원이 4명이라 넘칠 수 없다. 응답 계약은 int 로 유지한다.
+                Math.toIntExact(activeMemberCount),
                 Project.MAX_MEMBERS,
                 members.stream().map(MemberSummary::from).toList());
     }
