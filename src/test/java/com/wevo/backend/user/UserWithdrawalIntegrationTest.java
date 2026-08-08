@@ -137,7 +137,9 @@ class UserWithdrawalIntegrationTest {
         mockMvc.perform(get("/api/projects/{projectId}/members", project.getId())
                         .with(authenticationOf(owner)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.memberCount").value(2))
+                // 목록에는 둘 다 남지만, memberCount 는 정원과 짝이 되는 값이라 탈퇴자를 뺀 수다.
+                .andExpect(jsonPath("$.data.members.length()").value(2))
+                .andExpect(jsonPath("$.data.memberCount").value(1))
                 // 필터 표현식이라 JsonPath 는 리스트를 돌려주지만, JsonPathExpectationsHelper 가
                 // 원소 하나짜리 리스트를 벗겨 비교한다. 여러 개가 걸리면 그 자리에서 실패한다.
                 .andExpect(jsonPath("$.data.members[?(@.userId == " + leaver.getId() + ")].name")

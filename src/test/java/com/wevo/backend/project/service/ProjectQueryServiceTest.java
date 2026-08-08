@@ -195,7 +195,7 @@ class ProjectQueryServiceTest {
     void getProject_returnsDetailWithProgress() {
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, USER_ID))
                 .willReturn(Optional.of(membership(ProjectMemberRole.MEMBER)));
-        given(projectMemberRepository.countByProjectId(PROJECT_ID)).willReturn(3L);
+        given(projectMemberRepository.countActiveByProjectId(PROJECT_ID)).willReturn(3L);
         // 상세는 진행도만 필요하므로 템플릿을 조인하지 않는 조회를 쓴다
         given(projectSectionRepository.findByProjectIdOrderBySectionOrder(PROJECT_ID))
                 .willReturn(sections(ProjectSectionStatus.CONFIRMED, ProjectSectionStatus.COLLECTING));
