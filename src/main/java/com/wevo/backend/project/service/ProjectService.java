@@ -7,6 +7,7 @@ import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.dto.request.ProjectCreateRequest;
+import com.wevo.backend.project.dto.request.ProjectSearchCondition;
 import com.wevo.backend.project.dto.request.ProjectUpdateRequest;
 import com.wevo.backend.project.dto.response.ProjectCreateResponse;
 import com.wevo.backend.project.dto.response.ProjectDetailResponse;
@@ -131,8 +132,12 @@ public class ProjectService {
      * 늘면 카드가 많아질수록 목록이 느려진다.
      */
     @Transactional(readOnly = true)
-    public List<ProjectSummaryResponse> getMyProjects(Long userId) {
-        List<ProjectMember> memberships = projectMemberRepository.findAllWithProjectByUserId(userId);
+    public List<ProjectSummaryResponse> getMyProjects(Long userId, ProjectSearchCondition condition) {
+        // 섹션을 읽기 전에 거른다 — 걸러낼 프로젝트의 섹션까지 조회할 이유가 없다.
+        List<ProjectMember> memberships = projectMemberRepository.findAllWithProjectByUserId(userId)
+                .stream()
+                .filter(membership -> condition.matches(membership.getProject()))
+                .toList();
         if (memberships.isEmpty()) {
             return List.of();
         }

@@ -3,7 +3,10 @@ package com.wevo.backend.project.controller;
 import com.wevo.backend.global.config.ApiExampleRefs;
 import com.wevo.backend.global.response.ApiResponse;
 import com.wevo.backend.global.security.AuthPrincipal;
+import com.wevo.backend.project.domain.OutputType;
+import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.dto.request.ProjectCreateRequest;
+import com.wevo.backend.project.dto.request.ProjectSearchCondition;
 import com.wevo.backend.project.dto.request.ProjectUpdateRequest;
 import com.wevo.backend.project.dto.response.ProjectCreateResponse;
 import com.wevo.backend.project.dto.response.ProjectDetailResponse;
@@ -12,6 +15,7 @@ import com.wevo.backend.project.dto.response.ProjectSummaryResponse;
 import com.wevo.backend.project.dto.response.SectionSummaryResponse;
 import com.wevo.backend.project.service.ProjectService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -25,6 +29,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -77,10 +82,14 @@ public class ProjectController {
      * <p>대시보드 카드가 한 번의 요청으로 그려지도록 마지막 활동 섹션과 확정 진행도를 함께 담는다.
      */
     @Operation(summary = "내 프로젝트 목록 — 멤버인 것만, 보관(ARCHIVED) 제외, 최근 작업순 "
-            + "(마지막 활동 섹션·확정 진행도 포함)")
+            + "(마지막 활동 섹션·확정 진행도 포함). keyword·resultType·status 로 검색·필터")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "OK"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400", description = "C001 — resultType·status 가 허용값이 아님",
+                    content = @Content(examples = @ExampleObject(
+                            name = "C001", ref = ApiExampleRefs.INVALID_INPUT))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401", description = "A001 — 인증 필요",
                     content = @Content(examples = @ExampleObject(
@@ -88,9 +97,16 @@ public class ProjectController {
     })
     @GetMapping
     public ResponseEntity<ApiResponse<List<ProjectSummaryResponse>>> getMyProjects(
-            @AuthenticationPrincipal AuthPrincipal principal
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @Parameter(description = "제목 부분 일치 검색어 (대소문자 무시). 공백만 보내면 검색하지 않는다")
+            @RequestParam(required = false) String keyword,
+            @Parameter(description = "결과물 유형 필터")
+            @RequestParam(required = false) OutputType resultType,
+            @Parameter(description = "상태 필터. ARCHIVED 는 목록에서 항상 제외되므로 지정하면 빈 목록")
+            @RequestParam(required = false) ProjectStatus status
     ) {
-        List<ProjectSummaryResponse> projects = projectService.getMyProjects(principal.userId());
+        List<ProjectSummaryResponse> projects = projectService.getMyProjects(
+                principal.userId(), new ProjectSearchCondition(keyword, resultType, status));
         return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", projects));
     }
 
