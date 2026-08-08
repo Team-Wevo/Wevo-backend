@@ -43,6 +43,17 @@ public record OpinionClusteringResponse(
     public record FailureResponse(String errorCode, String message) {
     }
 
+    @Schema(
+            name = "OpinionClusteringCurrentSetResponse",
+            requiredProperties = {
+                    "setId",
+                    "sourceGateGeneration",
+                    "totalOpinionCount",
+                    "coveredCount",
+                    "createdAt",
+                    "clusters"
+            }
+    )
     public record CurrentSetResponse(
             UUID setId,
             long sourceGateGeneration,

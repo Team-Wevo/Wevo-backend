@@ -55,9 +55,10 @@ public record PrecheckResponse(
     ) {
     }
 
-    // required 를 지정하지 않는다 — 같은 이름의 중첩 레코드가 ProjectFlowReviewResponse 에도 있고
-    // 필드 구성이 서로 다르다. Springdoc 은 단순 이름으로 스키마를 만들어 둘이 하나로 합쳐지므로,
-    // 한쪽 기준으로 required 를 걸면 다른 쪽 응답과 어긋난다. 이름을 분리한 뒤에 지정한다. (#184)
+    @Schema(
+            name = "PrecheckFindingResponse",
+            requiredProperties = {"type", "targetExcerpt", "comment", "suggestion"}
+    )
     public record FindingResponse(
             AiSectionFindingType type,
             String targetExcerpt,
