@@ -1,4 +1,4 @@
-package com.wevo.backend.project;
+package com.wevo.backend.project.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -8,8 +8,6 @@ import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.domain.ProjectStatus;
-import com.wevo.backend.project.service.ProjectMemberRosterQueryService;
-import com.wevo.backend.project.service.ProjectMemberSummary;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
 import jakarta.persistence.EntityManager;

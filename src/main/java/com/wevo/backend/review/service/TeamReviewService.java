@@ -59,8 +59,11 @@ public class TeamReviewService {
     /**
      * 섹션의 팀 검토 현황을 조회한다. (역할 무관)
      *
-     * <p>목록은 <b>조회 시점의 프로젝트 멤버 기준</b>으로 구성한다 — 검토 시작 후 합류한 팀원도
-     * {@code PENDING}으로 파생 포함된다. {@code currentContentVersion}은 검토 제출(§3.5.7)의
+     * <p>목록은 <b>조회 시점의 팀원 로스터 기준</b>으로 구성한다 — 검토 시작 후 합류한 팀원도
+     * {@code PENDING}으로 파생 포함되고, <b>탈퇴한 팀원은 이미 검토를 냈더라도 빠진다.</b>
+     * 로스터에 없는 검토자의 행을 남기면 분모({@code totalMembers})가 부풀어 진행률이 어긋난다.
+     * 확정 조건 판정({@link #evaluateConfirmReviewGate})도 같은 이유로 탈퇴자를 빼므로 두 값이
+     * 어긋나지 않는다. {@code currentContentVersion}은 검토 제출(§3.5.7)의
      * {@code contentVersion} 값으로 그대로 사용된다.
      *
      * <p>검토 목록과 최신 본문 버전은 별도 조회라, 그 사이에 본문 저장이 커밋되면 응답에
@@ -180,9 +183,13 @@ public class TeamReviewService {
      * 섹션 확정(§6.3)의 <b>팀 검토 관련 두 조건</b>을 한 번의 목록 조회로 함께 판정한다.
      * (확정 가능 여부 조회 §3.7.5, 확정 재검증 §3.7.6)
      *
-     * <p>두 조건 모두 같은 팀 검토 목록에서 파생되므로 {@code findByProjectSection_Id}를 한 번만
-     * 호출한다. 두 판정 모두 <b>현재 본문 기준</b> 검토만 센다 — 본문 수정으로 만료(outdated)된
-     * 동의·수정요청은 이전 본문 대상이라 제외한다(§6.1).
+     * <p>두 조건 모두 같은 팀 검토 목록에서 파생되므로 조회를 한 번만 한다. 두 판정 모두
+     * <b>현재 본문 기준</b> 검토만 센다 — 본문 수정으로 만료(outdated)된 동의·수정요청은
+     * 이전 본문 대상이라 제외한다(§6.1).
+     *
+     * <p><b>탈퇴한 검토자의 검토는 세지 않는다.</b> 팀 검토 현황({@link #getStatus})이 팀원 로스터
+     * 기준이라 탈퇴자의 검토는 목록에 나오지 않는데, 판정만 그 행을 계속 세면 팀장이 화면에서
+     * 볼 수도 해소할 수도 없는 수정 요청이 확정을 막는다. 목록과 판정이 같은 집합을 본다.
      *
      * <ul>
      *   <li><b>팀원 동의</b> — 멤버가 팀장 1명뿐인 1인 프로젝트는 조건에서 제외되어 항상 충족
@@ -192,7 +199,8 @@ public class TeamReviewService {
      * </ul>
      */
     public ConfirmReviewGate evaluateConfirmReviewGate(Long projectId, Long sectionId) {
-        List<TeamReview> reviews = teamReviewRepository.findByProjectSection_Id(sectionId);
+        List<TeamReview> reviews =
+                teamReviewRepository.findActiveReviewerReviewsByProjectSectionId(sectionId);
 
         // 팀장 1명 = 전체 멤버 1명 (프로젝트에는 OWNER가 정확히 1명) → 1인 프로젝트 예외
         boolean memberApprovalSatisfied = memberRosterQueryService.countParticipants(projectId) == 1
