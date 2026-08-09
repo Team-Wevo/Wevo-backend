@@ -38,7 +38,7 @@
 - Java 21, Spring Boot, Gradle — 의존성·버전의 정본은 `build.gradle`
 - Spring Data JPA + PostgreSQL, Redis, Flyway — 인프라 버전의 정본은 `docker-compose.yml`
 - Spring Security + JWT(JJWT), Google/Kakao OAuth
-- Spring AI (OpenAI GPT-5.6 Luna 운영 후보, NVIDIA 비교 기준선)
+- Spring AI (OpenAI GPT-5.6 Luna 단일 Provider)
 - Springdoc OpenAPI(Swagger), Lombok, JUnit 5 (테스트 계층별 DB 사용 기준은 §8)
 
 ### 빌드 / 테스트 / 로컬 실행
