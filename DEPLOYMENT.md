@@ -138,9 +138,15 @@ sudo systemctl is-active nginx
 도메인과 인증서를 적용한 뒤 다음 항목을 확인합니다.
 
 ```bash
+set -euo pipefail
+
 curl -sS -o /dev/null -w 'HTTP %{http_code}\n' https://<backend-domain>/v3/api-docs
 curl -sS -o /dev/null -w 'HTTP %{http_code}\n' https://<backend-domain>/swagger-ui/index.html
-curl -sS -o /dev/null -w 'HTTP %{http_code}\n' https://<backend-domain>/
+root_body_file="$(mktemp)"
+trap 'rm -f "$root_body_file"' EXIT
+root_status="$(curl -sS -o "$root_body_file" -w '%{http_code}' https://<backend-domain>/)"
+test "$root_status" = "401"
+grep -Eq '"code"[[:space:]]*:[[:space:]]*"A001"' "$root_body_file"
 curl -sS -I http://<backend-domain>
 sudo certbot renew --dry-run
 ```
