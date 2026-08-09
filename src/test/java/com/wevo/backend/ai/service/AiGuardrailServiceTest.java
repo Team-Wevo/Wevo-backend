@@ -91,7 +91,7 @@ class AiGuardrailServiceTest {
                         new BigDecimal("1000"),
                         maxJobCost));
         AiProperties ai = new AiProperties(
-                "nvidia",
+                "none",
                 new AiProperties.ModelOptions(
                         "test-model", Duration.ofSeconds(1), 100, 10, 1000, 100,
                         AiProperties.ModelOptions.CONSERVATIVE_CHAR_V1,

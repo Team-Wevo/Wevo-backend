@@ -34,7 +34,7 @@ class AiEvaluationReportWriterTest {
                 fixture.metadata().id(),
                 AiEvaluationOutcome.PROVIDER_FAILURE,
                 null,
-                new AiUsageMetadata("nvidia", null, "model", null, null, null, null),
+                new AiUsageMetadata("test-provider", null, "model", null, null, null, null),
                 AiCostSnapshot.unpriced("trial"),
                 1,
                 25,
@@ -42,7 +42,7 @@ class AiEvaluationReportWriterTest {
         );
         AiEvaluationRunMetadata run = new AiEvaluationRunMetadata(
                 "issue-detection-v1",
-                "nvidia",
+                "test-provider",
                 "mistralai/mistral-medium-3.5-128b",
                 "chat-completions",
                 "none",

@@ -12,7 +12,7 @@ import java.util.concurrent.ExecutorService;
 
 @Component
 @ConditionalOnProperty(prefix = "wevo.ai", name = "provider", havingValue = "openai")
-public class SpringAiOpenAiGateway extends SpringAiNvidiaGateway {
+public class SpringAiOpenAiGateway extends AbstractSpringAiGateway {
 
     public static final String PROVIDER_ID = "openai";
 

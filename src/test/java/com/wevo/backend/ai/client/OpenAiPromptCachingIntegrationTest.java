@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "wevo.ai.openai.prompt-cache.explicit-features=draft-review",
         "wevo.ai.openai.prompt-cache.explicit-models=${OPENAI_API_MODEL:gpt-5.6-luna}",
         "wevo.ai.openai.prompt-cache.ttl=30m",
-        "wevo.ai.default-options.model-context-limit=1050000",
+        "wevo.ai.openai.model-context-limit=1050000",
         "wevo.ai.default-options.max-input-tokens=100000",
         "wevo.ai.default-options.max-retries=0",
         "wevo.ai.structured-output.max-correction-retries=0"

@@ -137,7 +137,7 @@ class AiEvaluationRunnerTest {
     private AiEvaluationObservation success(int attempts, Long outputTokens, String cost) {
         return AiEvaluationObservation.success(
                 AiEvaluationCandidate.empty(),
-                new AiUsageMetadata("nvidia", "request", "model", 1L, outputTokens, null, null),
+                new AiUsageMetadata("test-provider", "request", "model", 1L, outputTokens, null, null),
                 new AiCostSnapshot(
                         "pricing-v1",
                         BigDecimal.ONE,

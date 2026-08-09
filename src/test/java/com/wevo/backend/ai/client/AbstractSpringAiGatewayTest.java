@@ -4,12 +4,11 @@ import com.openai.core.JsonValue;
 import com.openai.core.http.Headers;
 import com.openai.errors.OpenAIServiceException;
 import com.wevo.backend.ai.config.AiProperties;
-import com.wevo.backend.ai.config.NvidiaProviderProperties;
 import com.wevo.backend.ai.context.AiTokenBudgetEstimator;
 import com.wevo.backend.ai.context.AiInputBudgetExceededException;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.exception.AiProviderException;
-import com.wevo.backend.ai.exception.NvidiaExceptionTranslator;
+import com.wevo.backend.ai.exception.OpenAiExceptionTranslator;
 import com.wevo.backend.ai.prompt.PromptTemplateId;
 import com.wevo.backend.ai.prompt.RenderedPrompt;
 import com.wevo.backend.global.exception.ErrorCode;
@@ -42,7 +41,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class SpringAiNvidiaGatewayTest {
+class AbstractSpringAiGatewayTest {
 
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
@@ -58,7 +57,7 @@ class SpringAiNvidiaGatewayTest {
             capturedPrompt.set(prompt);
             return response("pong");
         };
-        SpringAiNvidiaGateway gateway = gateway(chatModel, Duration.ofSeconds(1), 2, 2);
+        AbstractSpringAiGateway gateway = gateway(chatModel, Duration.ofSeconds(1), 2, 2);
 
         AiProviderResponse response = gateway.generate(new AiProviderRequest(
                 AiFeature.DRAFT_REVIEW,
@@ -71,7 +70,7 @@ class SpringAiNvidiaGatewayTest {
         ));
 
         assertThat(response.content()).isEqualTo("pong");
-        assertThat(response.usageMetadata().providerId()).isEqualTo("nvidia");
+        assertThat(response.usageMetadata().providerId()).isEqualTo("openai");
         assertThat(response.usageMetadata().providerRequestId()).isEqualTo("request-1");
         assertThat(response.usageMetadata().modelId()).isEqualTo("response-model");
         assertThat(response.usageMetadata().inputTokens()).isEqualTo(5L);
@@ -108,7 +107,7 @@ class SpringAiNvidiaGatewayTest {
             }
             return response("late response");
         };
-        SpringAiNvidiaGateway gateway = gateway(slowModel, Duration.ofMillis(30), 0, 2);
+        AbstractSpringAiGateway gateway = gateway(slowModel, Duration.ofMillis(30), 0, 2);
 
         assertThatThrownBy(() -> gateway.generate(
                 new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", "user")
@@ -121,7 +120,7 @@ class SpringAiNvidiaGatewayTest {
     @Test
     void rejectsFinalRenderedInputBeforeCallingProvider() {
         AtomicInteger providerCalls = new AtomicInteger();
-        SpringAiNvidiaGateway gateway = gateway(prompt -> {
+        AbstractSpringAiGateway gateway = gateway(prompt -> {
             providerCalls.incrementAndGet();
             return response("must not be called");
         }, Duration.ofSeconds(1), 0, 2);
@@ -144,7 +143,7 @@ class SpringAiNvidiaGatewayTest {
             }
             return response("recovered");
         };
-        SpringAiNvidiaGateway gateway = gateway(recoveringModel, Duration.ofSeconds(1), 2, 2);
+        AbstractSpringAiGateway gateway = gateway(recoveringModel, Duration.ofSeconds(1), 2, 2);
 
         AiProviderResponse response = gateway.generate(
                 new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", "user")
@@ -154,7 +153,7 @@ class SpringAiNvidiaGatewayTest {
         assertThat(attempts).hasValue(2);
 
         AtomicInteger invalidAttempts = new AtomicInteger();
-        SpringAiNvidiaGateway invalidGateway = gateway(prompt -> {
+        AbstractSpringAiGateway invalidGateway = gateway(prompt -> {
             invalidAttempts.incrementAndGet();
             throw new TestServiceException(422);
         }, Duration.ofSeconds(1), 2, 2);
@@ -180,7 +179,7 @@ class SpringAiNvidiaGatewayTest {
             }
             return response("recovered");
         };
-        SpringAiNvidiaGateway gateway = gateway(recoveringModel, Duration.ofSeconds(1), 1, 0);
+        AbstractSpringAiGateway gateway = gateway(recoveringModel, Duration.ofSeconds(1), 1, 0);
 
         AiProviderResponse response = gateway.generate(
                 new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", "user")
@@ -206,7 +205,7 @@ class SpringAiNvidiaGatewayTest {
                 slept.set(duration);
             }
         };
-        SpringAiNvidiaGateway gateway = gateway(
+        AbstractSpringAiGateway gateway = gateway(
                 model, Duration.ofSeconds(1), 1, 2, sleeper
         );
 
@@ -221,7 +220,7 @@ class SpringAiNvidiaGatewayTest {
         responses.add(response(" "));
         responses.add(response("tool call", "tool_calls"));
         responses.add(response("truncated", "length"));
-        SpringAiNvidiaGateway gateway = gateway(prompt -> responses.remove(), Duration.ofSeconds(1), 0, 2);
+        AbstractSpringAiGateway gateway = gateway(prompt -> responses.remove(), Duration.ofSeconds(1), 0, 2);
 
         assertError(gateway, ErrorCode.AI_PROVIDER_INVALID_RESPONSE);
         assertError(gateway, ErrorCode.AI_PROVIDER_INVALID_RESPONSE);
@@ -235,7 +234,7 @@ class SpringAiNvidiaGatewayTest {
             capturedPrompt.set(prompt);
             return response("{\"resourceId\":7,\"signal\":\"CLEAR\"}");
         };
-        SpringAiNvidiaGateway gateway = gateway(chatModel, Duration.ofSeconds(1), 0, 2);
+        AbstractSpringAiGateway gateway = gateway(chatModel, Duration.ofSeconds(1), 0, 2);
 
         StructuredAiProviderResponse<TestOutput> response = gateway.generateStructured(
                 structuredRequest(Set.of(7L))
@@ -268,7 +267,7 @@ class SpringAiNvidiaGatewayTest {
             correctedPrompt.set(prompt);
             return response("{\"resourceId\":7,\"signal\":\"CLEAR\"}");
         };
-        SpringAiNvidiaGateway gateway = gateway(chatModel, Duration.ofSeconds(1), 0, 2);
+        AbstractSpringAiGateway gateway = gateway(chatModel, Duration.ofSeconds(1), 0, 2);
 
         StructuredAiProviderResponse<TestOutput> response = gateway.generateStructured(
                 structuredRequest(Set.of(7L))
@@ -287,7 +286,7 @@ class SpringAiNvidiaGatewayTest {
 
     @Test
     void classifiesFinalStructuredFailuresAndDoesNotRetrySemanticFailure() {
-        SpringAiNvidiaGateway malformedGateway = gateway(
+        AbstractSpringAiGateway malformedGateway = gateway(
                 prompt -> response("not-json"), Duration.ofSeconds(1), 0, 0
         );
         assertStructuredError(
@@ -296,7 +295,7 @@ class SpringAiNvidiaGatewayTest {
                 ErrorCode.AI_STRUCTURED_OUTPUT_JSON_PARSE_FAILED
         );
 
-        SpringAiNvidiaGateway schemaGateway = gateway(
+        AbstractSpringAiGateway schemaGateway = gateway(
                 prompt -> response("{\"resourceId\":7}"), Duration.ofSeconds(1), 0, 0
         );
         assertStructuredError(
@@ -306,7 +305,7 @@ class SpringAiNvidiaGatewayTest {
         );
 
         AtomicInteger semanticCalls = new AtomicInteger();
-        SpringAiNvidiaGateway semanticGateway = gateway(prompt -> {
+        AbstractSpringAiGateway semanticGateway = gateway(prompt -> {
             semanticCalls.incrementAndGet();
             return response("{\"resourceId\":7,\"signal\":\"CLEAR\"}");
         }, Duration.ofSeconds(1), 0, 2);
@@ -318,7 +317,7 @@ class SpringAiNvidiaGatewayTest {
         assertThat(semanticCalls).hasValue(1);
     }
 
-    private void assertError(SpringAiNvidiaGateway gateway, ErrorCode errorCode) {
+    private void assertError(AbstractSpringAiGateway gateway, ErrorCode errorCode) {
         assertThatThrownBy(() -> gateway.generate(
                 new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", "user")
         ))
@@ -328,7 +327,7 @@ class SpringAiNvidiaGatewayTest {
     }
 
     private void assertStructuredError(
-            SpringAiNvidiaGateway gateway,
+            AbstractSpringAiGateway gateway,
             StructuredAiProviderRequest<TestOutput> request,
             ErrorCode errorCode
     ) {
@@ -338,7 +337,7 @@ class SpringAiNvidiaGatewayTest {
                 .isEqualTo(errorCode);
     }
 
-    private SpringAiNvidiaGateway gateway(
+    private AbstractSpringAiGateway gateway(
             ChatModel chatModel,
             Duration timeout,
             int maxTransportRetries,
@@ -358,7 +357,7 @@ class SpringAiNvidiaGatewayTest {
         );
     }
 
-    private SpringAiNvidiaGateway gateway(
+    private AbstractSpringAiGateway gateway(
             ChatModel chatModel,
             Duration timeout,
             int maxTransportRetries,
@@ -366,7 +365,7 @@ class SpringAiNvidiaGatewayTest {
             AiRetrySleeper retrySleeper
     ) {
         AiProperties properties = new AiProperties(
-                "nvidia",
+                "none",
                 new AiProperties.ModelOptions(
                         "test-model",
                         timeout,
@@ -394,7 +393,7 @@ class SpringAiNvidiaGatewayTest {
                 return defaultOptions();
             }
         };
-        return new SpringAiNvidiaGateway(
+        return new AbstractSpringAiGateway(
                 ChatClient.builder(modelWithOptions)
                         .defaultOptions(OpenAiChatOptions.builder()
                                 .model("test-model")
@@ -403,13 +402,16 @@ class SpringAiNvidiaGatewayTest {
                                 .maxRetries(0))
                         .build(),
                 properties,
-                new NvidiaProviderProperties(0.1d, "none"),
-                new NvidiaExceptionTranslator(),
+                new AiProviderRuntimeOptions(
+                        "openai", "none", null, false, false, null
+                ),
+                new OpenAiExceptionTranslator(),
                 executor,
                 new AiUsageExtractor(),
                 retrySleeper,
                 new AiTokenBudgetEstimator(properties)
-        );
+        ) {
+        };
     }
 
     private OpenAiChatOptions defaultOptions() {
@@ -518,5 +520,6 @@ class SpringAiNvidiaGatewayTest {
         public Optional<String> type() {
             return Optional.empty();
         }
+
     }
 }

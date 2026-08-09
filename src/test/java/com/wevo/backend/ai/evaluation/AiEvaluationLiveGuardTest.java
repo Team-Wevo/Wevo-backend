@@ -17,19 +17,19 @@ class AiEvaluationLiveGuardTest {
     @Test
     void requiresEvaluationSpecificOptInInAdditionToApiKey() {
         AiEvaluationLiveGuard missingOptIn = guard(Map.of(
-                "NVIDIA_API_KEY", "nvapi-secret",
-                "NVIDIA_INTEGRATION_ENABLED", "true"
+                "OPENAI_API_KEY", "sk-test-secret",
+                "OPENAI_INTEGRATION_ENABLED", "true"
         ));
 
-        assertThatThrownBy(() -> missingOptIn.assertAllowed(List.of(synthetic)))
+        assertThatThrownBy(() -> missingOptIn.assertAllowed("openai", List.of(synthetic)))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageNotContaining("nvapi-secret");
+                .hasMessageNotContaining("sk-test-secret");
 
         AiEvaluationLiveGuard enabled = guard(Map.of(
-                "NVIDIA_API_KEY", "nvapi-secret",
-                "NVIDIA_EVALUATION_ENABLED", "true"
+                "OPENAI_API_KEY", "sk-test-secret",
+                "OPENAI_EVALUATION_ENABLED", "true"
         ));
-        assertThatCode(() -> enabled.assertAllowed(List.of(synthetic))).doesNotThrowAnyException();
+        assertThatCode(() -> enabled.assertAllowed("openai", List.of(synthetic))).doesNotThrowAnyException();
     }
 
     @Test
@@ -49,9 +49,9 @@ class AiEvaluationLiveGuardTest {
         );
 
         assertThatThrownBy(() -> guard(Map.of(
-                "NVIDIA_API_KEY", "nvapi-secret",
-                "NVIDIA_EVALUATION_ENABLED", "true"
-        )).assertAllowed(List.of(nonSynthetic)))
+                "OPENAI_API_KEY", "sk-test-secret",
+                "OPENAI_EVALUATION_ENABLED", "true"
+        )).assertAllowed("openai", List.of(nonSynthetic)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("synthetic");
     }
