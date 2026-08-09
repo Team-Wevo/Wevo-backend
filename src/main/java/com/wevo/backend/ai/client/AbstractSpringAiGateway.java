@@ -1,12 +1,10 @@
 package com.wevo.backend.ai.client;
 
 import com.wevo.backend.ai.config.AiProperties;
-import com.wevo.backend.ai.config.NvidiaProviderProperties;
 import com.wevo.backend.ai.context.AiTokenBudgetEstimator;
 import com.wevo.backend.ai.context.AiTokenBudgetInput;
 import com.wevo.backend.ai.exception.AiExceptionTranslator;
 import com.wevo.backend.ai.exception.AiProviderException;
-import com.wevo.backend.ai.exception.NvidiaExceptionTranslator;
 import com.wevo.backend.global.exception.ErrorCode;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ResponseEntity;
@@ -19,9 +17,6 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.List;
@@ -33,11 +28,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-@Component
-@ConditionalOnProperty(prefix = "wevo.ai", name = "provider", havingValue = "nvidia")
-public class SpringAiNvidiaGateway implements AiProviderGateway {
-
-    public static final String PROVIDER_ID = "nvidia";
+public abstract class AbstractSpringAiGateway implements AiProviderGateway {
 
     private final ChatClient chatClient;
     private final AiProperties properties;
@@ -48,37 +39,7 @@ public class SpringAiNvidiaGateway implements AiProviderGateway {
     private final AiRetrySleeper retrySleeper;
     private final AiTokenBudgetEstimator tokenBudgetEstimator;
 
-    @Autowired
-    public SpringAiNvidiaGateway(
-            ChatClient chatClient,
-            AiProperties properties,
-            NvidiaProviderProperties nvidiaProperties,
-            NvidiaExceptionTranslator exceptionTranslator,
-            ExecutorService providerRequestExecutor,
-            AiUsageExtractor usageExtractor,
-            AiRetrySleeper retrySleeper,
-            AiTokenBudgetEstimator tokenBudgetEstimator
-    ) {
-        this(
-                chatClient,
-                properties,
-                new AiProviderRuntimeOptions(
-                        PROVIDER_ID,
-                        nvidiaProperties.reasoningEffort(),
-                        nvidiaProperties.temperature(),
-                        false,
-                        false,
-                        null
-                ),
-                exceptionTranslator,
-                providerRequestExecutor,
-                usageExtractor,
-                retrySleeper,
-                tokenBudgetEstimator
-        );
-    }
-
-    protected SpringAiNvidiaGateway(
+    protected AbstractSpringAiGateway(
             ChatClient chatClient,
             AiProperties properties,
             AiProviderRuntimeOptions runtimeOptions,

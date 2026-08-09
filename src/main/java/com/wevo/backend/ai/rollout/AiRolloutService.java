@@ -4,7 +4,6 @@ import com.wevo.backend.ai.config.AiGuardrailProperties;
 import com.wevo.backend.ai.config.AiPricingProperties;
 import com.wevo.backend.ai.config.AiProperties;
 import com.wevo.backend.ai.config.AiRolloutProperties;
-import com.wevo.backend.ai.config.NvidiaProviderProperties;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.prompt.PromptRegistry;
 import com.wevo.backend.ai.prompt.PromptTemplateId;
@@ -24,7 +23,6 @@ public class AiRolloutService implements InitializingBean {
 
     private final AiRolloutProperties properties;
     private final AiProperties aiProperties;
-    private final NvidiaProviderProperties nvidiaProperties;
     private final AiPricingProperties pricingProperties;
     private final AiGuardrailProperties guardrailProperties;
     private final PromptRegistry promptRegistry;
@@ -32,14 +30,12 @@ public class AiRolloutService implements InitializingBean {
     public AiRolloutService(
             AiRolloutProperties properties,
             AiProperties aiProperties,
-            NvidiaProviderProperties nvidiaProperties,
             AiPricingProperties pricingProperties,
             AiGuardrailProperties guardrailProperties,
             PromptRegistry promptRegistry
     ) {
         this.properties = properties;
         this.aiProperties = aiProperties;
-        this.nvidiaProperties = nvidiaProperties;
         this.pricingProperties = pricingProperties;
         this.guardrailProperties = guardrailProperties;
         this.promptRegistry = promptRegistry;
@@ -88,9 +84,7 @@ public class AiRolloutService implements InitializingBean {
     }
 
     private AiRolloutSelection baseline(AiJobIdempotencyInput input) {
-        String reasoning = "openai".equals(aiProperties.provider())
-                ? aiProperties.openai().reasoningEffort()
-                : nvidiaProperties.reasoningEffort();
+        String reasoning = aiProperties.openai().reasoningEffort();
         return new AiRolloutSelection(
                 "baseline",
                 input.modelId(),

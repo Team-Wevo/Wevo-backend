@@ -14,7 +14,7 @@ class AiPropertiesTest {
     @Test
     void featureOptionsOverrideOnlyConfiguredValues() {
         AiProperties properties = new AiProperties(
-                "nvidia",
+                "none",
                 modelOptions("default-model", Duration.ofSeconds(60), 4096),
                 Map.of("draft-generation", new AiProperties.FeatureOptions(
                         "draft-model", null, null, 2048, null, null,
@@ -36,7 +36,7 @@ class AiPropertiesTest {
     void unknownFeatureUsesDefaultOptions() {
         AiProperties.ModelOptions defaultOptions =
                 modelOptions("default-model", Duration.ofSeconds(30), 1024);
-        AiProperties properties = new AiProperties("nvidia", defaultOptions, Map.of(), null);
+        AiProperties properties = new AiProperties("none", defaultOptions, Map.of(), null);
 
         assertThat(properties.optionsFor(AiFeature.ISSUE_DETECTION)).isSameAs(defaultOptions);
     }
@@ -44,7 +44,7 @@ class AiPropertiesTest {
     @Test
     void invalidDefaultOptionsFailFast() {
         assertThatThrownBy(() -> new AiProperties(
-                "nvidia",
+                "none",
                 modelOptions("", Duration.ZERO, 0),
                 Map.of(),
                 null
@@ -56,7 +56,7 @@ class AiPropertiesTest {
     @Test
     void structuredOutputRetriesDefaultToTwoAndRejectExcessiveValues() {
         AiProperties defaults = new AiProperties(
-                "nvidia",
+                "none",
                 modelOptions("model", Duration.ofSeconds(1), 128),
                 Map.of(),
                 null
@@ -84,7 +84,7 @@ class AiPropertiesTest {
     void openAiProviderUsesExplicitDefaultsAndOverridesGenericModelOptions() {
         AiProperties properties = new AiProperties(
                 "openai",
-                modelOptions("nvidia-model", Duration.ofSeconds(30), 128),
+                modelOptions("fallback-model", Duration.ofSeconds(30), 128),
                 Map.of(),
                 null,
                 new AiProperties.OpenAiOptions(
@@ -133,7 +133,7 @@ class AiPropertiesTest {
                 Duration.ZERO
         );
 
-        assertThatThrownBy(() -> new AiProperties("nvidia", overflow, Map.of(), null))
+        assertThatThrownBy(() -> new AiProperties("none", overflow, Map.of(), null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("128000");
     }
@@ -165,7 +165,7 @@ class AiPropertiesTest {
                 Duration.ofMillis(500),
                 Duration.ofSeconds(8));
         AiProperties properties = new AiProperties(
-                "nvidia",
+                "none",
                 defaults,
                 Map.of("opinion-synthesis", new AiProperties.FeatureOptions(
                         null,
@@ -207,7 +207,7 @@ class AiPropertiesTest {
                 Duration.ZERO,
                 Duration.ZERO);
 
-        assertThatThrownBy(() -> new AiProperties("nvidia", invalid, Map.of(), null))
+        assertThatThrownBy(() -> new AiProperties("none", invalid, Map.of(), null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("context limit");
     }
@@ -228,7 +228,7 @@ class AiPropertiesTest {
     @Test
     void unknownFeatureOverrideFailsFast() {
         assertThatThrownBy(() -> new AiProperties(
-                "nvidia",
+                "none",
                 modelOptions("model", Duration.ofSeconds(1), 128),
                 Map.of("future-feature", new AiProperties.FeatureOptions(
                         null, null, null, null, null, null,
@@ -241,7 +241,7 @@ class AiPropertiesTest {
     @Test
     void allFourApprovedFeatureInputBudgetsResolveFromOverrides() {
         AiProperties properties = new AiProperties(
-                "nvidia",
+                "none",
                 modelOptions("model", Duration.ofSeconds(30), 4096),
                 Map.of(
                         "issue-detection", featureBudget(64_000),
@@ -264,7 +264,7 @@ class AiPropertiesTest {
             String estimationPolicy, String singleInputPolicy
     ) {
         return new AiProperties(
-                "nvidia",
+                "none",
                 new AiProperties.ModelOptions(
                         "model",
                         Duration.ofSeconds(30),

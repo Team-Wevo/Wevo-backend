@@ -49,7 +49,7 @@ public record AiProperties(
         if (!provider.matches("[a-z][a-z0-9-]{0,29}")) {
             throw new IllegalArgumentException("wevo.ai.provider는 소문자 provider 식별자여야 합니다.");
         }
-        if (!provider.equals("none") && !provider.equals("nvidia") && !provider.equals("openai")) {
+        if (!provider.equals("none") && !provider.equals("openai")) {
             throw new IllegalArgumentException("지원하지 않는 AI provider입니다: " + provider);
         }
         if (defaultOptions == null) {

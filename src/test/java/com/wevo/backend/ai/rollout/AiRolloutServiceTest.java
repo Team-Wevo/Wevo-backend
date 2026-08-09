@@ -4,7 +4,6 @@ import com.wevo.backend.ai.config.AiGuardrailProperties;
 import com.wevo.backend.ai.config.AiPricingProperties;
 import com.wevo.backend.ai.config.AiProperties;
 import com.wevo.backend.ai.config.AiRolloutProperties;
-import com.wevo.backend.ai.config.NvidiaProviderProperties;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.prompt.PromptRegistry;
 import com.wevo.backend.ai.service.AiJobIdempotencyInput;
@@ -80,7 +79,7 @@ class AiRolloutServiceTest {
         given(guardrails.isEnabled()).willReturn(true);
         given(guardrails.policyVersion()).willReturn("ai-guardrail-2026-08-02-v1");
         return new AiRolloutService(
-                rollout, ai, new NvidiaProviderProperties(0.1d, "none"), pricing,
+                rollout, ai, pricing,
                 guardrails, mock(PromptRegistry.class));
     }
 

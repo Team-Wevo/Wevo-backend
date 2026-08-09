@@ -244,11 +244,11 @@ class AiUsageLifecycleIntegrationTest {
         LocalDateTime now = LocalDateTime.now(clock);
         AiUsageLog orphan = usageLogRepository.save(AiUsageLog.start(
                 UUID.randomUUID(), project, null, user, AiFeature.DRAFT_GENERATION,
-                "nvidia", "model", "v1", "old", now.minusSeconds(40)
+                "legacy-provider", "model", "v1", "old", now.minusSeconds(40)
         ));
         AiUsageLog recent = usageLogRepository.save(AiUsageLog.start(
                 UUID.randomUUID(), project, null, user, AiFeature.DRAFT_GENERATION,
-                "nvidia", "model", "v1", "recent", now.minusSeconds(10)
+                "legacy-provider", "model", "v1", "recent", now.minusSeconds(10)
         ));
 
         int recovered = orphanRecoveryService.recoverOrphans();
