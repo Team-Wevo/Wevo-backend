@@ -13,6 +13,8 @@ import com.wevo.backend.global.security.TokenType;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
 import com.wevo.backend.user.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +31,8 @@ import java.util.Objects;
  */
 @Service
 public class AuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     /** users 테이블의 이메일 유니크 제약 이름. (V1 마이그레이션) 소문자 비교용. */
     private static final String EMAIL_UNIQUE_CONSTRAINT = "uk_users_email";
@@ -71,14 +75,51 @@ public class AuthService {
 
     /**
      * Refresh Token 을 검증하고 Access/Refresh 를 재발급한다. (회전 방식)
+     *
+     * <p><b>탈퇴한 계정은 재발급하지 않는다.</b> 회원 탈퇴는 소프트 삭제라(§3.3.3) 사용자 행이
+     * 남아 있어 저장소 조회만으로는 걸러지지 않는다. 탈퇴 시 Refresh Token 을 폐기하지만
+     * ({@code WithdrawnUserAuthCleaner}), 그 삭제와 이 재발급이 교차하면 검증을 통과한 뒤
+     * 회전이 키를 되살려 탈퇴 계정이 새 토큰을 무한 갱신할 수 있다. 상태를 직접 확인해 그 창을 닫는다.
+     *
+     * <p>검증과 회전은 {@link RefreshTokenService#rotate} 한 번으로 <b>원자적으로</b> 처리한다.
+     * 나눠서 하면 같은 토큰으로 동시에 재발급했을 때 양쪽 모두 성공한다.
+     *
+     * <p>실패 사유(없음·재사용·탈퇴)를 모두 {@code A005} 로 돌려준다 — 클라이언트가 할 일은
+     * 어느 경우든 재로그인 하나뿐이고, 코드를 나누면 "그 계정은 탈퇴했다"는 사실이 새어 나간다.
+     * (§5.8 — 클라이언트가 분기할 필요가 없으면 코드를 쪼개지 않는다)
      */
     @Transactional(readOnly = true)
     public TokenResponse reissue(String refreshToken) {
         Long userId = jwtProvider.parseUserId(refreshToken, TokenType.REFRESH);
-        if (!refreshTokenService.matches(userId, refreshToken)) {
+        requireActiveUser(userId);
+
+        String accessToken = jwtProvider.createAccessToken(userId);
+        String newRefreshToken = jwtProvider.createRefreshToken(userId);
+        RefreshTokenService.RotationResult result = refreshTokenService.rotate(
+                userId, refreshToken, newRefreshToken, jwtProvider.getRefreshTokenValidityMs());
+
+        if (result == RefreshTokenService.RotationResult.REUSE_DETECTED) {
+            // 이미 회전된 토큰이 다시 왔다 = 유출 정황. 스크립트가 세션을 폐기했으므로 정상 사용자도
+            // 재로그인해야 한다. 토큰 원문은 남기지 않는다(§7).
+            log.warn("Refresh Token 재사용이 감지되어 세션을 폐기했습니다. userId={}", userId);
+        }
+        if (result != RefreshTokenService.RotationResult.ROTATED) {
             throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
         }
-        return issueTokens(userId);
+        return new TokenResponse(accessToken, newRefreshToken);
+    }
+
+    /**
+     * 재발급 대상이 살아 있는 계정인지 확인한다. 탈퇴 계정이면 남아 있을 수 있는 Refresh Token 도
+     * 함께 지워, 최대 14일 동안 키가 방치되지 않게 한다.
+     */
+    private void requireActiveUser(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
+        if (user.isWithdrawn()) {
+            refreshTokenService.delete(userId);
+            throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
+        }
     }
 
     /**
