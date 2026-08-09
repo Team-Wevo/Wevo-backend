@@ -21,12 +21,12 @@ wevo:
   ai:
     provider: none
     default-options:
-      model: ${NVIDIA_API_MODEL:mistralai/mistral-medium-3.5-128b}
-      timeout: ${NVIDIA_API_TIMEOUT:60s}
+      model: ${OPENAI_API_MODEL:gpt-5.6-luna}
+      timeout: ${OPENAI_API_TIMEOUT:60s}
       # system/user prompt + JSON schema + context payload 전체의 상한
       max-input-tokens: ${AI_DEFAULT_MAX_INPUT_TOKENS:100000}
-      max-output-tokens: ${NVIDIA_API_MAX_TOKENS:4096}
-      model-context-limit: ${AI_MODEL_CONTEXT_LIMIT:131072}
+      max-output-tokens: ${OPENAI_API_MAX_TOKENS:4096}
+      model-context-limit: ${OPENAI_API_CONTEXT_LIMIT:1050000}
       # input/output 예약에 포함되지 않는 context window 안전 여유
       safety-margin-tokens: ${AI_SAFETY_MARGIN_TOKENS:8192}
       token-estimation-policy: conservative-char-v1
@@ -55,11 +55,6 @@ wevo:
       project-flow-review:
         max-input-tokens: ${AI_PROJECT_FLOW_REVIEW_MAX_INPUT_TOKENS:96000}
         max-output-tokens: ${AI_PROJECT_FLOW_REVIEW_MAX_OUTPUT_TOKENS:4096}
-    nvidia:
-      api-key: ${NVIDIA_API_KEY:}
-      base-url: ${NVIDIA_API_BASE_URL:https://integrate.api.nvidia.com}
-      temperature: ${NVIDIA_API_TEMPERATURE:0.1}
-      reasoning-effort: ${NVIDIA_API_REASONING_EFFORT:none}
     openai:
       api-key: ${OPENAI_API_KEY:}
       base-url: ${OPENAI_API_BASE_URL:https://api.openai.com}

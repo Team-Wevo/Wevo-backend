@@ -36,9 +36,9 @@ AI가 의견 사이의 충돌과 공백을 찾아 근거가 추적되는 초안�
 
 ## AI Provider
 
-현재 운영 후보 기준선은 OpenAI `gpt-5.6-luna`와 명시적
-`reasoning_effort=medium`이다. 기존 NVIDIA API Catalog 연동은 과거 개발·회귀 비교 기준선으로
-유지하며 Provider 선택만으로 기능 서비스나 구조화 출력 검증 계약은 바뀌지 않는다.
+현재 실행 가능한 AI Provider는 OpenAI 하나이며, 기본 모델은 `gpt-5.6-luna`, 기본
+`reasoning_effort`는 `medium`이다. 기능 서비스는 Provider 중립 gateway 계약을 사용하고 구조화 출력은
+Provider 응답 이후에도 서버의 JSON Schema·record·semantic validation을 통과해야 한다.
 
 ```properties
 AI_PROVIDER=openai
@@ -50,31 +50,17 @@ OPENAI_API_MAX_TOKENS=4096
 OPENAI_API_REASONING_EFFORT=medium
 ```
 
-운영 `compose.prod.yml`은 `AI_PROVIDER`를 필수로 전달한다. 값이 누락되면 배포 설정 검증 또는
+운영 `compose.prod.yml`은 `AI_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_API_MODEL`을 필수로 전달한다.
+값이 누락되면 배포 설정 검증 또는
 애플리케이션 기동이 실패하며, 의도적으로 `AI_PROVIDER=none`을 선택한 환경에서는 기존 AI 결과
 조회와 비AI 기능만 유지하고 신규·재시도 AI 실행을 `503 AI008`로 거부한다.
 
+로컬에서 외부 호출 없이 애플리케이션을 확인하려면 `.env`의 `AI_PROVIDER=none`을 사용한다. 기본 단위·
+계약 테스트는 API key나 네트워크를 요구하지 않으며, 실제 OpenAI smoke는 key와 별도 opt-in을 모두
+설정한 경우에만 실행된다.
+
 OpenAI 연결과 opt-in synthetic smoke 절차는
 [`docs/engineering/ai/openai-gpt-5-6-luna.md`](docs/engineering/ai/openai-gpt-5-6-luna.md)를 참고한다.
-
-### NVIDIA 비교 기준선
-
-로컬 개발과 명시적 통합 테스트에서는 NVIDIA API Catalog Free Endpoint의
-`mistralai/mistral-medium-3.5-128b`를 사용합니다. 일반·구조화 호출은
-`reasoning_effort=none`, temperature `0.1`을 기준으로 하며 구조화 호출은 JSON object 모드 이후에도
-서버의 JSON Schema·record·semantic validation을 통과해야 합니다.
-
-```properties
-AI_PROVIDER=nvidia
-NVIDIA_API_KEY=
-NVIDIA_API_BASE_URL=https://integrate.api.nvidia.com
-NVIDIA_API_MODEL=mistralai/mistral-medium-3.5-128b
-NVIDIA_API_TEMPERATURE=0.1
-NVIDIA_API_REASONING_EFFORT=none
-```
-
-NVIDIA Free Endpoint는 synthetic 데이터 기반 개발·평가에만 사용하며 운영 트래픽과 실제 사용자 의견을
-전송하지 않습니다. 전체 설정은 `.env.example`을 기준으로 합니다.
 
 ## 패키지 구조
 

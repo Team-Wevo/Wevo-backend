@@ -11,10 +11,6 @@ public final class AiEvaluationLiveGuard {
         this.environment = environment;
     }
 
-    public void assertAllowed(List<AiEvaluationFixture> fixtures) {
-        assertAllowed("nvidia", fixtures);
-    }
-
     public void assertAllowed(String providerId, List<AiEvaluationFixture> fixtures) {
         String normalizedProvider = normalizeProvider(providerId);
         String prefix = normalizedProvider.toUpperCase(java.util.Locale.ROOT);

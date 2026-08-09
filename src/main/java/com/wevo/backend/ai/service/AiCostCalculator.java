@@ -24,13 +24,21 @@ public class AiCostCalculator {
     }
 
     public AiCostSnapshot calculate(AiUsageMetadata usage) {
-        if (usage == null || usage.modelId() == null) {
+        return calculate(usage, usage == null ? null : resolvePricingModelId(usage.modelId()));
+    }
+
+    public AiCostSnapshot calculate(AiUsageMetadata usage, String pricingModelId) {
+        if (usage == null || pricingModelId == null || pricingModelId.isBlank()) {
             return AiCostSnapshot.unpriced(properties.version());
         }
 
-        AiPricingProperties.ModelPricing pricing = properties.models().get(usage.modelId());
+        AiPricingProperties.ModelPricing pricing = properties.models().get(pricingModelId);
         if (pricing == null) {
-            log.warn("AI pricing is not configured for modelId={}", usage.modelId());
+            log.warn(
+                    "AI pricing is not configured for pricingModelId={}, responseModelId={}",
+                    pricingModelId,
+                    usage.modelId()
+            );
             return AiCostSnapshot.unpriced(properties.version());
         }
 
@@ -54,6 +62,24 @@ public class AiCostCalculator {
                 pricing.cacheWritePerMillionTokens(),
                 estimatedCost
         );
+    }
+
+    private String resolvePricingModelId(String responseModelId) {
+        if (responseModelId == null || properties.models().containsKey(responseModelId)) {
+            return responseModelId;
+        }
+        return properties.models().keySet().stream()
+                .filter(modelId -> isDatedSnapshot(responseModelId, modelId))
+                .max((left, right) -> Integer.compare(left.length(), right.length()))
+                .orElse(responseModelId);
+    }
+
+    private boolean isDatedSnapshot(String responseModelId, String configuredModelId) {
+        String prefix = configuredModelId + "-";
+        if (!responseModelId.startsWith(prefix)) {
+            return false;
+        }
+        return responseModelId.substring(prefix.length()).matches("\\d{4}-\\d{2}-\\d{2}");
     }
 
     private BigDecimal cost(long tokens, BigDecimal pricePerMillion) {

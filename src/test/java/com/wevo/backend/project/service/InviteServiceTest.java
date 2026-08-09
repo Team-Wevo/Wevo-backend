@@ -179,7 +179,7 @@ class InviteServiceTest {
         Project project = project();
         given(inviteLinkRepository.findActiveWithProjectByTokenHash(tokenHasher.hash(TOKEN)))
                 .willReturn(Optional.of(InviteLink.issue(project, user(OWNER_ID, "팀장"), tokenHasher.hash(TOKEN))));
-        given(projectMemberRepository.countByProjectId(PROJECT_ID)).willReturn(2L);
+        given(projectMemberRepository.countActiveByProjectId(PROJECT_ID)).willReturn(2L);
 
         InvitePreviewResponse response = inviteService.getInvitePreview(TOKEN);
 
@@ -212,7 +212,7 @@ class InviteServiceTest {
                 .willReturn(Optional.of(InviteLink.issue(project, user(OWNER_ID, "팀장"), tokenHasher.hash(TOKEN))));
         given(projectRepository.findByIdForUpdate(PROJECT_ID)).willReturn(Optional.of(project));
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, JOINER_ID)).willReturn(Optional.empty());
-        given(projectMemberRepository.countByProjectId(PROJECT_ID)).willReturn(2L);
+        given(projectMemberRepository.countActiveByProjectId(PROJECT_ID)).willReturn(2L);
         given(userRepository.findById(JOINER_ID)).willReturn(Optional.of(joiner));
         given(projectMemberRepository.save(any(ProjectMember.class))).willAnswer(i -> i.getArgument(0));
 
@@ -248,7 +248,7 @@ class InviteServiceTest {
                 .willReturn(Optional.of(InviteLink.issue(project, user(OWNER_ID, "팀장"), tokenHasher.hash(TOKEN))));
         given(projectRepository.findByIdForUpdate(PROJECT_ID)).willReturn(Optional.of(project));
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, JOINER_ID)).willReturn(Optional.empty());
-        given(projectMemberRepository.countByProjectId(PROJECT_ID)).willReturn((long) Project.MAX_MEMBERS);
+        given(projectMemberRepository.countActiveByProjectId(PROJECT_ID)).willReturn((long) Project.MAX_MEMBERS);
 
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> inviteService.joinByToken(JOINER_ID, TOKEN));

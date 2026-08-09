@@ -34,9 +34,10 @@ public record ProjectFlowReviewResponse(
     @Schema(requiredProperties = {"sectionId", "sectionKey", "title", "confirmedVersion"})
     public record CheckedSectionResponse(Long sectionId, String sectionKey, String title,
                                          int confirmedVersion) { }
-    // required 를 지정하지 않는다 — 같은 이름의 중첩 레코드가 PrecheckResponse 에도 있고 필드 구성이
-    // 서로 다르다. Springdoc 은 단순 이름으로 스키마를 만들어 둘이 하나로 합쳐지므로, 한쪽 기준으로
-    // required 를 걸면 다른 쪽 응답과 어긋난다. 이름을 분리한 뒤에 지정한다. (#184)
+    @Schema(
+            name = "ProjectFlowFindingResponse",
+            requiredProperties = {"order", "type", "sections", "description", "suggestion"}
+    )
     public record FindingResponse(int order, ProjectFlowFindingType type,
                                   List<SectionExcerptResponse> sections,
                                   String description, String suggestion) { }

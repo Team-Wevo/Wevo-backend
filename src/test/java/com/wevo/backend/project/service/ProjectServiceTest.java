@@ -174,6 +174,8 @@ class ProjectServiceTest {
         given(projectMemberRepository.findAllWithUserByProjectId(100L)).willReturn(List.of(
                 membership(owner, ProjectMemberRole.OWNER),
                 membership(member, ProjectMemberRole.MEMBER)));
+        // memberCount 는 목록 길이가 아니라 활성 인원이다 — 목록에는 탈퇴자도 남기 때문이다.
+        given(projectMemberRepository.countActiveByProjectId(100L)).willReturn(2L);
 
         ProjectMemberListResponse response = projectService.getMembers(1L, 100L);
 
@@ -267,7 +269,7 @@ class ProjectServiceTest {
         Project project = project(100L, ProjectStatus.ACTIVE);
         given(projectMemberRepository.findByProjectIdAndUserId(100L, 1L))
                 .willReturn(Optional.of(membership(project, owner, ProjectMemberRole.OWNER)));
-        given(projectMemberRepository.countByProjectId(100L)).willReturn(2L);
+        given(projectMemberRepository.countActiveByProjectId(100L)).willReturn(2L);
         given(projectSectionRepository.findByProjectIdOrderBySectionOrder(100L))
                 .willReturn(List.of());
 

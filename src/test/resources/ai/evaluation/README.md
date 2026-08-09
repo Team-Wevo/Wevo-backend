@@ -46,7 +46,7 @@ enum 값 변경은 새 schema version과 새 dataset version을 만든다. 배�
   `completion_tokens`를 `outputTokens`, `completion_tokens_details.reasoning_tokens`를
   `reasoningTokens`로 별도 보존한다. Provider가 제공하지 않은 cache write/reasoning 값은 `0`이 아니라
   `null / NOT_MEASURABLE`이다. 기능별 token p50/p95도 기록한다.
-- 비용은 모든 실행이 pricing snapshot을 가질 때만 합산한다. 단가가 없는 NVIDIA Trial 결과는
+- 비용은 모든 실행이 pricing snapshot을 가질 때만 합산한다. 실제 응답 모델의 단가가 없으면
   `estimatedCost=null`, `UNPRICED`다.
 - 성공 fixture별 비용은 기능별 p50/p95로 기록한다. 실제 응답 model의 가격 또는 필요한 token 항목이
   없으면 0원으로 계산하지 않고 `UNPRICED` 또는 `NOT_MEASURABLE`로 둔다.
@@ -79,24 +79,6 @@ offline parser, metric, budget, reporter 테스트는 기본 테스트에 포함
 ```bash
 ./gradlew test --tests 'com.wevo.backend.ai.evaluation.*'
 ```
-
-NVIDIA Trial live evaluation은 기본 `test`에서 제외되며 다음 세 조건이 모두 필요하다.
-
-```bash
-NVIDIA_API_KEY=... \
-NVIDIA_EVALUATION_ENABLED=true \
-./gradlew nvidiaEvaluationTest
-```
-
-기본 개발·평가 모델은 `mistralai/mistral-medium-3.5-128b`, temperature는 `0.1`, reasoning effort는
-`none`이다. 구조화 호출은 JSON object 모드를 요청한 뒤에도 공통 JSON Schema·record·semantic 검증을
-반드시 통과해야 한다. 다른 모델이나 옵션을 평가할 때는 `NVIDIA_API_MODEL` 등 환경 변수로 명시적으로
-override하고 report metadata가 실제 실행 설정과 일치하는지 확인한다.
-
-`NVIDIA_INTEGRATION_ENABLED`는 smoke 전용이므로 evaluation을 활성화하지 않는다. live runner에는
-항상 fixture 수, Provider 요청 수, 출력 token, deadline을 설정하고 pricing이 있는 모델에서만 비용
-budget을 추가한다. 현재 integration scaffold는 synthetic fixture 1개, 최대 Provider 시도 3회,
-출력 token 256개, deadline 60초로 제한한다.
 
 OpenAI 다건 평가는 smoke opt-in과 분리된 `OPENAI_EVALUATION_ENABLED=true`가 필요하다. 먼저
 `medium` 기준선을 만들고, 같은 git commit·model·dataset·prompt·schema·max output token 조건에서
@@ -136,8 +118,8 @@ JSON은 `schema/report-v1.schema.json`의 machine-readable schema version `1.0`�
 API key를 절대 포함하지 않는다. 새 Provider·model·prompt 또는 temperature/max output token 변경 PR은
 동일 dataset version의 baseline report와 현재 report를 첨부한다. baseline delta는 report schema,
 dataset version, output schema version, fixture 수와 fixture ID 집합이 모두 같을 때만 계산한다.
-Provider·model·prompt와 실행 옵션은 비교 대상이므로 동일하지 않아도 된다. NVIDIA Trial baseline은
-개발·테스트 비교용이며 운영 Provider 출시 승인으로 간주하지 않는다.
+Provider·model·prompt와 실행 옵션은 비교 대상이므로 동일하지 않아도 된다. 현재 live 실행은 OpenAI
+단일 Provider만 지원하며, 다른 모델·reasoning·cache profile 비교도 동일한 budget과 검증 gate를 따른다.
 
 ## Release gate and operations handoff
 
