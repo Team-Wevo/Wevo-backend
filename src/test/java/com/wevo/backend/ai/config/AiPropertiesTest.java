@@ -81,6 +81,18 @@ class AiPropertiesTest {
     }
 
     @Test
+    void rejectsRemovedNvidiaProvider() {
+        assertThatThrownBy(() -> new AiProperties(
+                "nvidia",
+                modelOptions("model", Duration.ofSeconds(1), 128),
+                Map.of(),
+                null
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("provider");
+    }
+
+    @Test
     void openAiProviderUsesExplicitDefaultsAndOverridesGenericModelOptions() {
         AiProperties properties = new AiProperties(
                 "openai",

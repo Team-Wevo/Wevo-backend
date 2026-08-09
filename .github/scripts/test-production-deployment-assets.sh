@@ -80,7 +80,7 @@ for variable_name in "${REQUIRED_PRODUCTION_VARIABLES[@]}"; do
   awk -v prefix="${variable_name}=" 'index($0, prefix) != 1' \
     "$BASELINE_ENV_FILE" > "$missing_variable_env"
 
-  if env APP_IMAGE=wevo-backend:ci \
+  if env -u "$variable_name" APP_IMAGE=wevo-backend:ci \
     docker compose --env-file "$missing_variable_env" -f "$COMPOSE_FILE" config --quiet \
     > /dev/null 2> "$compose_error"; then
     echo "compose validation must fail before deployment when $variable_name is missing." >&2

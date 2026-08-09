@@ -35,7 +35,7 @@ class AiUsageLogTest {
         AiUsageLog log = start(startedAt);
 
         assertThat(log.getRequestStatus()).isEqualTo(AiRequestStatus.REQUESTED);
-        assertThat(log.getProvider()).isEqualTo("legacy-provider");
+        assertThat(log.getProvider()).isEqualTo("nvidia");
 
         AiUsageMetadata usage = new AiUsageMetadata(
                 "openai", "provider-1", "model-2", 10L, 5L, 3L, 2L, 4L
@@ -90,7 +90,7 @@ class AiUsageLogTest {
     private AiUsageLog start(LocalDateTime startedAt) {
         return AiUsageLog.start(
                 UUID.randomUUID(), project, null, user, AiFeature.DRAFT_GENERATION,
-                "legacy-provider", "model-1", "v1", "abc123", startedAt
+                "nvidia", "model-1", "v1", "abc123", startedAt
         );
     }
 }
