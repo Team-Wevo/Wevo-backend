@@ -84,6 +84,13 @@ public class AuthService {
      * <p>검증과 회전은 {@link RefreshTokenService#rotate} 한 번으로 <b>원자적으로</b> 처리한다.
      * 나눠서 하면 같은 토큰으로 동시에 재발급했을 때 양쪽 모두 성공한다.
      *
+     * <p><b>탈퇴와의 경합에 사용자 행 잠금까지 걸지는 않는다</b> — {@code rotate} 는 저장된 해시가
+     * 있고 일치할 때만 쓰기 때문에 <b>지워진 키를 되살릴 수 없다.</b> 예전 구현이 위험했던 건 검사 후
+     * 무조건 {@code SET} 하는 구조라, 그 사이 탈퇴가 키를 지우면 저장이 키를 부활시켰기 때문이다.
+     * 상태 검사가 낡은 값을 읽더라도 회전 자체가 막히므로, 토큰 재발급마다 사용자 행을 배타 잠금하는
+     * 비용을 치를 이유가 없다. 여기서 상태 검사가 맡는 몫은 "탈퇴 계정이 남은 키로 세션을 이어가는
+     * 것"을 한 겹 더 막는 것이다.
+     *
      * <p>실패 사유(없음·재사용·탈퇴)를 모두 {@code A005} 로 돌려준다 — 클라이언트가 할 일은
      * 어느 경우든 재로그인 하나뿐이고, 코드를 나누면 "그 계정은 탈퇴했다"는 사실이 새어 나간다.
      * (§5.8 — 클라이언트가 분기할 필요가 없으면 코드를 쪼개지 않는다)
@@ -110,13 +117,15 @@ public class AuthService {
     }
 
     /**
-     * 재발급 대상이 살아 있는 계정인지 확인한다. 탈퇴 계정이면 남아 있을 수 있는 Refresh Token 도
-     * 함께 지워, 최대 14일 동안 키가 방치되지 않게 한다.
+     * 재발급 대상이 살아 있는 계정인지 확인한다.
+     *
+     * <p>탈퇴했거나 아예 없는 계정이면 남아 있을 수 있는 Refresh Token 도 함께 지운다 — 쓸 수 없는
+     * 계정의 키를 최대 14일 방치하지 않기 위해서다. 두 경우를 같이 처리하는 이유는 "재발급할 수 없는
+     * 계정"이라는 점이 같아서다.
      */
     private void requireActiveUser(Long userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
-        if (user.isWithdrawn()) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null || user.isWithdrawn()) {
             refreshTokenService.delete(userId);
             throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
         }

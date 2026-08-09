@@ -360,6 +360,8 @@ class AuthServiceTest {
                 assertThrows(BusinessException.class, () -> authService.reissue("refresh"));
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
+        // 쓸 수 없는 계정의 키를 최대 14일 방치하지 않는다.
+        verify(refreshTokenService).delete(3L);
         verify(refreshTokenService, never())
                 .rotate(anyLong(), anyString(), anyString(), anyLong());
     }

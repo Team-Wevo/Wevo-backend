@@ -59,7 +59,9 @@ class RefreshTokenRotationRedisIntegrationTest {
     void flush() {
         redisTemplate = new StringRedisTemplate(connectionFactory);
         redisTemplate.afterPropertiesSet();
-        connectionFactory.getConnection().serverCommands().flushAll();
+        try (var connection = connectionFactory.getConnection()) {
+            connection.serverCommands().flushAll();
+        }
         refreshTokenService = new RefreshTokenService(redisTemplate);
     }
 
