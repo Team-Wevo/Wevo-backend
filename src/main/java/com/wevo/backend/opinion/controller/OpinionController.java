@@ -66,12 +66,12 @@ public class OpinionController {
     /**
      * 내 의견을 임시저장한다. 의견이 없으면 새로 만들고, 있으면 덮어쓴다(upsert).
      */
-    @Operation(summary = "내 작업본 임시저장 — 제출본은 그대로 유지 (1~1,000자)")
+    @Operation(summary = "내 작업본 임시저장 — 제출본은 그대로 유지 (0~1,000자)")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "OPINION_DRAFT_SAVED"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "400", description = "C001 — content 누락·공백·1,000자 초과",
+                    responseCode = "400", description = "C001 — content 누락·null·1,000자 초과",
                     content = @Content(examples = @ExampleObject(
                             name = "C001", ref = ApiExampleRefs.INVALID_INPUT))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
