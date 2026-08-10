@@ -2,7 +2,6 @@ package com.wevo.backend.project.service;
 
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
-import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.repository.ProjectSectionRepository;
 import java.util.function.Supplier;
@@ -35,58 +34,40 @@ public class SectionAccessGuard {
     }
 
     /**
-     * 섹션을 조회하고 요청자가 프로젝트 참여자인지 검증한다.
+     * 섹션을 조회하고 요청자가 프로젝트 참여자인지 검증한 뒤, 검증 <b>증거</b>를 반환한다.
+     *
+     * <p><b>섹션 기준 참여자 검증의 단일 진입점</b>이다. 인가 뒤에 필요한 값이 섹션이든
+     * ({@link VerifiedParticipantSection#section()}), 조회 서비스에 넘길 접근 증거든
+     * ({@link VerifiedParticipantSection#access()}), 응답 범위를 가를 역할이든
+     * ({@link VerifiedParticipantSection#isOwner()}) 이 하나로 받는다 — 필요한 값마다 진입점을
+     * 나누면 같은 멤버십 조회가 가드 안에 여러 벌 생기고, 그중 하나만 고쳐지는 사고가 난다.
+     *
+     * <p>멤버십은 <b>한 번만</b> 읽는다. 뒤에 역할 검사나 접근 증거 발급을 덧붙이면 두 번 읽게 되고,
+     * 두 번째 호출이 존재 숨김 밖에 있어 그 사이 멤버십이 사라졌을 때 {@code 404 S001} 대신
+     * {@code 403 P002}가 새어 나간다. 숨김 적용 지점을 하나로 유지하기 위한 진입점이다.
+     *
+     * @return 접근 권한이 확인된 섹션과 프로젝트 접근 증거
+     * @throws BusinessException 섹션이 없거나 프로젝트에 참여하지 않았으면(존재 숨김)
+     *                           {@link ErrorCode#SECTION_NOT_FOUND}
+     */
+    public VerifiedParticipantSection requireParticipantSectionAccess(Long sectionId, Long userId) {
+        ProjectSection section = requireSection(sectionId);
+        VerifiedProjectAccess access = ProjectAccessGuard.hidingNonMember(
+                ErrorCode.SECTION_NOT_FOUND,
+                () -> projectAccessGuard.requireParticipantAccess(
+                        section.getProject().getId(), userId));
+        return VerifiedParticipantSection.of(section, access);
+    }
+
+    /**
+     * 섹션을 조회하고 요청자가 프로젝트 참여자인지 검증한다. 섹션만 필요할 때 쓰는 축약이다.
      *
      * @return 접근 권한이 확인된 섹션
      * @throws BusinessException 섹션이 없거나 프로젝트에 참여하지 않았으면(존재 숨김)
      *                           {@link ErrorCode#SECTION_NOT_FOUND}
      */
     public ProjectSection requireParticipantSection(Long sectionId, Long userId) {
-        ProjectSection section = requireSection(sectionId);
-        hideNonMember(() -> projectAccessGuard.requireParticipant(section.getProject().getId(), userId));
-        return section;
-    }
-
-    /**
-     * 섹션을 조회하고 요청자가 프로젝트 참여자인지 검증하되, <b>요청자의 역할까지</b> 함께 반환한다.
-     *
-     * <p>참여자면 통과하지만 응답 범위는 팀장(OWNER)에게만 넓히는 조회 API를 위한 진입점이다.
-     * (의견 수집 현황 — 팀원은 집계만, 팀장은 멤버별 상태까지. 정책서 §4.5)
-     * 역할 부족을 오류로 막는 것이 아니므로 {@link #requireOwnedSection}을 쓸 수 없고,
-     * {@link #requireParticipantSection} 뒤에 역할 검사를 덧붙이면 멤버십을 두 번 조회하게 된다.
-     *
-     * @return 접근 권한이 확인된 섹션과 요청자의 역할
-     * @throws BusinessException 섹션이 없거나 프로젝트에 참여하지 않았으면(존재 숨김)
-     *                           {@link ErrorCode#SECTION_NOT_FOUND}
-     */
-    public VerifiedParticipantSection requireParticipantSectionWithRole(Long sectionId, Long userId) {
-        ProjectSection section = requireSection(sectionId);
-        ProjectMember membership = ProjectAccessGuard.hidingNonMember(
-                ErrorCode.SECTION_NOT_FOUND,
-                () -> projectAccessGuard.requireParticipant(section.getProject().getId(), userId));
-        return VerifiedParticipantSection.of(section, membership);
-    }
-
-    /**
-     * 섹션을 조회하고 요청자가 프로젝트 참여자인지 검증한 뒤, 검증 <b>증거</b>를 반환한다.
-     *
-     * <p>{@link VerifiedProjectAccess}를 인자로 요구하는 조회 서비스(예:
-     * {@code SectionDraftEvidenceQueryService})를 섹션 ID로 진입하는 API가 호출할 때 쓴다.
-     * {@link #requireParticipantSection} 뒤에 {@link ProjectAccessGuard#requireParticipantAccess}를
-     * 직접 이어 붙이면 멤버십을 두 번 조회하게 되고, 두 번째 호출이 존재 숨김 밖에 있어 그 사이
-     * 멤버십이 사라졌을 때 {@code 404 S001} 대신 {@code 403 P002}가 새어 나간다. 숨김 적용 지점을
-     * 하나로 유지하기 위한 진입점이다.
-     *
-     * @return 접근 권한이 확인된 프로젝트 접근 증거
-     * @throws BusinessException 섹션이 없거나 프로젝트에 참여하지 않았으면(존재 숨김)
-     *                           {@link ErrorCode#SECTION_NOT_FOUND}
-     */
-    public VerifiedProjectAccess requireParticipantAccessForSection(Long sectionId, Long userId) {
-        ProjectSection section = requireSection(sectionId);
-        return ProjectAccessGuard.hidingNonMember(
-                ErrorCode.SECTION_NOT_FOUND,
-                () -> projectAccessGuard.requireParticipantAccess(
-                        section.getProject().getId(), userId));
+        return requireParticipantSectionAccess(sectionId, userId).section();
     }
 
     /**

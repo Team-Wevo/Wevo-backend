@@ -150,7 +150,7 @@ class OpinionServiceTest {
     @DisplayName("비멤버의 수집 현황 조회는 섹션 존재를 숨겨 404로 막는다")
     void getCollectionStatus_hidesSectionFromNonMember() {
         willThrow(new BusinessException(ErrorCode.SECTION_NOT_FOUND))
-                .given(sectionAccessGuard).requireParticipantSectionWithRole(SECTION_ID, USER_ID);
+                .given(sectionAccessGuard).requireParticipantSectionAccess(SECTION_ID, USER_ID);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> opinionService.getCollectionStatus(SECTION_ID, USER_ID));
@@ -193,7 +193,7 @@ class OpinionServiceTest {
         VerifiedParticipantSection granted = mock(VerifiedParticipantSection.class);
         given(granted.section()).willReturn(section(status));
         given(granted.isOwner()).willReturn(owner);
-        given(sectionAccessGuard.requireParticipantSectionWithRole(SECTION_ID, USER_ID))
+        given(sectionAccessGuard.requireParticipantSectionAccess(SECTION_ID, USER_ID))
                 .willReturn(granted);
     }
 

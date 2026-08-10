@@ -109,7 +109,7 @@ public class SectionDraftService {
      */
     public SectionDraftEvidenceResponse getDraftEvidence(Long sectionId, Long userId) {
         VerifiedProjectAccess access =
-                sectionAccessGuard.requireParticipantAccessForSection(sectionId, userId);
+                sectionAccessGuard.requireParticipantSectionAccess(sectionId, userId).access();
         return SectionDraftEvidenceResponse.of(
                 sectionDraftEvidenceQueryService.getLatest(access, sectionId));
     }

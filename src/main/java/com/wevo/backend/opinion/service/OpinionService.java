@@ -168,7 +168,7 @@ public class OpinionService {
      */
     public OpinionCollectionStatusResponse getCollectionStatus(Long projectSectionId, Long userId) {
         VerifiedParticipantSection granted =
-                sectionAccessGuard.requireParticipantSectionWithRole(projectSectionId, userId);
+                sectionAccessGuard.requireParticipantSectionAccess(projectSectionId, userId);
         ProjectSection section = granted.section();
 
         Map<Long, Opinion> opinionByAuthorId = opinionRepository

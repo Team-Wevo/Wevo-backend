@@ -52,38 +52,41 @@ class SectionAccessGuardTest {
     @DisplayName("프로젝트 참여자는 섹션 접근 검사를 통과한다")
     void requireParticipantSection_delegatesParticipantCheck() {
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectAccessGuard.requireParticipantAccess(PROJECT_ID, USER_ID))
+                .willReturn(access(ProjectMemberRole.MEMBER));
 
         ProjectSection result = sectionAccessGuard.requireParticipantSection(SECTION_ID, USER_ID);
 
         assertThat(result).isSameAs(section);
-        verify(projectAccessGuard).requireParticipant(PROJECT_ID, USER_ID);
+        verify(projectAccessGuard).requireParticipantAccess(PROJECT_ID, USER_ID);
     }
 
     @Test
-    @DisplayName("역할 포함 참여자 검사는 멤버십을 한 번만 읽고 OWNER 여부를 함께 돌려준다")
-    void requireParticipantSectionWithRole_returnsSectionAndRole() {
+    @DisplayName("참여자 검사는 멤버십을 한 번만 읽고 섹션·접근 증거·역할을 함께 돌려준다")
+    void requireParticipantSectionAccess_returnsSectionAccessAndRole() {
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectAccessGuard.requireParticipant(PROJECT_ID, USER_ID))
-                .willReturn(membership(ProjectMemberRole.OWNER));
+        VerifiedProjectAccess access = access(ProjectMemberRole.OWNER);
+        given(projectAccessGuard.requireParticipantAccess(PROJECT_ID, USER_ID)).willReturn(access);
 
         VerifiedParticipantSection granted =
-                sectionAccessGuard.requireParticipantSectionWithRole(SECTION_ID, USER_ID);
+                sectionAccessGuard.requireParticipantSectionAccess(SECTION_ID, USER_ID);
 
         assertThat(granted.section()).isSameAs(section);
+        assertThat(granted.access()).isSameAs(access);
         assertThat(granted.isOwner()).isTrue();
-        // 역할까지 얻으려고 멤버십을 두 번 읽지 않는다 (존재 숨김 밖에서 403 이 새는 경로 차단)
-        verify(projectAccessGuard).requireParticipant(PROJECT_ID, USER_ID);
+        // 필요한 값이 셋이어도 멤버십은 한 번만 읽는다 (존재 숨김 밖에서 403 이 새는 경로 차단)
+        verify(projectAccessGuard).requireParticipantAccess(PROJECT_ID, USER_ID);
         verifyNoMoreInteractions(projectAccessGuard);
     }
 
     @Test
-    @DisplayName("역할 포함 참여자 검사에서 MEMBER 는 OWNER 가 아니다")
-    void requireParticipantSectionWithRole_marksMemberAsNonOwner() {
+    @DisplayName("참여자 검사에서 MEMBER 는 OWNER 가 아니다")
+    void requireParticipantSectionAccess_marksMemberAsNonOwner() {
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectAccessGuard.requireParticipant(PROJECT_ID, USER_ID))
-                .willReturn(membership(ProjectMemberRole.MEMBER));
+        given(projectAccessGuard.requireParticipantAccess(PROJECT_ID, USER_ID))
+                .willReturn(access(ProjectMemberRole.MEMBER));
 
-        assertThat(sectionAccessGuard.requireParticipantSectionWithRole(SECTION_ID, USER_ID).isOwner())
+        assertThat(sectionAccessGuard.requireParticipantSectionAccess(SECTION_ID, USER_ID).isOwner())
                 .isFalse();
     }
 
@@ -134,32 +137,14 @@ class SectionAccessGuardTest {
     }
 
     @Test
-    @DisplayName("섹션 기준 참여자 접근 증거 발급은 멤버십을 한 번만 조회한다")
-    void requireParticipantAccessForSection_delegatesParticipantAccessOnce() {
-        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
-        VerifiedProjectAccess access = VerifiedProjectAccess.of(
-                ProjectMember.builder()
-                        .project(section.getProject())
-                        .role(ProjectMemberRole.MEMBER)
-                        .build());
-        given(projectAccessGuard.requireParticipantAccess(PROJECT_ID, USER_ID)).willReturn(access);
-
-        assertThat(sectionAccessGuard.requireParticipantAccessForSection(SECTION_ID, USER_ID))
-                .isSameAs(access);
-        // 증거를 발급하는 조회 하나로 끝내야 한다 — requireParticipant 를 덧대면 멤버십을 두 번 읽는다.
-        verify(projectAccessGuard).requireParticipantAccess(PROJECT_ID, USER_ID);
-        verifyNoMoreInteractions(projectAccessGuard);
-    }
-
-    @Test
-    @DisplayName("섹션 기준 참여자 접근 증거 발급도 비멤버는 SECTION_NOT_FOUND 로 숨긴다")
-    void requireParticipantAccessForSection_hidesNonMemberAsNotFound() {
+    @DisplayName("섹션 기준 참여자 검사에서 비멤버는 SECTION_NOT_FOUND 로 숨긴다")
+    void requireParticipantSectionAccess_hidesNonMemberAsNotFound() {
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
         given(projectAccessGuard.requireParticipantAccess(PROJECT_ID, USER_ID))
                 .willThrow(new BusinessException(ErrorCode.NOT_PROJECT_MEMBER));
 
         BusinessException exception = assertThrows(BusinessException.class,
-                () -> sectionAccessGuard.requireParticipantAccessForSection(SECTION_ID, USER_ID));
+                () -> sectionAccessGuard.requireParticipantSectionAccess(SECTION_ID, USER_ID));
 
         // 숨김 밖에 두면 403 P002(NOT_PROJECT_MEMBER)가 그대로 새어 나간다.
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
@@ -181,7 +166,7 @@ class SectionAccessGuardTest {
     @DisplayName("비멤버는 SECTION_NOT_FOUND 로 숨긴다 (존재 숨김 — CLAUDE.md §5.6)")
     void requireParticipantSection_hidesNonMemberAsNotFound() {
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
-        given(projectAccessGuard.requireParticipant(PROJECT_ID, USER_ID))
+        given(projectAccessGuard.requireParticipantAccess(PROJECT_ID, USER_ID))
                 .willThrow(new BusinessException(ErrorCode.NOT_PROJECT_MEMBER));
 
         BusinessException exception = assertThrows(BusinessException.class,
@@ -203,10 +188,10 @@ class SectionAccessGuardTest {
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN);
     }
 
-    private ProjectMember membership(ProjectMemberRole role) {
-        return ProjectMember.builder()
+    private VerifiedProjectAccess access(ProjectMemberRole role) {
+        return VerifiedProjectAccess.of(ProjectMember.builder()
                 .project(section.getProject())
                 .role(role)
-                .build();
+                .build());
     }
 }
