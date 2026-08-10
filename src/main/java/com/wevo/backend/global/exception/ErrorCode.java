@@ -112,6 +112,11 @@ public enum ErrorCode {
     // 본문 수정 만료(R004/R012)와 사유가 달라 안내 문구가 다르므로 코드를 합치지 않는다.
     REVIEW_LINK_EXPIRED(HttpStatus.CONFLICT, "R013", "외부 검토 링크의 유효 기간이 지났어요."),
     REVIEW_LINK_CLOSE_ALREADY_EXPIRED(HttpStatus.CONFLICT, "R014", "유효 기간이 지난 링크입니다."),
+    // 비인증 제출의 속도 제한(링크·출처 단위) 초과. R002(중복 제출)와 다른 코드인 이유:
+    // R002 는 "이 브라우저는 이미 냈다"는 최종 상태고, 이건 "지금은 너무 잦다"는 일시적 거절이라
+    // 클라이언트가 재시도 안내로 분기해야 한다. (CLAUDE.md §5.8)
+    REVIEW_SUBMISSION_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "R015",
+            "검토 제출이 너무 잦아요. 잠시 후 다시 시도해주세요."),
 
     // Export
     FINAL_OUTPUT_ASSEMBLY_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "E001", "완성본을 조립할 수 없습니다. 잠시 후 다시 시도해주세요.");

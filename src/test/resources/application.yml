@@ -97,6 +97,17 @@ app:
       - http://localhost:3000
   invite:
     token-secret: test-invite-token-secret-that-is-long-enough-000000
+  review:
+    abuse:
+      # 운영 기본값과 같은 값. 테스트는 제출을 한두 건만 넣으므로 한도에 걸리지 않는다.
+      rate-limit:
+        per-link-per-minute: 10
+        per-link-per-hour: 40
+        fail-open: true
+      anomaly:
+        rapid-interval-seconds: 10
+        rapid-pair-threshold: 3
+        duplicate-summary-threshold: 2
 
 logging:
   level:

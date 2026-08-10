@@ -1,6 +1,7 @@
 package com.wevo.backend.review.service;
 
 import com.wevo.backend.project.service.SectionAccessGuard;
+import com.wevo.backend.review.config.ReviewAbuseProperties;
 import com.wevo.backend.review.domain.ReviewLinkStatus;
 import com.wevo.backend.review.dto.response.ExternalReviewResultResponse;
 import com.wevo.backend.review.dto.response.ReviewLinkCurrentResponse;
@@ -36,19 +37,26 @@ public class ExternalReviewQueryService {
     private final ReviewLinkRepository reviewLinkRepository;
     private final ReviewSubmissionRepository reviewSubmissionRepository;
     private final ReviewIntentComparisonRepository comparisonRepository;
+    private final ReviewAbuseProperties abuseProperties;
 
     public ExternalReviewQueryService(SectionAccessGuard sectionAccessGuard,
                                       ReviewLinkRepository reviewLinkRepository,
                                       ReviewSubmissionRepository reviewSubmissionRepository,
-                                      ReviewIntentComparisonRepository comparisonRepository) {
+                                      ReviewIntentComparisonRepository comparisonRepository,
+                                      ReviewAbuseProperties abuseProperties) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.reviewLinkRepository = reviewLinkRepository;
         this.reviewSubmissionRepository = reviewSubmissionRepository;
         this.comparisonRepository = comparisonRepository;
+        this.abuseProperties = abuseProperties;
     }
 
     /**
-     * 섹션의 외부 검토 결과(이해도 집계 + 개별 목록)를 조회한다. (팀장 전용)
+     * 섹션의 외부 검토 결과(이해도 집계 + 개별 목록 + 신뢰도 신호)를 조회한다. (팀장 전용)
+     *
+     * <p>비인증 제출이라 한 사람이 여러 건을 넣어 분포를 왜곡할 수 있으므로, 제출 간격·본문 중복
+     * 기반 이상 신호({@code anomaly})를 함께 담는다 — 팀장이 수치를 액면 그대로 믿지 않게 하기
+     * 위함이다. IP 는 쓰지 않는다 (정책서 §6.2.4).
      */
     public ExternalReviewResultResponse getResults(Long sectionId, Long userId) {
         sectionAccessGuard.requireOwnedSection(sectionId, userId);
@@ -60,7 +68,8 @@ public class ExternalReviewQueryService {
                 submissions.isEmpty()
                         ? List.of()
                         : comparisonRepository.findAllWithSubmissionBySubmissionIdIn(
-                                submissions.stream().map(ReviewSubmission::getId).toList()));
+                                submissions.stream().map(ReviewSubmission::getId).toList()),
+                abuseProperties.anomaly());
     }
 
     /**

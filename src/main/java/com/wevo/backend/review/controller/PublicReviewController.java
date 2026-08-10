@@ -81,7 +81,10 @@ public class PublicReviewController {
     }
 
     /**
-     * 이해도를 제출한다. (브라우저당 1회 · 링크당 20개 상한 · 만료/종료 링크 거부)
+     * 이해도를 제출한다. (속도 제한 · 브라우저당 1회 · 링크당 20개 상한 · 만료/종료 링크 거부)
+     *
+     * <p>제출자 식별은 익명 검토자 키 하나만 쓴다 — IP 는 읽지도 저장하지도 않는다
+     * (정책서 §6.2.4 "IP 기준 제한은 사용하지 않는다").
      */
     @Operation(summary = "외부 검토 이해도 제출 (비로그인) — 검토자당 1회, 링크당 20건")
     @ApiResponses({
@@ -96,7 +99,9 @@ public class PublicReviewController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409",
                     description = "R002 — 중복 제출 / R003 — 정원 초과 / R004 — 본문 수정으로 만료 "
-                            + "/ R005 — 종료 / R013 — 유효 기간 만료")
+                            + "/ R005 — 종료 / R013 — 유효 기간 만료"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "429", description = "R015 — 제출 속도 제한 초과 (잠시 후 재시도)")
     })
     @SecurityRequirements // 외부 검토자는 비로그인이므로 전역 Bearer 요구사항을 해제한다.
     @PostMapping("/{token}/submissions")
