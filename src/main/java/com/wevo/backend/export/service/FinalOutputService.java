@@ -5,8 +5,9 @@ import com.wevo.backend.export.dto.response.FinalOutputResponse;
 import com.wevo.backend.export.dto.response.FinalOutputResponse.SectionOutput;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
-import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.service.ProjectAccessGuard;
+import com.wevo.backend.project.service.ProjectOutputHeader;
+import com.wevo.backend.project.service.ProjectOutputQueryService;
 import com.wevo.backend.project.service.VerifiedProjectAccess;
 import com.wevo.backend.section.service.ConfirmedSectionContent;
 import com.wevo.backend.section.service.SectionConfirmationQueryService;
@@ -27,8 +28,10 @@ import org.springframework.transaction.annotation.Transactional;
  * BE가 소유</b>한다. 세 경로의 포맷 정본이 FE·BE로 갈리지 않게 하기 위함이며,
  * 조립 규칙 자체는 {@link FinalOutputFormatter} 가 소유한다.
  *
- * <p>섹션 데이터는 리포지토리를 직접 보지 않고 section 도메인이 공개한
- * {@link SectionConfirmationQueryService} 로만 조회한다. (CLAUDE.md §6)
+ * <p>프로젝트·섹션 데이터는 리포지토리나 엔티티를 직접 보지 않고 각 도메인이 공개한 조회 창구
+ * ({@link ProjectOutputQueryService}, {@link SectionConfirmationQueryService})로만 조회하며,
+ * 받는 값도 엔티티가 아니라 값 객체({@link ProjectOutputHeader}, {@link ConfirmedSectionContent})다.
+ * (CLAUDE.md §6)
  */
 @Slf4j
 @Service
@@ -36,15 +39,18 @@ import org.springframework.transaction.annotation.Transactional;
 public class FinalOutputService {
 
     private final ProjectAccessGuard projectAccessGuard;
+    private final ProjectOutputQueryService projectOutputQueryService;
     private final SectionConfirmationQueryService sectionConfirmationQueryService;
     private final FinalOutputFormatter finalOutputFormatter;
     private final FinalOutputFileNamer finalOutputFileNamer;
 
     public FinalOutputService(ProjectAccessGuard projectAccessGuard,
+                              ProjectOutputQueryService projectOutputQueryService,
                               SectionConfirmationQueryService sectionConfirmationQueryService,
                               FinalOutputFormatter finalOutputFormatter,
                               FinalOutputFileNamer finalOutputFileNamer) {
         this.projectAccessGuard = projectAccessGuard;
+        this.projectOutputQueryService = projectOutputQueryService;
         this.sectionConfirmationQueryService = sectionConfirmationQueryService;
         this.finalOutputFormatter = finalOutputFormatter;
         this.finalOutputFileNamer = finalOutputFileNamer;
@@ -61,7 +67,7 @@ public class FinalOutputService {
      */
     public FinalOutputResponse getFinalOutput(Long projectId, Long userId) {
         VerifiedProjectAccess access = requireParticipantAccess(projectId, userId);
-        Project project = access.project();
+        ProjectOutputHeader project = projectOutputQueryService.getOutputHeader(access);
 
         SectionConfirmationSummary summary = sectionConfirmationQueryService.getConfirmationSummary(access);
         if (!summary.allConfirmed()) {

@@ -2,7 +2,7 @@ package com.wevo.backend.export.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wevo.backend.project.domain.OutputType;
-import com.wevo.backend.project.domain.Project;
+import com.wevo.backend.project.service.ProjectOutputHeader;
 import com.wevo.backend.section.service.SectionConfirmationSummary;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
@@ -42,18 +42,19 @@ public record FinalOutputResponse(
      * <p>진행도는 {@link SectionConfirmationSummary}(개념의 단일 정의)를 그대로 받는다 —
      * {@code int} 두 개를 넘기면 확정 수와 전체 수가 뒤바뀌어도 컴파일되기 때문이다.
      */
-    public static FinalOutputResponse notReady(Project project, SectionConfirmationSummary summary) {
+    public static FinalOutputResponse notReady(ProjectOutputHeader project,
+                                               SectionConfirmationSummary summary) {
         return new FinalOutputResponse(
-                project.getId(), project.getTitle(), project.getResultType(),
+                project.projectId(), project.title(), project.resultType(),
                 false, summary.confirmedCount(), summary.totalCount(), null);
     }
 
     /**
      * 전 섹션이 확정된 상태 — 확정본을 섹션 순서대로 담아 반환한다. (ready = true)
      */
-    public static FinalOutputResponse ready(Project project, List<SectionOutput> sections) {
+    public static FinalOutputResponse ready(ProjectOutputHeader project, List<SectionOutput> sections) {
         return new FinalOutputResponse(
-                project.getId(), project.getTitle(), project.getResultType(),
+                project.projectId(), project.title(), project.resultType(),
                 true, sections.size(), sections.size(), sections);
     }
 
