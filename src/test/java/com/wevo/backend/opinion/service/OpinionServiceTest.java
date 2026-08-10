@@ -237,6 +237,29 @@ class OpinionServiceTest {
     }
 
     @Test
+    @DisplayName("내용을 모두 지운 빈 작업본도 임시저장하고 기존 제출본은 유지한다")
+    void saveDraft_emptyContent_updatesWorkingCopy_keepsSubmittedContent() {
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        Opinion existing = submittedOpinion(501L, section, user(),
+                LocalDateTime.of(2026, 7, 14, 12, 5));
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, USER_ID))
+                .willReturn(section);
+        given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
+                .willReturn(Optional.of(existing));
+
+        OpinionDraftResponse response = opinionService.saveDraft(
+                SECTION_ID, USER_ID, new OpinionDraftRequest(""));
+
+        assertThat(response.content()).isEmpty();
+        assertThat(existing.getContent()).isEmpty();
+        assertThat(existing.getSubmittedContentOrLegacy()).isEqualTo(CONTENT);
+        assertThat(existing.getStatus()).isEqualTo(OpinionStatus.SUBMITTED);
+        assertThat(existing.hasUnsubmittedChanges()).isTrue();
+        verify(opinionRepository).flush();
+        verify(opinionRepository, never()).save(any(Opinion.class));
+    }
+
+    @Test
     @DisplayName("섹션이 없거나 비멤버면 SECTION_NOT_FOUND 예외를 그대로 전파한다 (존재 숨김)")
     void saveDraft_sectionHiddenOrMissing_throws() {
         given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, USER_ID))

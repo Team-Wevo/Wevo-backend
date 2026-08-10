@@ -75,12 +75,41 @@ class OpinionControllerWebMvcTest {
     }
 
     @Test
-    @DisplayName("content 가 공백뿐이면 C001 과 필드 오류를 반환한다")
-    void saveDraft_blankContent_returnsC001() throws Exception {
+    @DisplayName("content 가 빈 문자열이어도 임시저장을 허용한다")
+    void saveDraft_emptyContent_isAllowed() throws Exception {
+        given(opinionService.saveDraft(eq(10L), eq(7L), any(OpinionDraftRequest.class)))
+                .willReturn(new OpinionDraftResponse(
+                        501L, "", LocalDateTime.of(2026, 7, 14, 12, 0)));
+
         mockMvc.perform(patch(URL)
                         .with(authenticatedUser())
                         .contentType("application/json")
-                        .content("{\"content\": \"   \"}"))
+                        .content("{\"content\": \"\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OPINION_DRAFT_SAVED"))
+                .andExpect(jsonPath("$.data.content").value(""));
+    }
+
+    @Test
+    @DisplayName("content 가 null 이면 C001 과 필드 오류를 반환한다")
+    void saveDraft_nullContent_returnsC001() throws Exception {
+        mockMvc.perform(patch(URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{\"content\": null}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("C001"))
+                .andExpect(jsonPath("$.errors[0].field").value("content"));
+    }
+
+    @Test
+    @DisplayName("content 필드가 누락되면 C001 과 필드 오류를 반환한다")
+    void saveDraft_missingContent_returnsC001() throws Exception {
+        mockMvc.perform(patch(URL)
+                        .with(authenticatedUser())
+                        .contentType("application/json")
+                        .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("C001"))
