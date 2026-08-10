@@ -33,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -273,32 +274,103 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("저장된 토큰과 일치하는 Refresh Token 으로 재발급하면 새 토큰을 반환한다")
+    @DisplayName("저장된 토큰과 일치하는 Refresh Token 으로 재발급하면 회전 후 새 토큰을 반환한다")
     void reissue_validToken_returnsNewTokens() {
+        givenActiveUser(3L);
         given(jwtProvider.parseUserId("refresh", TokenType.REFRESH)).willReturn(3L);
-        given(refreshTokenService.matches(3L, "refresh")).willReturn(true);
         given(jwtProvider.createAccessToken(3L)).willReturn("newAccess");
         given(jwtProvider.createRefreshToken(3L)).willReturn("newRefresh");
         given(jwtProvider.getRefreshTokenValidityMs()).willReturn(1_000L);
+        given(refreshTokenService.rotate(3L, "refresh", "newRefresh", 1_000L))
+                .willReturn(RefreshTokenService.RotationResult.ROTATED);
 
         TokenResponse response = authService.reissue("refresh");
 
         assertThat(response.accessToken()).isEqualTo("newAccess");
         assertThat(response.refreshToken()).isEqualTo("newRefresh");
-        verify(refreshTokenService).save(3L, "newRefresh", 1_000L);
+        // 검증과 저장이 rotate 한 번으로 원자 처리된다 — 별도 save 가 남아 있으면 경합 창이 생긴다.
+        verify(refreshTokenService, never()).save(anyLong(), anyString(), anyLong());
     }
 
     @Test
-    @DisplayName("저장된 토큰과 다른 Refresh Token 으로 재발급하면 INVALID_REFRESH_TOKEN 예외를 던진다")
-    void reissue_mismatchedToken_throwsInvalidRefreshToken() {
+    @DisplayName("저장된 토큰이 없으면 INVALID_REFRESH_TOKEN 예외를 던진다")
+    void reissue_missingToken_throwsInvalidRefreshToken() {
+        givenActiveUser(3L);
         given(jwtProvider.parseUserId("refresh", TokenType.REFRESH)).willReturn(3L);
-        given(refreshTokenService.matches(3L, "refresh")).willReturn(false);
+        given(jwtProvider.createAccessToken(3L)).willReturn("newAccess");
+        given(jwtProvider.createRefreshToken(3L)).willReturn("newRefresh");
+        given(jwtProvider.getRefreshTokenValidityMs()).willReturn(1_000L);
+        given(refreshTokenService.rotate(3L, "refresh", "newRefresh", 1_000L))
+                .willReturn(RefreshTokenService.RotationResult.NOT_FOUND);
 
         BusinessException exception =
                 assertThrows(BusinessException.class, () -> authService.reissue("refresh"));
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
+    }
+
+    @Test
+    @DisplayName("이미 회전된 옛 Refresh Token 을 다시 쓰면 재사용으로 보고 거부한다")
+    void reissue_reusedToken_throwsInvalidRefreshToken() {
+        // 세션 폐기는 rotate 스크립트가 원자적으로 수행한다(RefreshTokenServiceTest 에서 검증).
+        // 여기서는 재사용 결과가 성공으로 새지 않는지만 본다.
+        givenActiveUser(3L);
+        given(jwtProvider.parseUserId("refresh", TokenType.REFRESH)).willReturn(3L);
+        given(jwtProvider.createAccessToken(3L)).willReturn("newAccess");
+        given(jwtProvider.createRefreshToken(3L)).willReturn("newRefresh");
+        given(jwtProvider.getRefreshTokenValidityMs()).willReturn(1_000L);
+        given(refreshTokenService.rotate(3L, "refresh", "newRefresh", 1_000L))
+                .willReturn(RefreshTokenService.RotationResult.REUSE_DETECTED);
+
+        BusinessException exception =
+                assertThrows(BusinessException.class, () -> authService.reissue("refresh"));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
+    }
+
+    @Test
+    @DisplayName("탈퇴한 계정은 Refresh Token 이 남아 있어도 재발급하지 않고 그 토큰을 폐기한다")
+    void reissue_withdrawnUser_throwsAndDiscardsToken() {
+        // 탈퇴 시 토큰을 지우지만, 그 삭제와 재발급이 교차하면 회전이 키를 되살려 탈퇴 계정이
+        // 세션을 무한 갱신할 수 있다. 상태 검사가 그 창을 닫는지 본다.
+        User withdrawn = User.builder()
+                .name(User.WITHDRAWN_NAME)
+                .status(UserStatus.WITHDRAWN)
+                .build();
+        given(jwtProvider.parseUserId("refresh", TokenType.REFRESH)).willReturn(3L);
+        given(userRepository.findById(3L)).willReturn(Optional.of(withdrawn));
+
+        BusinessException exception =
+                assertThrows(BusinessException.class, () -> authService.reissue("refresh"));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
+        verify(refreshTokenService).delete(3L);
+        verify(refreshTokenService, never())
+                .rotate(anyLong(), anyString(), anyString(), anyLong());
         verify(jwtProvider, never()).createAccessToken(anyLong());
+    }
+
+    @Test
+    @DisplayName("토큰의 사용자가 없으면 재발급하지 않는다")
+    void reissue_unknownUser_throwsInvalidRefreshToken() {
+        given(jwtProvider.parseUserId("refresh", TokenType.REFRESH)).willReturn(3L);
+        given(userRepository.findById(3L)).willReturn(Optional.empty());
+
+        BusinessException exception =
+                assertThrows(BusinessException.class, () -> authService.reissue("refresh"));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
+        // 쓸 수 없는 계정의 키를 최대 14일 방치하지 않는다.
+        verify(refreshTokenService).delete(3L);
+        verify(refreshTokenService, never())
+                .rotate(anyLong(), anyString(), anyString(), anyLong());
+    }
+
+    private void givenActiveUser(Long userId) {
+        given(userRepository.findById(userId)).willReturn(Optional.of(User.builder()
+                .name("호석")
+                .status(UserStatus.ACTIVE)
+                .build()));
     }
 
     @Test

@@ -1,6 +1,5 @@
 package com.wevo.backend.auth.service;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -20,6 +19,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
+/**
+ * 토큰 해싱과 회전 결과 매핑의 단위 검증.
+ *
+ * <p>회전의 <b>원자성</b>과 재사용 감지는 Lua 스크립트가 수행하므로 목으로는 검증되지 않는다.
+ * 실제 Redis 동작은 {@code RefreshTokenRotationRedisIntegrationTest} 가 본다.
+ */
 @ExtendWith(MockitoExtension.class)
 class RefreshTokenServiceTest {
 
@@ -28,16 +33,11 @@ class RefreshTokenServiceTest {
     @Mock
     private ValueOperations<String, String> valueOperations;
 
-    private RefreshTokenService refreshTokenService;
-
-    @BeforeEach
-    void setUp() {
-        given(redisTemplate.opsForValue()).willReturn(valueOperations);
-        refreshTokenService = new RefreshTokenService(redisTemplate);
-    }
-
     @Test
     void saveStoresHashedRefreshToken() {
+        given(redisTemplate.opsForValue()).willReturn(valueOperations);
+        RefreshTokenService refreshTokenService = new RefreshTokenService(redisTemplate);
+
         refreshTokenService.save(1L, "plain-refresh-token", 1_000L);
 
         ArgumentCaptor<String> valueCaptor = ArgumentCaptor.forClass(String.class);
@@ -53,13 +53,12 @@ class RefreshTokenServiceTest {
     }
 
     @Test
-    void matchesComparesHashedRefreshToken() {
-        given(valueOperations.get("refresh_token:1"))
-                .willReturn(hash("plain-refresh-token"));
+    void deleteRemovesUserKey() {
+        RefreshTokenService refreshTokenService = new RefreshTokenService(redisTemplate);
 
-        boolean matches = refreshTokenService.matches(1L, "plain-refresh-token");
+        refreshTokenService.delete(7L);
 
-        assertThat(matches).isTrue();
+        verify(redisTemplate).delete("refresh_token:7");
     }
 
     private String hash(String token) {
