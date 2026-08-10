@@ -24,6 +24,15 @@ import java.io.IOException;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    /**
+     * 토큰 검증 실패 사유를 담는 요청 속성 키. {@link RestAuthenticationEntryPoint} 가 읽는다.
+     *
+     * <p>필터는 401 을 직접 쓰지 않고 EntryPoint 에 맡기는데(Spring Security 규약), 만료·위조를
+     * 구분한 {@code ErrorCode} 는 필터에만 있다. 요청 범위 속성으로 전달해 그 구분을 살린다.
+     */
+    static final String AUTHENTICATION_ERROR_CODE =
+            JwtAuthenticationFilter.class.getName() + ".errorCode";
+
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
 
@@ -56,7 +65,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.getContext().setAuthentication(authentication);
         } catch (BusinessException e) {
             // 유효하지 않은/만료된 토큰: 인증을 설정하지 않고 EntryPoint 가 401 을 처리하도록 둔다.
+            // 다만 어느 쪽인지는 여기서만 알 수 있으므로 요청 속성으로 넘긴다 — 그러지 않으면
+            // EntryPoint 가 모든 401 을 A001 로 뭉개, 클라이언트가 "만료면 재발급, 위조면 로그아웃"
+            // 을 구분할 수 없다.
             SecurityContextHolder.clearContext();
+            request.setAttribute(AUTHENTICATION_ERROR_CODE, e.getErrorCode());
         }
     }
 

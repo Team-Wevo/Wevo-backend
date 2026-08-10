@@ -94,10 +94,24 @@ public class KakaoOAuthClient implements OAuthClient {
         Map<String, Object> profile =
                 (Map<String, Object>) kakaoAccount.getOrDefault("profile", Map.of());
 
-        String email = (String) kakaoAccount.get("email");
+        String email = verifiedEmail(kakaoAccount);
         String name = (String) profile.get("nickname");
         String profileImageUrl = (String) profile.get("profile_image_url");
 
         return new OAuthUserInfo(AuthProvider.KAKAO, providerUserId, email, name, profileImageUrl);
+    }
+
+    /**
+     * 소유가 확인된 이메일만 돌려준다. 확인되지 않았으면 {@code null} — 카카오가 이메일 동의를 받지
+     * 않은 경우와 같게 다룬다.
+     *
+     * <p>이메일은 <b>중복 가입 차단</b>에 쓰인다. 검증하지 않은 값을 그대로 믿으면, 타인의 이메일을
+     * 적어 둔 계정으로 먼저 가입해 실소유자의 이후 가입을 영구히 막는 선점이 가능하다. 계정 식별은
+     * {@code provider + id} 로 하므로 이메일을 비워도 로그인 자체에는 지장이 없다.
+     */
+    private String verifiedEmail(Map<String, Object> kakaoAccount) {
+        return Boolean.TRUE.equals(kakaoAccount.get("is_email_verified"))
+                ? (String) kakaoAccount.get("email")
+                : null;
     }
 }

@@ -18,13 +18,14 @@ class KakaoOAuthClientTest {
             new OAuthProperties.Timeout(Duration.ofSeconds(3), Duration.ofSeconds(5))));
 
     @Test
-    @DisplayName("전체 프로필이 있으면 id/email/닉네임/프로필이미지를 모두 매핑한다")
+    @DisplayName("전체 프로필이 있고 이메일이 검증됐으면 모두 매핑한다")
     void mapToUserInfo_withFullProfile_mapsAllFields() {
         Map<String, Object> profile = Map.of(
                 "nickname", "카카오유저",
                 "profile_image_url", "http://img/kakao.png");
         Map<String, Object> kakaoAccount = Map.of(
                 "email", "user@kakao.com",
+                "is_email_verified", true,
                 "profile", profile);
         Map<String, Object> body = Map.of(
                 "id", 123_456_789L,
@@ -37,6 +38,38 @@ class KakaoOAuthClientTest {
         assertThat(info.email()).isEqualTo("user@kakao.com");
         assertThat(info.name()).isEqualTo("카카오유저");
         assertThat(info.profileImageUrl()).isEqualTo("http://img/kakao.png");
+    }
+
+    @Test
+    @DisplayName("이메일이 검증되지 않았으면 email 은 null 로 매핑한다 — 선점 방지")
+    void mapToUserInfo_withUnverifiedEmail_mapsNullEmail() {
+        // 이메일은 중복 가입 차단에 쓰인다. 검증되지 않은 값을 믿으면 타인의 이메일을 적어 둔 계정이
+        // 먼저 가입해 실소유자의 가입을 영구히 막을 수 있다.
+        Map<String, Object> kakaoAccount = Map.of(
+                "email", "victim@kakao.com",
+                "is_email_verified", false,
+                "profile", Map.of("nickname", "닉네임"));
+        Map<String, Object> body = Map.of("id", 777L, "kakao_account", kakaoAccount);
+
+        OAuthUserInfo info = client.mapToUserInfo(body);
+
+        assertThat(info.email()).isNull();
+        // 계정 식별은 provider + id 라 이메일이 비어도 로그인 자체는 된다.
+        assertThat(info.providerUserId()).isEqualTo("777");
+        assertThat(info.name()).isEqualTo("닉네임");
+    }
+
+    @Test
+    @DisplayName("검증 여부 필드가 아예 없으면 email 은 null 로 매핑한다")
+    void mapToUserInfo_withoutVerificationFlag_mapsNullEmail() {
+        Map<String, Object> kakaoAccount = Map.of(
+                "email", "user@kakao.com",
+                "profile", Map.of("nickname", "닉네임"));
+        Map<String, Object> body = Map.of("id", 888L, "kakao_account", kakaoAccount);
+
+        OAuthUserInfo info = client.mapToUserInfo(body);
+
+        assertThat(info.email()).isNull();
     }
 
     @Test
