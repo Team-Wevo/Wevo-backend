@@ -29,6 +29,9 @@ public final class ApiExampleRefs {
     /** 섹션 없음 또는 비멤버 — {@code S001}, 존재 숨김. */
     public static final String SECTION_NOT_FOUND = PREFIX + "sectionNotFound";
 
+    /** 초안 없음 — {@code S003}, 저장된 초안이 없거나 요청한 버전이 그 섹션에 없는 경우. */
+    public static final String SECTION_DRAFT_NOT_FOUND = PREFIX + "sectionDraftNotFound";
+
     /** 상태·버전 충돌 — {@code C003}. */
     public static final String CONFLICT = PREFIX + "conflict";
 

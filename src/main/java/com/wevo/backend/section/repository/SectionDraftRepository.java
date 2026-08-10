@@ -20,6 +20,32 @@ public interface SectionDraftRepository extends JpaRepository<SectionDraft, Long
     Optional<SectionDraft> findByProjectSection_IdAndVersion(Long sectionId, Integer version);
 
     /**
+     * 섹션의 초안 버전 이력을 <b>최신 버전부터</b> 조회한다. (이력 목록 — API_SPEC §3.7.8)
+     *
+     * <p>편집자 표시 이름을 함께 내리므로 {@code lastEditor} 를 {@code JOIN FETCH} 한다 —
+     * 지연 로딩으로 두면 버전 수만큼 사용자 조회가 나간다(N+1). 편집자가 없는 행
+     * (AI 생성본·레거시 데이터)도 목록에서 빠지면 안 되므로 {@code LEFT} 조인이다.
+     *
+     * <p>본문({@code content})은 목록에서 쓰지 않지만 엔티티를 통째로 읽는다 — 버전 수가 적은
+     * MVP 규모에서 본문 없는 별도 투영을 두는 것보다 조회 경로를 하나로 유지하는 편이 낫다.
+     * 이력이 길어져 전송량이 문제가 되면 그때 투영으로 바꾼다.
+     */
+    @Query("SELECT d FROM SectionDraft d LEFT JOIN FETCH d.lastEditor "
+            + "WHERE d.projectSection.id = :sectionId ORDER BY d.version DESC")
+    List<SectionDraft> findVersionHistoryBySectionId(@Param("sectionId") Long sectionId);
+
+    /**
+     * 섹션의 특정 버전 초안을 편집자와 함께 조회한다. (버전 본문 조회 — API_SPEC §3.7.9)
+     *
+     * <p>{@link #findByProjectSection_IdAndVersion} 과 대상은 같고 편집자를 함께 로딩하는 점만
+     * 다르다 — 응답에 편집자 이름이 들어가므로 조회를 두 번 하지 않는다.
+     */
+    @Query("SELECT d FROM SectionDraft d LEFT JOIN FETCH d.lastEditor "
+            + "WHERE d.projectSection.id = :sectionId AND d.version = :version")
+    Optional<SectionDraft> findVersionWithEditor(@Param("sectionId") Long sectionId,
+                                                 @Param("version") Integer version);
+
+    /**
      * 프로젝트의 <b>확정된</b> 섹션에 대해 확정본(각 섹션의 {@code confirmedVersion} 에 해당하는
      * 초안)을 섹션 순서대로 조회한다. (최종 결과물 조립 — API_SPEC §3.6.1)
      *

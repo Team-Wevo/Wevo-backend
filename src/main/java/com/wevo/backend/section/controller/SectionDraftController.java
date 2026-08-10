@@ -7,6 +7,8 @@ import com.wevo.backend.section.dto.request.SectionDraftSaveRequest;
 import com.wevo.backend.section.dto.response.SectionDraftEvidenceResponse;
 import com.wevo.backend.section.dto.response.SectionDraftReadResponse;
 import com.wevo.backend.section.dto.response.SectionDraftSaveResponse;
+import com.wevo.backend.section.dto.response.SectionDraftVersionDetailResponse;
+import com.wevo.backend.section.dto.response.SectionDraftVersionListResponse;
 import com.wevo.backend.section.service.SectionDraftService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -48,7 +50,11 @@ public class SectionDraftController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401", description = "A001 — 인증 필요"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김) / S003 — 초안 없음")
+                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김) / S003 — 초안 없음",
+                    content = @Content(examples = {
+                            @ExampleObject(name = "S001", ref = ApiExampleRefs.SECTION_NOT_FOUND),
+                            @ExampleObject(name = "S003", ref = ApiExampleRefs.SECTION_DRAFT_NOT_FOUND)
+                    }))
     })
     @GetMapping("/{sectionId}/draft")
     public ResponseEntity<ApiResponse<SectionDraftReadResponse>> getLatestDraft(
@@ -98,6 +104,62 @@ public class SectionDraftController {
     }
 
     /**
+     * 섹션 초안의 버전 이력을 조회한다. (본문 제외 — 어느 버전을 열어볼지 고르는 용도)
+     * 저장된 버전이 없으면 404가 아니라 빈 목록을 반환한다.
+     */
+    @Operation(summary = "초안 버전 이력 — 본문 제외 메타데이터만, 최신 버전 먼저 (되돌리기 없음)")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "OK — 저장된 버전이 없으면 빈 목록"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)",
+                    content = @Content(examples = @ExampleObject(
+                            name = "S001", ref = ApiExampleRefs.SECTION_NOT_FOUND)))
+    })
+    @GetMapping("/{sectionId}/draft/versions")
+    public ResponseEntity<ApiResponse<SectionDraftVersionListResponse>> getDraftVersions(
+            @PathVariable Long sectionId,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        SectionDraftVersionListResponse response =
+                sectionDraftService.getDraftVersions(sectionId, principal.userId());
+        return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", response));
+    }
+
+    /**
+     * 지난 초안 한 버전의 본문을 조회한다. 없는 버전이면 404(SECTION_DRAFT_NOT_FOUND).
+     */
+    @Operation(summary = "초안 버전 본문 조회 — 지난 버전 열어보기 (본문을 되돌리지는 않음)")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "OK"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "A001 — 인증 필요",
+                    content = @Content(examples = @ExampleObject(
+                            name = "A001", ref = ApiExampleRefs.UNAUTHORIZED))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김) / S003 — 해당 버전 없음",
+                    content = @Content(examples = {
+                            @ExampleObject(name = "S001", ref = ApiExampleRefs.SECTION_NOT_FOUND),
+                            @ExampleObject(name = "S003", ref = ApiExampleRefs.SECTION_DRAFT_NOT_FOUND)
+                    }))
+    })
+    @GetMapping("/{sectionId}/draft/versions/{version}")
+    public ResponseEntity<ApiResponse<SectionDraftVersionDetailResponse>> getDraftVersion(
+            @PathVariable Long sectionId,
+            @PathVariable Integer version,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        SectionDraftVersionDetailResponse response =
+                sectionDraftService.getDraftVersion(sectionId, principal.userId(), version);
+        return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", response));
+    }
+
+    /**
      * 최신 AI 초안의 근거(사용된 의견·합의점·쟁점 결정·보충 근거)를 조회한다.
      */
     @Operation(summary = "초안 근거 보기 — 생성에 사용된 의견·합의점·결정·보충 근거")
@@ -107,7 +169,11 @@ public class SectionDraftController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401", description = "A001 — 인증 필요"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김) / S003 — 초안 없음")
+                    responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김) / S003 — 초안 없음",
+                    content = @Content(examples = {
+                            @ExampleObject(name = "S001", ref = ApiExampleRefs.SECTION_NOT_FOUND),
+                            @ExampleObject(name = "S003", ref = ApiExampleRefs.SECTION_DRAFT_NOT_FOUND)
+                    }))
     })
     @GetMapping("/{sectionId}/draft/evidence")
     public ResponseEntity<ApiResponse<SectionDraftEvidenceResponse>> getDraftEvidence(

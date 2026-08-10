@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultMatcher;
 
 /**
  * 생성된 OpenAPI 문서가 Bearer 인증 스키마를 담고 있는지 확인한다.
@@ -116,7 +117,31 @@ class OpenApiConfigTest {
                 .andExpect(jsonPath("$.components.examples.forbidden.value").exists())
                 .andExpect(jsonPath("$.components.examples.projectNotFound.value").exists())
                 .andExpect(jsonPath("$.components.examples.sectionNotFound.value").exists())
+                .andExpect(jsonPath("$.components.examples.sectionDraftNotFound.value").exists())
                 .andExpect(jsonPath("$.components.examples.conflict.value").exists());
+    }
+
+    @Test
+    @DisplayName("404 사유가 둘인 초안 조회들은 S001·S003 예제를 모두 싣는다")
+    void multiReasonFailureResponseCarriesEveryExample() throws Exception {
+        // description 에만 두 코드를 적고 예제를 하나만 달거나 아예 달지 않으면, FE 는 그 사유의
+        // 응답 형태를 Swagger 에서 확인할 수 없다. 404 가 두 갈래인 초안 조회 3개를 함께 검사한다.
+        mockMvc.perform(get(API_DOCS))
+                .andExpect(status().isOk())
+                .andExpect(bothNotFoundExamples("/api/project-sections/{sectionId}/draft"))
+                .andExpect(bothNotFoundExamples("/api/project-sections/{sectionId}/draft/evidence"))
+                .andExpect(bothNotFoundExamples(
+                        "/api/project-sections/{sectionId}/draft/versions/{version}"));
+    }
+
+    /** 해당 경로의 GET 404 응답에 S001·S003 예제가 모두 실렸는지 검사한다. */
+    private ResultMatcher bothNotFoundExamples(String path) {
+        String examples = "$.paths['" + path + "'].get.responses['404']"
+                + ".content['application/json'].examples.";
+        return result -> {
+            jsonPath(examples + "S001").exists().match(result);
+            jsonPath(examples + "S003").exists().match(result);
+        };
     }
 
     @Test
