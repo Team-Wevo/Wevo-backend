@@ -33,6 +33,10 @@ import org.springframework.stereotype.Component;
  * <p>윈도는 Redis 고정 윈도(분·시간)다. 슬라이딩 윈도가 경계에서 더 정확하지만, 여기서 막으려는
  * 것은 초당 수십 건짜리 자동화라 고정 윈도로 충분하고 연산이 원자적(INCR+PEXPIRE 한 번)이다.
  *
+ * <p><b>키는 실재하는 링크의 ID 로만 만든다</b> — 호출측이 링크를 식별한 뒤에 부르기 때문에,
+ * 존재하지 않는 토큰을 무한히 바꿔 보내도 새 키가 생기지 않는다. 토큰(또는 그 해시)을 키로 쓰면
+ * 카운터 자체가 메모리 소모 수단이 된다.
+ *
  * <p><b>저장소 장애 시 동작</b>은 {@link ReviewAbuseProperties.RateLimit#failOpen} 이 정한다 —
  * 기본은 통과(fail-open)이며, 이 결정과 근거는 설정 문서에 적혀 있다.
  */
@@ -76,11 +80,15 @@ public class PublicSubmissionRateLimiter {
     /**
      * 이번 제출 시도를 세고, 한도를 넘으면 거절한다.
      *
-     * @param linkKey 링크 식별 키 — 원문 토큰이 아니라 토큰 해시를 넘긴다 (Redis 에 링크를 열 수 있는
-     *                값을 남기지 않기 위해)
+     * <p><b>호출 시점은 링크를 식별한 뒤여야 한다.</b> 식별 전에 부르면 아무 문자열이나 토큰으로
+     * 보내는 요청마다 새 키가 생겨 Redis 메모리가 공격자 마음대로 늘어난다. 그래서 키도 토큰이
+     * 아니라 이미 조회한 행의 ID 를 받는다.
+     *
+     * @param linkId 실재가 확인된 검토 링크의 ID
      * @throws BusinessException 한도 초과면 {@link ErrorCode#REVIEW_SUBMISSION_RATE_LIMITED}({@code R015})
      */
-    public void checkSubmission(String linkKey) {
+    public void checkSubmission(Long linkId) {
+        String linkKey = String.valueOf(linkId);
         ReviewAbuseProperties.RateLimit limits = properties.rateLimit();
         ZonedDateTime now = ZonedDateTime.now(KST);
 
@@ -112,9 +120,9 @@ public class PublicSubmissionRateLimiter {
 
         if (exceededAt != null && exceededAt > 0) {
             // 어느 윈도가 걸렸는지는 로그로만 남긴다 — 응답으로 알려주면 공격자가 한도를 역산해
-            // 그 아래로 속도를 맞출 수 있다. 링크 키는 토큰 해시라 그대로 남겨도 링크가 열리지 않는다.
-            log.warn("외부 검토 제출 속도 제한 초과 — window={}, linkKey={}",
-                    exceededAt == 1 ? "MINUTE" : "HOUR", linkKey);
+            // 그 아래로 속도를 맞출 수 있다. 링크 ID 는 토큰이 아니라 내부 식별자라 남겨도 무방하다.
+            log.warn("외부 검토 제출 속도 제한 초과 — window={}, linkId={}",
+                    exceededAt == 1 ? "MINUTE" : "HOUR", linkId);
             throw new BusinessException(ErrorCode.REVIEW_SUBMISSION_RATE_LIMITED);
         }
     }

@@ -89,7 +89,7 @@ class SubmissionAnomalyResponseTest {
     }
 
     @Test
-    @DisplayName("같은 문장이 반복되면 의심한다 — 공백·대소문자 차이는 같은 문장으로 본다")
+    @DisplayName("같은 문장이 반복되면 의심한다 — 앞뒤·연속 공백 차이는 같은 문장으로 본다")
     void flagsDuplicateSummaries() {
         ReviewLink link = link(1L);
         List<ReviewSubmission> submissions = List.of(
@@ -104,6 +104,22 @@ class SubmissionAnomalyResponseTest {
         assertThat(anomaly.suspected()).isTrue();
         // 간격은 사람 속도라 이쪽 신호는 꺼져 있어야 한다.
         assertThat(anomaly.rapidSubmissionSuspected()).isFalse();
+    }
+
+    @Test
+    @DisplayName("대소문자만 다른 문장도 같은 문장으로 본다")
+    void flagsDuplicateSummariesDifferingOnlyByCase() {
+        // 공백 차이만 있는 위 테스트는 toLowerCase 정규화가 사라져도 통과한다.
+        // 한글에는 대소문자가 없으므로 ASCII 문장으로 이 축을 따로 고정한다.
+        ReviewLink link = link(1L);
+        List<ReviewSubmission> submissions = List.of(
+                submission(link, BASE, "Scholarship matching service."),
+                submission(link, BASE.plusMinutes(5), "SCHOLARSHIP MATCHING SERVICE."));
+
+        SubmissionAnomalyResponse anomaly = SubmissionAnomalyResponse.from(submissions, THRESHOLDS);
+
+        assertThat(anomaly.duplicateSummarySuspected()).isTrue();
+        assertThat(anomaly.maxIdenticalSummaryCount()).isEqualTo(2);
     }
 
     @Test

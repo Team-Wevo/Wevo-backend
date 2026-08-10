@@ -213,20 +213,24 @@ public class ReviewLinkService {
     /**
      * 외부 검토자의 이해도 제출을 저장한다.
      *
-     * <p>검사 순서는 <b>(0) 속도 제한 → (1) 링크 상태 → (2) 브라우저당 1회 → (3) 20개 상한</b>이다.
-     * 속도 제한을 맨 앞에 두는 이유는 두 가지다 — 자동화된 대량 시도가 DB 잠금·조회까지 도달하지
-     * 않게 하고, 실패하는 시도(형식만 바꿔가며 두드리는 경우)도 세야 하기 때문이다.
-     * 링크 행 쓰기 락은 그 뒤에 걸어 같은 링크의 동시 제출을 직렬화한다.
+     * <p>검사 순서는 <b>(0) 링크 식별 → (1) 속도 제한 → (2) 링크 상태 → (3) 브라우저당 1회 →
+     * (4) 20개 상한</b>이다. 속도 제한이 링크 식별 <b>뒤</b>에 오는 것은 의도된 순서다 —
+     * 카운터 키를 <b>실재하는 링크에만</b> 만들기 위해서다. 식별 전에 세면 아무 문자열이나 토큰으로
+     * 보내는 요청마다 새 키가 생겨(분·시간 윈도 2개씩) 카운터 저장소 메모리가 공격자 마음대로
+     * 늘어난다. 존재하지 않는 토큰 조회는 잠글 행이 없어 인덱스 조회로 끝나므로, 이 순서로 잃는
+     * DB 보호는 크지 않다.
      *
-     * <p>속도 제한 키로 원문 토큰이 아니라 <b>토큰 해시</b>를 넘긴다 — 링크를 열 수 있는 값을
-     * 카운터 저장소에 남기지 않기 위해서다. (DB 도 해시만 저장한다)
+     * <p>대신 <b>식별된 링크에 대한 실패는 그대로 센다</b> — 만료·종료 링크에 반복해서 두드리거나
+     * 중복 제출을 반복하는 시도가 상태 검사 앞의 속도 제한에 걸린다.
+     *
+     * <p>카운터 키는 토큰이나 그 해시가 아니라 <b>링크 ID</b>다 — 링크를 열 수 있는 값에서 파생된
+     * 무엇도 카운터 저장소에 남기지 않고, 이미 조회한 행의 식별자를 그대로 쓴다.
      */
     @Transactional
     public ReviewSubmissionResponse submitExternalReview(String token, String anonymousReviewerId,
                                                          ExternalReviewSubmitRequest request) {
-        rateLimiter.checkSubmission(tokenHasher.hash(token));
-
         ReviewLink link = findLinkForUpdate(token);
+        rateLimiter.checkSubmission(link.getId());
         requireUsable(link, LocalDate.now(KST));
 
         if (reviewSubmissionRepository

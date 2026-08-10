@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -124,7 +125,8 @@ public record SubmissionAnomalyResponse(
         return submissions.stream()
                 .map(ReviewSubmission::getSummary)
                 .filter(StringUtils::hasText)
-                .map(summary -> summary.trim().toLowerCase().replaceAll("\\s+", " "))
+                // 로케일 의존 소문자화(터키어 I 등)를 피해 서버 로케일과 무관하게 같은 결과를 낸다.
+                .map(summary -> summary.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " "))
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
                 .values().stream()
                 .mapToLong(Long::longValue)

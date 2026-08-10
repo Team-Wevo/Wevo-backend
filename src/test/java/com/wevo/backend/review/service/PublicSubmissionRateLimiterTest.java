@@ -26,7 +26,7 @@ import static org.mockito.BDDMockito.then;
 @ExtendWith(MockitoExtension.class)
 class PublicSubmissionRateLimiterTest {
 
-    private static final String LINK_KEY = "e3b0c44298fc1c149afbf4c8996fb924";
+    private static final Long LINK_ID = 4242L;
 
     @Mock
     private StringRedisTemplate redisTemplate;
@@ -36,7 +36,7 @@ class PublicSubmissionRateLimiterTest {
     void allowsWhenWithinLimits() {
         givenScriptResult(0L);
 
-        assertThatCode(() -> limiter(true).checkSubmission(LINK_KEY))
+        assertThatCode(() -> limiter(true).checkSubmission(LINK_ID))
                 .doesNotThrowAnyException();
     }
 
@@ -46,7 +46,7 @@ class PublicSubmissionRateLimiterTest {
         givenScriptResult(1L);
 
         BusinessException exception = assertThrows(BusinessException.class,
-                () -> limiter(true).checkSubmission(LINK_KEY));
+                () -> limiter(true).checkSubmission(LINK_ID));
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.REVIEW_SUBMISSION_RATE_LIMITED);
     }
@@ -58,13 +58,15 @@ class PublicSubmissionRateLimiterTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<String>> keys = ArgumentCaptor.forClass(List.class);
 
-        limiter(true).checkSubmission(LINK_KEY);
+        limiter(true).checkSubmission(LINK_ID);
 
         then(redisTemplate).should()
                 .execute(any(RedisScript.class), keys.capture(), any(Object[].class));
         assertThat(keys.getValue())
                 .hasSize(2)
-                .allMatch(key -> key.contains(":link:"))
+                // 키는 실재가 확인된 링크의 ID 로만 만든다 — 토큰(또는 그 해시)을 키로 쓰면
+                // 아무 문자열이나 보내는 요청마다 새 키가 생겨 카운터가 메모리 소모 수단이 된다.
+                .allMatch(key -> key.contains(":link:" + LINK_ID + ":"))
                 .noneMatch(key -> key.contains(":ip:"));
     }
 
@@ -78,7 +80,7 @@ class PublicSubmissionRateLimiterTest {
         ArgumentCaptor<List<String>> keys = ArgumentCaptor.forClass(List.class);
         ArgumentCaptor<Object[]> args = ArgumentCaptor.forClass(Object[].class);
 
-        limiter(true).checkSubmission(LINK_KEY);
+        limiter(true).checkSubmission(LINK_ID);
 
         then(redisTemplate).should()
                 .execute(any(RedisScript.class), keys.capture(), args.capture());
@@ -104,7 +106,7 @@ class PublicSubmissionRateLimiterTest {
         // 막는 손해가 더 크다는 팀 결정이다.
         givenScriptFailure();
 
-        assertThatCode(() -> limiter(true).checkSubmission(LINK_KEY))
+        assertThatCode(() -> limiter(true).checkSubmission(LINK_ID))
                 .doesNotThrowAnyException();
     }
 
@@ -114,7 +116,7 @@ class PublicSubmissionRateLimiterTest {
         givenScriptFailure();
 
         BusinessException exception = assertThrows(BusinessException.class,
-                () -> limiter(false).checkSubmission(LINK_KEY));
+                () -> limiter(false).checkSubmission(LINK_ID));
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.REVIEW_SUBMISSION_RATE_LIMITED);
     }
