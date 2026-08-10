@@ -36,6 +36,8 @@ RDS PostgreSQL       Redis Container
 - RDS와 Redis는 서로 다른 비밀번호를 사용하며, `REDIS_PASSWORD`는 운영 배포의 필수 값입니다.
 - `docker compose config`는 비밀 값이 출력될 수 있으므로 사용하지 않습니다.
   구문 검증에는 반드시 `docker compose config --quiet`을 사용합니다.
+- 운영 `JAVA_TOOL_OPTIONS`로 `springdoc.api-docs.enabled`나 `springdoc.swagger-ui.enabled`를
+  덮어쓰지 않습니다. 운영 API 문서 비활성화 설정은 `application-prod.yml`을 따릅니다.
 - 배포 로그와 문서에 이메일 등 개인 식별정보를 남기지 않습니다.
 
 ## 배포 전 확인
@@ -59,9 +61,10 @@ git log -1 --oneline
 2. GitHub OIDC로 단기 AWS 자격 증명 발급
 3. 커밋 SHA를 태그로 사용해 Docker 이미지 빌드 및 ECR Push
 4. 같은 커밋의 `compose.prod.yml`과 배포 스크립트를 Systems Manager Run Command로 EC2에 전달
-5. 서버의 `.env.prod`로 새 Compose를 사전 검증하고 필수 값이 빠졌으면 기존 app을 교체하지 않고 중단
-6. 검증된 Compose를 `/opt/wevo/compose.prod.yml`에 원자적으로 설치하고 app 재생성
-7. 컨테이너 내부 Actuator 응답이 `UP`인지 확인
+5. 서버의 `.env.prod`에서 AI Provider와 guardrail 조합을 값 노출 없이 검증
+6. 새 Compose를 사전 검증하고 필수 값이 빠졌으면 기존 app을 교체하지 않고 중단
+7. 검증된 Compose를 `/opt/wevo/compose.prod.yml`에 원자적으로 설치하고 app 재생성
+8. 컨테이너 내부 Actuator 응답이 `UP`인지 확인
 
 GitHub 저장소의 `Settings > Secrets and variables > Actions > Variables`에는 다음 Repository variable이
 등록되어 있어야 합니다. 이 값들은 비밀번호가 아니며 운영 비밀 값은 계속 EC2의 `.env.prod`에서만
@@ -90,7 +93,37 @@ Flyway 전진 호환성을 보장할 수 없어 수행하지 않으며 아래 �
 
 CI의 `.github/scripts/test-production-deployment-assets.sh`는 정상 예시 환경에서 Compose 검증이
 통과하는지, DB·Redis·JWT·프론트 주소·초대·AI Provider 필수값을 하나씩 제거한 환경에서는 배포 전
-검증이 실패하는지, CD가 같은 commit의 Compose를 전달하는지 검사합니다.
+검증이 실패하는지, OpenAI Provider와 비활성 guardrail 조합을 거부하는지, `.env.example`의 운영 AI
+변수가 Compose에 전달되는지, CD가 같은 commit의 Compose와 AI 사전검증 스크립트를 전달하는지 검사합니다.
+
+## OpenAI 운영 활성화 사전검증
+
+`AI_PROVIDER=openai`를 적용하려면 최소한 `OPENAI_API_KEY`, `OPENAI_API_MODEL`,
+`AI_GUARDRAIL_ENABLED=true`가 먼저 등록돼 있어야 합니다. `AI_PROVIDER=none`은 장애 시 외부 AI 호출을
+격리하는 kill switch이며 다른 Provider로의 fallback을 의미하지 않습니다.
+
+수동 작업에서는 아래처럼 값 자체를 출력하지 않고 Provider·guardrail 조합만 검증합니다. 결과가
+`PASS`가 아니면 app을 재생성하지 않습니다.
+
+```bash
+cd /opt/wevo
+sudo awk -F= '
+$1 == "AI_PROVIDER" { provider_count++; provider=$2 }
+$1 == "AI_GUARDRAIL_ENABLED" { guardrail_count++; guardrail=$2 }
+END {
+  valid=(provider_count == 1 && guardrail_count == 1
+    && (provider == "openai" || provider == "none")
+    && (guardrail == "true" || guardrail == "false")
+    && (provider != "openai" || guardrail == "true"))
+  printf "AI provider/guardrail preflight: %s\n", valid ? "PASS" : "FAIL"
+  exit !valid
+}' .env.prod
+sudo docker compose --env-file .env.prod -f compose.prod.yml config --quiet
+```
+
+`.env.prod`를 수정해도 실행 중인 컨테이너 환경은 바뀌지 않습니다. 검증이 끝난 뒤 정식 CD를 실행하거나
+아래 수동 절차로 app을 재생성해야 반영됩니다. 단, 최신 이미지와 같은 커밋의 Compose가 준비되기 전에
+기존 정상 app을 먼저 재생성하지 않습니다.
 
 ## EC2 수동 배포
 
@@ -124,6 +157,9 @@ sudo systemctl is-active nginx
 
 정상 기준은 다음과 같습니다.
 
+- Compose의 `Started`는 컨테이너 프로세스를 생성했다는 뜻이며 배포 성공이 아닙니다.
+- `health: starting`은 초기화 중이므로 기다리면서 app 로그를 확인합니다. 반복 재시작하거나 제한 시간을
+  넘기면 실패로 판단합니다.
 - 앱과 Redis 컨테이너가 `healthy`
 - Flyway 마이그레이션 성공
 - RDS 연결 성공

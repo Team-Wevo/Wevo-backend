@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 readonly DEPLOY_SCRIPT=".github/scripts/deploy-on-ec2.sh"
+readonly AI_ENV_VALIDATOR=".github/scripts/validate-production-ai-env.sh"
 readonly DEPLOY_WORKFLOW=".github/workflows/deploy.yml"
 readonly COMPOSE_FILE="compose.prod.yml"
 readonly EXAMPLE_ENV_FILE=".env.example"
@@ -28,20 +29,28 @@ assert_not_contains() {
 }
 
 bash -n "$DEPLOY_SCRIPT"
+bash -n "$AI_ENV_VALIDATOR"
 
 assert_contains "$DEPLOY_SCRIPT" 'SOURCE_COMPOSE_FILE="${4:?compose file from the deployment commit is required}"'
+assert_contains "$DEPLOY_SCRIPT" 'AI_ENV_VALIDATOR="${5:?AI environment validator from the deployment commit is required}"'
+assert_contains "$DEPLOY_SCRIPT" '"$AI_ENV_VALIDATOR" "$ENV_FILE"'
 assert_contains "$DEPLOY_SCRIPT" 'docker compose --env-file "$ENV_FILE" -f "$SOURCE_COMPOSE_FILE" config --quiet'
 assert_contains "$DEPLOY_WORKFLOW" 'compose_payload="$(gzip -c compose.prod.yml | base64 -w 0)"'
+assert_contains "$DEPLOY_WORKFLOW" 'ai_env_validator_payload="$(gzip -c .github/scripts/validate-production-ai-env.sh | base64 -w 0)"'
 assert_contains "$DEPLOY_WORKFLOW" '/tmp/wevo-compose.prod.yml'
+assert_contains "$DEPLOY_WORKFLOW" '/tmp/wevo-validate-production-ai-env.sh'
 
 preflight_line="$(grep -nF 'docker compose --env-file "$ENV_FILE" -f "$SOURCE_COMPOSE_FILE" config --quiet' \
+  "$DEPLOY_SCRIPT" | head -n1 | cut -d: -f1)"
+ai_preflight_line="$(grep -nF '"$AI_ENV_VALIDATOR" "$ENV_FILE"' \
   "$DEPLOY_SCRIPT" | head -n1 | cut -d: -f1)"
 pull_line="$(grep -nF 'docker compose --env-file "$ENV_FILE" -f "$SOURCE_COMPOSE_FILE" pull app' \
   "$DEPLOY_SCRIPT" | head -n1 | cut -d: -f1)"
 recreate_line="$(grep -nF 'docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate app' \
   "$DEPLOY_SCRIPT" | head -n1 | cut -d: -f1)"
 
-if (( preflight_line >= pull_line || preflight_line >= recreate_line )); then
+if (( ai_preflight_line >= pull_line || ai_preflight_line >= recreate_line \
+  || preflight_line >= pull_line || preflight_line >= recreate_line )); then
   echo "production compose preflight must run before image pull and app recreation." >&2
   exit 1
 fi
@@ -59,6 +68,35 @@ awk '{
 
 env APP_IMAGE=wevo-backend:ci \
   docker compose --env-file "$BASELINE_ENV_FILE" -f "$COMPOSE_FILE" config --quiet
+
+bash "$AI_ENV_VALIDATOR" "$BASELINE_ENV_FILE"
+
+readonly DISABLED_GUARDRAIL_ENV_FILE="$test_directory/disabled-guardrail.env"
+awk '{
+  if ($0 == "AI_GUARDRAIL_ENABLED=true") {
+    print "AI_GUARDRAIL_ENABLED=false"
+  } else {
+    print
+  }
+}' "$BASELINE_ENV_FILE" > "$DISABLED_GUARDRAIL_ENV_FILE"
+
+if bash "$AI_ENV_VALIDATOR" "$DISABLED_GUARDRAIL_ENV_FILE" > /dev/null 2>&1; then
+  echo "production AI preflight must reject openai with disabled guardrails." >&2
+  exit 1
+fi
+
+readonly DISABLED_PROVIDER_ENV_FILE="$test_directory/disabled-provider.env"
+awk '{
+  if ($0 == "AI_PROVIDER=openai") {
+    print "AI_PROVIDER=none"
+  } else if ($0 == "AI_GUARDRAIL_ENABLED=true") {
+    print "AI_GUARDRAIL_ENABLED=false"
+  } else {
+    print
+  }
+}' "$BASELINE_ENV_FILE" > "$DISABLED_PROVIDER_ENV_FILE"
+
+bash "$AI_ENV_VALIDATOR" "$DISABLED_PROVIDER_ENV_FILE"
 
 readonly REQUIRED_PRODUCTION_VARIABLES=(
   DB_URL
@@ -111,6 +149,26 @@ for variable_name in "${REQUIRED_PRODUCTION_VARIABLES[@]}"; do
     exit 1
   fi
 done
+
+# 실제 Provider 호출을 허용하는 테스트용 opt-in은 운영 컨테이너에 전달하지 않는다.
+# 그 외 .env.example의 AI/OpenAI 변수는 Compose 계약에서 누락되면 CI가 실패해야 한다.
+while IFS= read -r variable_name; do
+  case "$variable_name" in
+    OPENAI_INTEGRATION_ENABLED \
+      | OPENAI_CACHE_INTEGRATION_ENABLED \
+      | OPENAI_EVALUATION_ENABLED \
+      | OPENAI_EVALUATION_MAX_FIXTURES \
+      | OPENAI_EVALUATION_MAX_PROVIDER_REQUESTS \
+      | OPENAI_EVALUATION_MAX_OUTPUT_TOKENS \
+      | OPENAI_EVALUATION_DEADLINE \
+      | OPENAI_EVALUATION_MAX_COST_USD)
+      continue
+      ;;
+  esac
+
+  expected_prefix="      ${variable_name}: "'${'"${variable_name}"
+  assert_contains "$COMPOSE_FILE" "$expected_prefix"
+done < <(awk -F= '/^(AI_|OPENAI_)[A-Z0-9_]*=/ {print $1}' "$EXAMPLE_ENV_FILE" | sort -u)
 
 assert_contains "$EXAMPLE_ENV_FILE" 'AI_PROVIDER=openai'
 assert_not_contains "$COMPOSE_FILE" 'NVIDIA_API_'

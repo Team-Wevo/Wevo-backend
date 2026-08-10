@@ -6,6 +6,7 @@ IMAGE_URI="${1:?image URI is required}"
 AWS_REGION="${2:?AWS region is required}"
 ECR_REGISTRY="${3:?ECR registry is required}"
 SOURCE_COMPOSE_FILE="${4:?compose file from the deployment commit is required}"
+AI_ENV_VALIDATOR="${5:?AI environment validator from the deployment commit is required}"
 
 DEPLOY_DIR="/opt/wevo"
 COMPOSE_FILE="compose.prod.yml"
@@ -44,6 +45,11 @@ if [[ ! -f "$SOURCE_COMPOSE_FILE" ]]; then
   exit 1
 fi
 
+if [[ ! -x "$AI_ENV_VALIDATOR" ]]; then
+  echo "AI environment validator is not executable." >&2
+  exit 1
+fi
+
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "$DEPLOY_DIR/$ENV_FILE does not exist." >&2
   exit 1
@@ -55,6 +61,9 @@ if [[ "$(stat -c '%a' "$ENV_FILE")" != "600" ]]; then
 fi
 
 export APP_IMAGE="$IMAGE_URI"
+
+# Provider와 guardrail 조합을 값 노출 없이 확인하고, 실패하면 기존 app을 유지한다.
+"$AI_ENV_VALIDATOR" "$ENV_FILE"
 
 # The compose file is shipped from the same commit as the immutable image. Validate all strict
 # ${VAR:?message} expressions against the server-only env file before replacing a healthy app.
