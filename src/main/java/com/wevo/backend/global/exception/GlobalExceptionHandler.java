@@ -8,6 +8,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -20,6 +22,7 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import tools.jackson.databind.exc.InvalidFormatException;
 
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Objects;
 
@@ -35,6 +38,8 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     private static final String INVALID_FORMAT_REASON = "올바른 형식의 값이어야 합니다.";
     private static final String REQUIRED_VALUE_REASON = "필수 값입니다.";
+    /** SQL 표준 unique_violation. PostgreSQL·H2 공통. */
+    private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
 
     /**
      * 서비스 계층에서 발생한 BusinessException을 처리.
@@ -154,28 +159,71 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ErrorCode.CONFLICT));
     }
 
+    /**
+     * DB 무결성 제약 위반을 원인별로 나눠 변환한다.
+     *
+     * <p><b>유니크 위반만 409({@code C003})</b> 다 — 같은 값이 이미 있다는 뜻이라 §5.6 의 409 정의
+     * ("저장된 리소스의 현재 상태와 충돌")에 맞고, 동시 요청에서 정상적으로 발생할 수 있다.
+     *
+     * <p>그 밖의 위반(FK·NOT NULL·CHECK)은 <b>서버가 보낼 수 없는 데이터를 보낸 것</b>이므로 500 으로
+     * 돌린다. 전부 409 로 뭉치면 "요청이 현재 상태와 충돌합니다"라는 안내가 나가 사용자는 재시도하고,
+     * 정작 고쳐야 할 서버 버그는 드러나지 않는다.
+     *
+     * <p>제약 이름·값은 로그에 남기지 않는다 — 저장하려던 데이터가 메시지에 섞여 나올 수 있다(§7).
+     * 진단에는 SQLState 로 충분하다.
+     */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(
             DataIntegrityViolationException exception
     ) {
+        if (isUniqueViolation(exception)) {
+            return ResponseEntity
+                    .status(ErrorCode.CONFLICT.getStatus())
+                    .body(ApiResponse.error(ErrorCode.CONFLICT));
+        }
+
+        log.error("Data integrity violation that is not a unique constraint. sqlState={}",
+                sqlState(exception));
+
         return ResponseEntity
-                .status(ErrorCode.CONFLICT.getStatus())
-                .body(ApiResponse.error(ErrorCode.CONFLICT));
+                .status(ErrorCode.INTERNAL_SERVER_ERROR.getStatus())
+                .body(ApiResponse.error(ErrorCode.INTERNAL_SERVER_ERROR));
+    }
+
+    /** SQLState {@code 23505}(unique_violation)는 PostgreSQL·H2 가 같은 값을 쓴다. */
+    private boolean isUniqueViolation(DataIntegrityViolationException exception) {
+        return UNIQUE_VIOLATION_SQL_STATE.equals(sqlState(exception));
+    }
+
+    private String sqlState(DataIntegrityViolationException exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sqlException) {
+                return sqlException.getSQLState();
+            }
+        }
+        return null;
     }
 
     /**
      * 처리되지 않은 서버 예외를 안전한 공통 응답으로 변환한다.
      *
-     * <p>Spring MVC가 상태 코드를 이미 정의한 예외는 해당 상태를 그대로 유지하고,
-     * 그 밖의 예상하지 못한 예외만 내부 서버 오류로 변환한다.
+     * <p>Spring MVC가 상태 코드를 이미 정의한 예외({@link ErrorResponse})는 그 상태를 유지하되
+     * <b>본문은 반드시 공통 형식으로 채운다</b>. 상태만 남기고 본문을 비우면 오타 경로(404)·잘못된
+     * 메서드(405)·Content-Type 불일치(415) 같은 흔한 오류에서 {@code code} 가 없는 응답이 나가,
+     * {@code code} 로 분기하는 클라이언트 공통 처리가 그 응답만 파싱하지 못한다. (§5.4)
      *
      * <p>예외 메시지와 요청 데이터는 민감정보를 포함할 수 있으므로 로그에 남기지 않고,
      * 진단에 필요한 예외 타입만 기록한다.
      */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<?> handleUnexpectedException(Exception exception) {
+    public ResponseEntity<ApiResponse<Void>> handleUnexpectedException(Exception exception) {
         if (exception instanceof ErrorResponse errorResponse) {
-            return ResponseEntity.status(errorResponse.getStatusCode()).build();
+            HttpStatusCode status = errorResponse.getStatusCode();
+            // Spring 이 실은 응답 헤더를 그대로 넘긴다 — 405 의 Allow 는 표준상 필수고(RFC 9110),
+            // 415 의 Accept 계열도 클라이언트가 요청을 고치는 데 필요한 정보다.
+            return ResponseEntity.status(status)
+                    .headers(errorResponse.getHeaders())
+                    .body(ApiResponse.error(protocolErrorCode(status)));
         }
 
         log.error("Unhandled server exception. exceptionType={}", exception.getClass().getName());
@@ -183,6 +231,25 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(ErrorCode.INTERNAL_SERVER_ERROR.getStatus())
                 .body(ApiResponse.error(ErrorCode.INTERNAL_SERVER_ERROR));
+    }
+
+    /**
+     * Spring MVC 가 정한 상태에 대응하는 공통 오류 코드를 고른다.
+     *
+     * <p>이름이 붙은 상태만 전용 코드를 두고, 그 밖의 상태는 계열로 묶는다 — 상태 하나마다 코드를
+     * 늘리면 클라이언트가 분기하지도 않을 코드만 쌓인다. (§5.8) 어느 경우든 <b>본문은 항상 채운다</b>.
+     */
+    private ErrorCode protocolErrorCode(HttpStatusCode status) {
+        if (status.isSameCodeAs(HttpStatus.NOT_FOUND)) {
+            return ErrorCode.ENDPOINT_NOT_FOUND;
+        }
+        if (status.isSameCodeAs(HttpStatus.METHOD_NOT_ALLOWED)) {
+            return ErrorCode.METHOD_NOT_ALLOWED;
+        }
+        if (status.isSameCodeAs(HttpStatus.UNSUPPORTED_MEDIA_TYPE)) {
+            return ErrorCode.UNSUPPORTED_MEDIA_TYPE;
+        }
+        return status.is5xxServerError() ? ErrorCode.INTERNAL_SERVER_ERROR : ErrorCode.INVALID_INPUT;
     }
 
     private ResponseEntity<ApiResponse<Void>> invalidInput(FieldError error) {
