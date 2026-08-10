@@ -74,15 +74,15 @@ class SectionDraftVersionHistoryIntegrationTest {
         getVersions(section.getId(), owner)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("OK"))
-                .andExpect(jsonPath("$.data.totalCount").value(2))
-                .andExpect(jsonPath("$.data.versions[0].version").value(2))
-                .andExpect(jsonPath("$.data.versions[1].version").value(1))
-                .andExpect(jsonPath("$.data.versions[0].contentLength").value("2차 초안 본문".length()))
-                .andExpect(jsonPath("$.data.versions[0].editor.userId").value(owner.getId()))
-                .andExpect(jsonPath("$.data.versions[0].editor.name").value("owner-history-1"))
-                .andExpect(jsonPath("$.data.versions[0].savedAt").exists())
+                .andExpect(jsonPath("$.data.totalElements").value(2))
+                .andExpect(jsonPath("$.data.content[0].version").value(2))
+                .andExpect(jsonPath("$.data.content[1].version").value(1))
+                .andExpect(jsonPath("$.data.content[0].contentLength").value("2차 초안 본문".length()))
+                .andExpect(jsonPath("$.data.content[0].editor.userId").value(owner.getId()))
+                .andExpect(jsonPath("$.data.content[0].editor.name").value("owner-history-1"))
+                .andExpect(jsonPath("$.data.content[0].savedAt").exists())
                 // 목록은 어느 버전을 열어볼지 고르는 용도라 본문을 싣지 않는다
-                .andExpect(jsonPath("$.data.versions[0].content").doesNotExist());
+                .andExpect(jsonPath("$.data.content[0].content").doesNotExist());
     }
 
     @Test
@@ -130,8 +130,8 @@ class SectionDraftVersionHistoryIntegrationTest {
 
         getVersions(section.getId(), owner)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.versions[0].contentLength").value("짧음".length()))
-                .andExpect(jsonPath("$.data.versions[1].contentLength").value("아주 길게 쓴 본문입니다".length()));
+                .andExpect(jsonPath("$.data.content[0].contentLength").value("짧음".length()))
+                .andExpect(jsonPath("$.data.content[1].contentLength").value("아주 길게 쓴 본문입니다".length()));
     }
 
     @Test
@@ -147,8 +147,8 @@ class SectionDraftVersionHistoryIntegrationTest {
         getVersions(section.getId(), owner)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.totalCount").value(0))
-                .andExpect(jsonPath("$.data.versions").isEmpty());
+                .andExpect(jsonPath("$.data.totalElements").value(0))
+                .andExpect(jsonPath("$.data.content").isEmpty());
     }
 
     @Test
@@ -164,9 +164,9 @@ class SectionDraftVersionHistoryIntegrationTest {
 
         getVersions(section.getId(), owner)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.totalCount").value(1))
-                .andExpect(jsonPath("$.data.versions[0].version").value(1))
-                .andExpect(jsonPath("$.data.versions[0].editor").doesNotExist());
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].version").value(1))
+                .andExpect(jsonPath("$.data.content[0].editor").doesNotExist());
     }
 
     @Test
@@ -185,8 +185,8 @@ class SectionDraftVersionHistoryIntegrationTest {
 
         getVersions(section.getId(), owner)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.versions[0].editor.userId").value(leaver.getId()))
-                .andExpect(jsonPath("$.data.versions[0].editor.name").value(User.WITHDRAWN_NAME));
+                .andExpect(jsonPath("$.data.content[0].editor.userId").value(leaver.getId()))
+                .andExpect(jsonPath("$.data.content[0].editor.name").value(User.WITHDRAWN_NAME));
     }
 
     @Test
@@ -263,10 +263,113 @@ class SectionDraftVersionHistoryIntegrationTest {
         getVersion(section.getId(), 1, owner).andExpect(status().isOk());
     }
 
+    @Test
+    @DisplayName("이력이 길어도 한 번에 한 페이지만 내린다 — 기본 20건, 전체 건수는 그대로")
+    void longHistoryIsPagedWithDefaultSize() throws Exception {
+        User owner = persistUser("owner-history-11@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        ProjectSection section = persistSection(project);
+        persistDrafts(section, owner, 101);
+        em.flush();
+        em.clear();
+
+        getVersions(section.getId(), owner)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.size").value(20))
+                .andExpect(jsonPath("$.data.content.length()").value(20))
+                // 현재 페이지 길이와 전체 건수는 구분된다
+                .andExpect(jsonPath("$.data.totalElements").value(101))
+                .andExpect(jsonPath("$.data.totalPages").value(6))
+                .andExpect(jsonPath("$.data.hasNext").value(true))
+                // 최신 버전 우선 정렬은 페이지를 나눠도 유지된다
+                .andExpect(jsonPath("$.data.content[0].version").value(101));
+    }
+
+    @Test
+    @DisplayName("상한을 넘는 size 는 거부하지 않고 100으로 조정한다 (CLAUDE.md §5.5)")
+    void oversizedPageSizeIsClampedNotRejected() throws Exception {
+        User owner = persistUser("owner-history-12@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        ProjectSection section = persistSection(project);
+        persistDrafts(section, owner, 101);
+        em.flush();
+        em.clear();
+
+        getVersions(section.getId(), owner, "?size=1000")
+                .andExpect(status().isOk())
+                // 오류(C001)가 아니라 성공이며, 적용된 크기를 응답이 알려준다
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.size").value(100))
+                .andExpect(jsonPath("$.data.content.length()").value(100))
+                .andExpect(jsonPath("$.data.totalElements").value(101))
+                .andExpect(jsonPath("$.data.hasNext").value(true));
+    }
+
+    @Test
+    @DisplayName("마지막 페이지는 남은 만큼만 담고 hasNext 가 꺼진다")
+    void lastPageCarriesRemainderOnly() throws Exception {
+        User owner = persistUser("owner-history-13@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        ProjectSection section = persistSection(project);
+        persistDrafts(section, owner, 101);
+        em.flush();
+        em.clear();
+
+        getVersions(section.getId(), owner, "?page=1&size=100")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content.length()").value(1))
+                .andExpect(jsonPath("$.data.hasNext").value(false))
+                // 가장 오래된 버전이 마지막 페이지 끝에 온다
+                .andExpect(jsonPath("$.data.content[0].version").value(1));
+    }
+
+    @Test
+    @DisplayName("범위를 벗어난 페이지는 빈 목록이고 전체 건수는 유지된다")
+    void pageBeyondRangeIsEmptyButKeepsTotal() throws Exception {
+        User owner = persistUser("owner-history-14@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        ProjectSection section = persistSection(project);
+        persistDrafts(section, owner, 3);
+        em.flush();
+        em.clear();
+
+        getVersions(section.getId(), owner, "?page=99")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content").isEmpty())
+                .andExpect(jsonPath("$.data.totalElements").value(3));
+    }
+
+    @Test
+    @DisplayName("음수 page·0 이하 size 는 오류가 아니라 기본값으로 조정된다")
+    void invalidPagingValuesAreNormalized() throws Exception {
+        User owner = persistUser("owner-history-15@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        ProjectSection section = persistSection(project);
+        persistDrafts(section, owner, 3);
+        em.flush();
+        em.clear();
+
+        getVersions(section.getId(), owner, "?page=-5&size=0")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.size").value(20))
+                .andExpect(jsonPath("$.data.content.length()").value(3));
+    }
+
     // --- 헬퍼 ---
 
     private ResultActions getVersions(Long sectionId, User user) throws Exception {
-        return mockMvc.perform(get("/api/project-sections/{id}/draft/versions", sectionId)
+        return getVersions(sectionId, user, "");
+    }
+
+    private ResultActions getVersions(Long sectionId, User user, String query) throws Exception {
+        return mockMvc.perform(get("/api/project-sections/" + sectionId + "/draft/versions" + query)
                 .with(authentication(authOf(user))));
     }
 
@@ -338,6 +441,13 @@ class SectionDraftVersionHistoryIntegrationTest {
                 .version(version)
                 .lastEditor(editor)
                 .build());
+    }
+
+    /** 버전 1..count 를 순서대로 쌓는다. 본문 길이를 다르게 둬 페이지가 섞이면 드러나게 한다. */
+    private void persistDrafts(ProjectSection section, User editor, int count) {
+        for (int version = 1; version <= count; version++) {
+            persistDraft(section, "본문 " + version, version, editor);
+        }
     }
 
     private void persistLease(ProjectSection section, User holder, LocalDateTime leaseUntil) {

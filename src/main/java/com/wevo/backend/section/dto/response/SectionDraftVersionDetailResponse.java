@@ -1,7 +1,7 @@
 package com.wevo.backend.section.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.wevo.backend.section.domain.SectionDraft;
+import com.wevo.backend.section.service.SectionDraftVersionContent;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 
@@ -15,10 +15,10 @@ import java.time.LocalDateTime;
  * 여기서는 편집권(`activeEditor`)·저장 기준 버전을 함께 내리지 않는다. 이 응답은 <b>읽기 전용
  * 이력</b>이라 편집을 시작하는 데 쓰이지 않기 때문이다.
  *
- * @param version       조회한 본문 버전
- * @param content       해당 버전의 본문 — 저장된 값이 없으면 빈 문자열
- * @param editor        저장한 사람 — 기록이 없으면 생략 ({@link SectionDraftVersionEditorResponse})
- * @param savedAt       저장 시각 (KST)
+ * @param version 조회한 본문 버전
+ * @param content 해당 버전의 본문 — 저장된 값이 없으면 빈 문자열
+ * @param editor  저장한 사람 — 기록이 없으면 생략
+ * @param savedAt 저장 시각 (KST)
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @Schema(requiredProperties = {"version", "content", "savedAt"})
@@ -29,13 +29,13 @@ public record SectionDraftVersionDetailResponse(
         LocalDateTime savedAt
 ) {
 
-    public static SectionDraftVersionDetailResponse from(SectionDraft draft) {
-        String content = draft.getContent();
+    public static SectionDraftVersionDetailResponse from(SectionDraftVersionContent version) {
+        String content = version.content();
         return new SectionDraftVersionDetailResponse(
-                draft.getVersion(),
+                version.version(),
                 // 본문 컬럼이 nullable 이라 빈 문자열로 정규화한다 — 화면이 null 분기를 두지 않게.
                 content == null ? "" : content,
-                SectionDraftVersionEditorResponse.from(draft.getLastEditor()),
-                draft.getCreatedAt());
+                SectionDraftVersionEditorResponse.of(version.editorUserId(), version.editorName()),
+                version.savedAt());
     }
 }

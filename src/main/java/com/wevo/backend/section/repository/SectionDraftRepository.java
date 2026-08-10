@@ -1,6 +1,10 @@
 package com.wevo.backend.section.repository;
 
 import com.wevo.backend.section.domain.SectionDraft;
+import com.wevo.backend.section.service.SectionDraftVersionContent;
+import com.wevo.backend.section.service.SectionDraftVersionSummary;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -20,30 +24,40 @@ public interface SectionDraftRepository extends JpaRepository<SectionDraft, Long
     Optional<SectionDraft> findByProjectSection_IdAndVersion(Long sectionId, Integer version);
 
     /**
-     * 섹션의 초안 버전 이력을 <b>최신 버전부터</b> 조회한다. (이력 목록 — API_SPEC §3.7.8)
+     * 섹션의 초안 버전 이력을 <b>최신 버전부터</b> 페이지 단위로 조회한다. (API_SPEC §3.7.8)
      *
-     * <p>편집자 표시 이름을 함께 내리므로 {@code lastEditor} 를 {@code JOIN FETCH} 한다 —
-     * 지연 로딩으로 두면 버전 수만큼 사용자 조회가 나간다(N+1). 편집자가 없는 행
-     * (AI 생성본·레거시 데이터)도 목록에서 빠지면 안 되므로 {@code LEFT} 조인이다.
+     * <p><b>본문을 읽지 않는다</b> — 목록에 필요한 것은 길이뿐이라 {@code LENGTH} 로 DB 에서
+     * 계산해 담는다. 엔티티를 그대로 읽으면 이력이 쌓일수록 화면에 쓰지도 않을 본문 전체가
+     * 메모리로 올라온다. 길이 계산은 {@code content} 가 nullable 이라 {@code COALESCE} 로 0 을 채운다.
      *
-     * <p>본문({@code content})은 목록에서 쓰지 않지만 엔티티를 통째로 읽는다 — 버전 수가 적은
-     * MVP 규모에서 본문 없는 별도 투영을 두는 것보다 조회 경로를 하나로 유지하는 편이 낫다.
-     * 이력이 길어져 전송량이 문제가 되면 그때 투영으로 바꾼다.
+     * <p>편집자는 {@code LEFT JOIN} 으로 <b>ID·이름만</b> 가져온다 — 조인하지 않으면 버전 수만큼
+     * 사용자 조회가 나가고(N+1), 엔티티를 통째로 넘기면 section 의 응답 DTO 가 user 엔티티에
+     * 의존하게 된다 (CLAUDE.md §6). 편집자가 없는 행(AI 생성본·레거시)도 목록에서 빠지면 안 되므로
+     * {@code INNER} 가 아니라 {@code LEFT} 다.
+     *
+     * <p>전체 건수는 별도 count 쿼리로 센다 — 생성자 표현식 쿼리는 count 로 자동 변환되지 않는다.
      */
-    @Query("SELECT d FROM SectionDraft d LEFT JOIN FETCH d.lastEditor "
-            + "WHERE d.projectSection.id = :sectionId ORDER BY d.version DESC")
-    List<SectionDraft> findVersionHistoryBySectionId(@Param("sectionId") Long sectionId);
+    @Query(value = "SELECT new com.wevo.backend.section.service.SectionDraftVersionSummary("
+            + "d.version, COALESCE(LENGTH(d.content), 0), e.id, e.name, d.createdAt) "
+            + "FROM SectionDraft d LEFT JOIN d.lastEditor e "
+            + "WHERE d.projectSection.id = :sectionId ORDER BY d.version DESC",
+            countQuery = "SELECT COUNT(d) FROM SectionDraft d WHERE d.projectSection.id = :sectionId")
+    Page<SectionDraftVersionSummary> findVersionSummaries(@Param("sectionId") Long sectionId,
+                                                          Pageable pageable);
 
     /**
-     * 섹션의 특정 버전 초안을 편집자와 함께 조회한다. (버전 본문 조회 — API_SPEC §3.7.9)
+     * 섹션의 특정 버전 본문을 편집자 정보와 함께 조회한다. (API_SPEC §3.7.9)
      *
-     * <p>{@link #findByProjectSection_IdAndVersion} 과 대상은 같고 편집자를 함께 로딩하는 점만
-     * 다르다 — 응답에 편집자 이름이 들어가므로 조회를 두 번 하지 않는다.
+     * <p>{@link #findByProjectSection_IdAndVersion} 과 대상은 같고, 엔티티 대신 응답에 필요한 값만
+     * 담아 돌려준다는 점이 다르다 — 편집자 이름 때문에 조회를 두 번 하지 않으면서도
+     * {@code User} 엔티티를 도메인 밖으로 내보내지 않는다. (CLAUDE.md §6)
      */
-    @Query("SELECT d FROM SectionDraft d LEFT JOIN FETCH d.lastEditor "
+    @Query("SELECT new com.wevo.backend.section.service.SectionDraftVersionContent("
+            + "d.version, d.content, e.id, e.name, d.createdAt) "
+            + "FROM SectionDraft d LEFT JOIN d.lastEditor e "
             + "WHERE d.projectSection.id = :sectionId AND d.version = :version")
-    Optional<SectionDraft> findVersionWithEditor(@Param("sectionId") Long sectionId,
-                                                 @Param("version") Integer version);
+    Optional<SectionDraftVersionContent> findVersionContent(@Param("sectionId") Long sectionId,
+                                                            @Param("version") Integer version);
 
     /**
      * 프로젝트의 <b>확정된</b> 섹션에 대해 확정본(각 섹션의 {@code confirmedVersion} 에 해당하는
