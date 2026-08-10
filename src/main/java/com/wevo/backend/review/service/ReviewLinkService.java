@@ -43,8 +43,15 @@ import org.slf4j.LoggerFactory;
  *
  * <h2>남용 방지 (토큰만 알면 무제한 제출되는 문제 차단)</h2>
  * <ul>
- *   <li><b>브라우저당 1회</b> — 익명 검토자 키 + 링크 유니크 제약으로 중복 제출을 막는다.</li>
- *   <li><b>링크당 20개 상한</b> — 제출 시 링크 행을 락으로 잡고 count 를 검사해 동시 초과를 막는다.</li>
+ *   <li><b>브라우저당 1회</b> — 익명 검토자 키 + 링크 유니크 제약으로 중복 제출을 막는다.
+ *       다만 이 키는 클라이언트가 보관하는 값이라 새로 만들면 우회된다 — 신원으로 막을 수 없는
+ *       자동화는 아래 속도 제한이 맡는다.</li>
+ *   <li><b>속도 제한</b> — 링크 단위 고정 윈도로 제출 시도를 센다
+ *       ({@link PublicSubmissionRateLimiter}). 위조 키로 20 슬롯을 순식간에 채우는 속도를 낮춘다.
+ *       IP 축은 정책서 §6.2.4(공유망 오탐 우려)에 따라 쓰지 않으므로 채우는 것 자체를 막지는
+ *       못하며, 남는 흔적은 결과 조회의 이상 신호로 팀장에게 알린다.</li>
+ *   <li><b>링크당 20개 상한</b> — 제출 시 링크 행을 락으로 잡고 count 를 검사해 동시 초과를 막는다.
+ *       (저장 폭주만 막을 뿐 결과 무결성은 보장하지 못하므로 위 두 장치와 함께 쓴다)</li>
  *   <li><b>버전 만료·비활성화</b> — OUTDATED/CLOSED 링크는 열람·제출을 거부한다.</li>
  *   <li><b>유효 기간</b> — 발급 시 지정한 마지막 날(KST)이 지나면 EXPIRED 로 열람·제출을 거부한다.</li>
  *   <li><b>토큰 해시 저장</b> — 원문 대신 해시만 저장하고 요청 토큰을 해시해 비교한다.</li>
@@ -77,6 +84,7 @@ public class ReviewLinkService {
     private final TokenHasher tokenHasher;
     private final SectionAuthorIntentQueryService authorIntentQueryService;
     private final ReviewIntentComparisonCoordinator comparisonCoordinator;
+    private final PublicSubmissionRateLimiter rateLimiter;
 
     public ReviewLinkService(SectionAccessGuard sectionAccessGuard,
                              ProjectAccessGuard projectAccessGuard,
@@ -86,7 +94,8 @@ public class ReviewLinkService {
                              UserRepository userRepository,
                              TokenHasher tokenHasher,
                              SectionAuthorIntentQueryService authorIntentQueryService,
-                             ReviewIntentComparisonCoordinator comparisonCoordinator) {
+                             ReviewIntentComparisonCoordinator comparisonCoordinator,
+                             PublicSubmissionRateLimiter rateLimiter) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.projectAccessGuard = projectAccessGuard;
         this.sectionDraftRepository = sectionDraftRepository;
@@ -96,6 +105,7 @@ public class ReviewLinkService {
         this.tokenHasher = tokenHasher;
         this.authorIntentQueryService = authorIntentQueryService;
         this.comparisonCoordinator = comparisonCoordinator;
+        this.rateLimiter = rateLimiter;
     }
 
     /**
@@ -203,13 +213,24 @@ public class ReviewLinkService {
     /**
      * 외부 검토자의 이해도 제출을 저장한다.
      *
-     * <p>링크 행에 쓰기 락을 걸어 같은 링크의 동시 제출을 직렬화한 뒤,
-     * (1) 링크 상태 → (2) 브라우저당 1회 → (3) 20개 상한 순으로 검사한다.
+     * <p>검사 순서는 <b>(0) 링크 식별 → (1) 속도 제한 → (2) 링크 상태 → (3) 브라우저당 1회 →
+     * (4) 20개 상한</b>이다. 속도 제한이 링크 식별 <b>뒤</b>에 오는 것은 의도된 순서다 —
+     * 카운터 키를 <b>실재하는 링크에만</b> 만들기 위해서다. 식별 전에 세면 아무 문자열이나 토큰으로
+     * 보내는 요청마다 새 키가 생겨(분·시간 윈도 2개씩) 카운터 저장소 메모리가 공격자 마음대로
+     * 늘어난다. 존재하지 않는 토큰 조회는 잠글 행이 없어 인덱스 조회로 끝나므로, 이 순서로 잃는
+     * DB 보호는 크지 않다.
+     *
+     * <p>대신 <b>식별된 링크에 대한 실패는 그대로 센다</b> — 만료·종료 링크에 반복해서 두드리거나
+     * 중복 제출을 반복하는 시도가 상태 검사 앞의 속도 제한에 걸린다.
+     *
+     * <p>카운터 키는 토큰이나 그 해시가 아니라 <b>링크 ID</b>다 — 링크를 열 수 있는 값에서 파생된
+     * 무엇도 카운터 저장소에 남기지 않고, 이미 조회한 행의 식별자를 그대로 쓴다.
      */
     @Transactional
     public ReviewSubmissionResponse submitExternalReview(String token, String anonymousReviewerId,
                                                          ExternalReviewSubmitRequest request) {
         ReviewLink link = findLinkForUpdate(token);
+        rateLimiter.checkSubmission(link.getId());
         requireUsable(link, LocalDate.now(KST));
 
         if (reviewSubmissionRepository

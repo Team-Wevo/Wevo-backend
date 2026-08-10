@@ -135,6 +135,30 @@ app:
     # 기본값이 false인 이유는 로컬이 HTTP이기 때문이다 — 켜면 브라우저가 쿠키를 저장하지 않아
     # 검토자 키가 매 요청 새로 발급되고 중복 제출 차단이 무력화된다. prod에서는 true다.
     cookie-secure: ${REVIEW_COOKIE_SECURE:false}
+    # 비인증 외부 검토 제출(/public)의 남용 방지. 외부 검토자는 신원 보증이 없어(익명 검토자 키는
+    # 클라이언트가 만드는 값) "브라우저당 1회"만으로는 자동화된 대량 제출을 막지 못한다.
+    # IP 기준 값은 두지 않는다 — 정책서 §6.2.4가 공유망 오탐을 이유로 배제한다.
+    abuse:
+      rate-limit:
+        # 링크당 허용 제출 시도(시도 기준 — 실패한 제출도 센다). 링크 정원이 20명이라 분당 10회면
+        # 정상 사용에 걸리지 않으면서 슬롯을 순식간에 채우는 자동화의 속도는 낮아진다.
+        per-link-per-minute: ${REVIEW_RATE_LIMIT_LINK_PER_MINUTE:10}
+        per-link-per-hour: ${REVIEW_RATE_LIMIT_LINK_PER_HOUR:40}
+        # Redis 장애 시 제출을 통과시킬지. 기본 true — 외부 검토는 확정 조건에 포함되지 않는
+        # 보조 기능이라(정책서 §6.2) 카운터 장애로 정상 검토를 막는 손해가 더 크다.
+        # 남용이 실제로 관측되면 false 로 뒤집어 잠근다.
+        fail-open: ${REVIEW_RATE_LIMIT_FAIL_OPEN:true}
+      # 결과 조회에 표시할 이상 신호 기준. 차단이 아니라 팀장 화면 표시용이다.
+      anomaly:
+        # 인접 제출 간격이 이 초 미만이면 "사람 속도가 아니다"로 센다. 본문을 읽고 한 문장을
+        # 쓰는 데 10초도 걸리지 않는 경우는 사실상 자동 제출이다.
+        rapid-interval-seconds: ${REVIEW_ANOMALY_RAPID_INTERVAL_SECONDS:10}
+        # 그런 인접 쌍이 이 수 이상이면 의심으로 표시한다. 1~2건은 두 사람이 동시에 낸
+        # 우연일 수 있어 하한을 둔다.
+        rapid-pair-threshold: ${REVIEW_ANOMALY_RAPID_PAIR_THRESHOLD:3}
+        # 같은 문장이 이 수 이상 반복되면 의심으로 표시한다. 서로 다른 사람이 토씨까지 같은
+        # 문장을 낼 이유가 없다.
+        duplicate-summary-threshold: ${REVIEW_ANOMALY_DUPLICATE_SUMMARY_THRESHOLD:2}
 
 # OpenAiChatModel은 빈 choices 경고에 Prompt 객체를 포함하므로 원문 노출을 막는다.
 logging:

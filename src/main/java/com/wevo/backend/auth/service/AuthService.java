@@ -22,6 +22,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * 소셜 로그인, 토큰 재발급, 로그아웃을 담당하는 서비스.
@@ -65,12 +66,45 @@ public class AuthService {
         OAuthUserInfo userInfo = oAuthClientRouter.getClient(provider)
                 .fetchUserInfo(code, redirectUri);
 
-        User user = Objects.requireNonNull(transactionTemplate.execute(status -> authAccountRepository
-                .findByProviderAndProviderUserId(userInfo.provider(), userInfo.providerUserId())
-                .map(AuthAccount::getUser)
-                .orElseGet(() -> register(userInfo))));
+        return issueTokens(findOrRegister(userInfo).getId());
+    }
 
-        return issueTokens(user.getId());
+    /**
+     * 소셜 계정에 연결된 사용자를 찾고, 없으면 가입시킨다.
+     *
+     * <p>같은 계정의 <b>최초 로그인 요청이 동시에</b> 들어오면(로그인 버튼 연타 등) 양쪽 모두
+     * "연결된 계정 없음"을 보고 가입을 시도한다. 늦은 쪽은 DB 제약에서 걸리는데, 그건 오류가 아니라
+     * <b>본인 계정이 방금 만들어졌다</b>는 뜻이다. 다시 조회해 멱등 성공으로 잇는다.
+     * (§5.8 — 사전 검사만으로 무결성을 보장하지 않고, 동시 요청의 제약 위반도 계약된 결과로 변환한다)
+     *
+     * <p>실패한 트랜잭션은 롤백된 뒤이므로 재조회는 새 트랜잭션에서 이뤄진다.
+     */
+    private User findOrRegister(OAuthUserInfo info) {
+        return findByAuthAccount(info).orElseGet(() -> {
+            try {
+                return Objects.requireNonNull(transactionTemplate.execute(status -> register(info)));
+            } catch (DataIntegrityViolationException exception) {
+                // auth_accounts 유니크 위반 — 이메일을 주지 않는 제공자에서 나타나는 형태
+                return recoverConcurrentRegistration(info, exception);
+            } catch (BusinessException exception) {
+                // users 이메일 유니크 위반이 U002 로 변환된 형태. 정말 남의 이메일과 겹친 경우와
+                // 구분해야 하므로, 내 소셜 계정이 생겼을 때만 성공으로 돌린다.
+                if (exception.getErrorCode() != ErrorCode.DUPLICATE_EMAIL) {
+                    throw exception;
+                }
+                return recoverConcurrentRegistration(info, exception);
+            }
+        });
+    }
+
+    private User recoverConcurrentRegistration(OAuthUserInfo info, RuntimeException cause) {
+        return findByAuthAccount(info).orElseThrow(() -> cause);
+    }
+
+    private Optional<User> findByAuthAccount(OAuthUserInfo info) {
+        return authAccountRepository
+                .findByProviderAndProviderUserId(info.provider(), info.providerUserId())
+                .map(AuthAccount::getUser);
     }
 
     /**
