@@ -253,8 +253,10 @@ class OpinionServiceTest {
         assertThat(response.content()).isEmpty();
         assertThat(existing.getContent()).isEmpty();
         assertThat(existing.getSubmittedContentOrLegacy()).isEqualTo(CONTENT);
+        assertThat(existing.getStatus()).isEqualTo(OpinionStatus.SUBMITTED);
         assertThat(existing.hasUnsubmittedChanges()).isTrue();
         verify(opinionRepository).flush();
+        verify(opinionRepository, never()).save(any(Opinion.class));
     }
 
     @Test
