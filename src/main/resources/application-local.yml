@@ -51,7 +51,7 @@ oauth:
 
 wevo:
   ai:
-    provider: ${AI_PROVIDER:nvidia}
+    provider: ${AI_PROVIDER:openai}
     guardrails:
       # 로컬은 Redis quota 통합 검증 task 외에는 비용 guardrail을 활성화하지 않는다.
       enabled: false

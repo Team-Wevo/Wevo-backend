@@ -98,7 +98,8 @@ public class InviteService {
         InviteLink link = inviteLinkRepository.findActiveWithProjectByTokenHash(tokenHasher.hash(token))
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVITE_LINK_NOT_FOUND));
         Project project = link.getProject();
-        long memberCount = projectMemberRepository.countByProjectId(project.getId());
+        // 탈퇴자는 세지 않는다 — 정원과 짝이 되는 값이라 "몇 자리 남았는지"를 뜻한다. (§3.3.3)
+        long memberCount = projectMemberRepository.countActiveByProjectId(project.getId());
         return InvitePreviewResponse.of(project, memberCount);
     }
 
@@ -126,7 +127,8 @@ public class InviteService {
             return ProjectJoinResponse.from(existing);
         }
 
-        if (projectMemberRepository.countByProjectId(project.getId()) >= Project.MAX_MEMBERS) {
+        // 탈퇴자가 자리를 차지하면 4명을 채웠던 팀은 한 명이 나가도 새 팀원을 받을 수 없다. (§3.3.3)
+        if (projectMemberRepository.countActiveByProjectId(project.getId()) >= Project.MAX_MEMBERS) {
             throw new BusinessException(ErrorCode.PROJECT_MEMBER_LIMIT_EXCEEDED);
         }
 

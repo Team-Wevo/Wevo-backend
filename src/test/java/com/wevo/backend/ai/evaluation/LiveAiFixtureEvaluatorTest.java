@@ -37,7 +37,7 @@ class LiveAiFixtureEvaluatorTest {
     @Test
     void normalizesTypedGatewayResultWithoutProviderSdkDependency() {
         AiUsageMetadata usage = new AiUsageMetadata(
-                "nvidia", "request-1", "model", 10L, 2L, null, null
+                "test-provider", "request-1", "model", 10L, 2L, null, null
         );
         AiProviderGateway gateway = new StubGateway(
                 new StructuredAiProviderResponse<>(
@@ -65,7 +65,7 @@ class LiveAiFixtureEvaluatorTest {
     @Test
     void mapsCommonStructuredFailureToNormalizedReasonWithoutRawProviderBody() {
         AiUsageMetadata usage = new AiUsageMetadata(
-                "nvidia", "request-1", "model", 10L, 2L, null, null
+                "test-provider", "request-1", "model", 10L, 2L, null, null
         );
         AiProviderException exception = new AiProviderException(
                 ErrorCode.AI_STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED,

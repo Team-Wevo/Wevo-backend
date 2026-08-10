@@ -253,6 +253,7 @@ class OpenAiProviderContractTest {
             "401, AI_PROVIDER_AUTHENTICATION_FAILED",
             "403, AI_PROVIDER_PERMISSION_DENIED",
             "404, AI_MODEL_NOT_AVAILABLE",
+            "410, AI_MODEL_NOT_AVAILABLE",
             "422, AI_INVALID_REQUEST",
             "429, AI_RATE_LIMITED",
             "500, AI_PROVIDER_UNAVAILABLE",

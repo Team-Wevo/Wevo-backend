@@ -26,7 +26,7 @@ class AiExecutionAvailabilityGuardTest {
     @Test
     void configuredProviderAllowsNewExecution() {
         AiExecutionAvailabilityGuard guard =
-                new AiExecutionAvailabilityGuard(properties("nvidia"));
+                new AiExecutionAvailabilityGuard(properties("openai"));
 
         assertThatCode(guard::requireAvailable).doesNotThrowAnyException();
     }
@@ -48,7 +48,12 @@ class AiExecutionAvailabilityGuardTest {
                         Duration.ZERO
                 ),
                 Map.of(),
-                null
+                null,
+                "openai".equals(provider)
+                        ? new AiProperties.OpenAiOptions(
+                                "test-api-key", null, "model", Duration.ofSeconds(1),
+                                128, "medium", 2_048)
+                        : null
         );
     }
 }

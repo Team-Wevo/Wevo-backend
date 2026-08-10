@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.wevo.backend.global.persistence.PostgresTestContainerConfig;
 import com.wevo.backend.global.security.AuthPrincipal;
+import com.wevo.backend.review.service.ConfirmReviewGate;
 import com.wevo.backend.review.service.TeamReviewService;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
@@ -377,7 +378,83 @@ class TeamReviewIntegrationTest {
                 .andExpect(jsonPath("$.data.outdatedCount").value(0));
     }
 
+    @Test
+    @DisplayName("탈퇴한 팀원의 미해결 수정요청은 확정을 막지 않는다 — 해소할 방법이 없는 차단 방지")
+    void withdrawnMemberChangeRequestDoesNotBlockConfirm() throws Exception {
+        // 팀 검토 현황은 팀원 로스터 기준이라 탈퇴자의 검토는 목록에 나오지 않는다. 그런데 확정
+        // 조건만 그 행을 계속 세면 팀장은 화면에서 수정 요청을 보지도, reviewId 를 얻어 resolve
+        // 하지도 못한 채 확정이 막힌다. 본문을 다시 저장해 전부 만료시키는 것 말고는 빠져나갈
+        // 길이 없어, 남은 팀원의 동의까지 함께 날아간다.
+        User owner = persistUser("owner-w1@team.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistReviewingSectionWithDraft(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User leaver = persistUser("mw1@team.com");
+        persistMember(project, leaver, ProjectMemberRole.MEMBER);
+        em.flush();
+
+        submit(section.getId(), leaver, "CHANGES_REQUESTED", "근거 부족").andExpect(status().isOk());
+        withdraw(leaver);
+
+        // 목록에서 사라진 것과 판정에서 빠진 것이 짝이 맞아야 한다.
+        mockMvc.perform(get("/api/project-sections/{id}/team-reviews", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalMembers").value(0))
+                .andExpect(jsonPath("$.data.unresolvedChangesRequestedCount").value(0))
+                .andExpect(jsonPath("$.data.items.length()").value(0));
+
+        ConfirmReviewGate gate =
+                teamReviewService.evaluateConfirmReviewGate(project.getId(), section.getId());
+        assertThat(gate.noUnresolvedChangeRequest()).isTrue();
+        // 동의해 줄 팀원이 남지 않았으므로 1인 프로젝트 예외로 충족된다 (§6.3.1).
+        assertThat(gate.memberApprovalSatisfied()).isTrue();
+    }
+
+    @Test
+    @DisplayName("탈퇴한 팀원의 동의는 현황과 확정 조건 양쪽에서 함께 빠진다")
+    void withdrawnMemberApprovalIsExcludedFromBothViews() throws Exception {
+        // 목록에는 없는 동의로 확정이 통과하면, 팀장이 보는 화면(동의 0/1)과 서버 판정이 어긋난다.
+        User owner = persistUser("owner-w2@team.com");
+        Project project = persistProject(owner);
+        ProjectSection section = persistReviewingSectionWithDraft(project);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+        User leaver = persistUser("mw2@team.com");
+        persistMember(project, leaver, ProjectMemberRole.MEMBER);
+        User stayer = persistUser("mw3@team.com");
+        persistMember(project, stayer, ProjectMemberRole.MEMBER);
+        em.flush();
+
+        submit(section.getId(), leaver, "APPROVED", null).andExpect(status().isOk());
+        withdraw(leaver);
+
+        mockMvc.perform(get("/api/project-sections/{id}/team-reviews", section.getId())
+                        .with(authentication(authOf(owner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalMembers").value(1))
+                .andExpect(jsonPath("$.data.approvedCount").value(0))
+                .andExpect(jsonPath("$.data.pendingCount").value(1))
+                .andExpect(jsonPath(itemBy(stayer) + ".status", contains("PENDING")));
+
+        // 남은 팀원이 있으니 1인 예외가 아니고, 탈퇴자의 동의는 세지 않으므로 미충족이어야 한다.
+        ConfirmReviewGate gate =
+                teamReviewService.evaluateConfirmReviewGate(project.getId(), section.getId());
+        assertThat(gate.memberApprovalSatisfied()).isFalse();
+
+        // 남은 팀원이 동의하면 그때 충족된다.
+        submit(section.getId(), stayer, "APPROVED", null).andExpect(status().isOk());
+        assertThat(teamReviewService.evaluateConfirmReviewGate(project.getId(), section.getId())
+                .memberApprovalSatisfied()).isTrue();
+    }
+
     // --- 헬퍼 ---
+
+    private void withdraw(User user) {
+        em.find(User.class, user.getId()).withdraw();
+        em.flush();
+        em.clear();
+    }
+
 
     private org.springframework.test.web.servlet.ResultActions resolve(
             Long sectionId, Long reviewId, User user, boolean resolved) throws Exception {

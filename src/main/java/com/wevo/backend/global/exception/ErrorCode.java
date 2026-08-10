@@ -12,6 +12,11 @@ public enum ErrorCode {
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "C001", "잘못된 입력입니다."),
     BUSINESS_RULE_VIOLATION(HttpStatus.UNPROCESSABLE_ENTITY, "C002", "업무 규칙을 위반했습니다."),
     CONFLICT(HttpStatus.CONFLICT, "C003", "요청이 현재 상태와 충돌합니다."),
+    // HTTP 프로토콜 수준의 요청 오류 — 도메인 리소스가 아니라 "요청을 라우팅할 수 없음"을 뜻한다.
+    // 도메인별 404(P001 등)와 구분된다: 이쪽은 경로·메서드·Content-Type 자체가 틀린 경우다.
+    ENDPOINT_NOT_FOUND(HttpStatus.NOT_FOUND, "C004", "요청한 경로를 찾을 수 없습니다."),
+    METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "C005", "허용되지 않은 HTTP 메서드입니다."),
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "C006", "지원하지 않는 Content-Type 입니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "C999", "서버 오류가 발생했습니다."),
 
     // Auth

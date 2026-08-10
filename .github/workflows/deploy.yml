@@ -119,10 +119,12 @@ jobs:
           ) / SSM_POLL_INTERVAL_SECONDS + 1))
 
           script_payload="$(gzip -c .github/scripts/deploy-on-ec2.sh | base64 -w 0)"
+          ai_env_validator_payload="$(gzip -c .github/scripts/validate-production-ai-env.sh | base64 -w 0)"
           compose_payload="$(gzip -c compose.prod.yml | base64 -w 0)"
           parameters="$(
             jq -cn \
               --arg script "$script_payload" \
+              --arg ai_env_validator "$ai_env_validator_payload" \
               --arg compose "$compose_payload" \
               --arg image "$IMAGE_URI" \
               --arg region "$AWS_REGION" \
@@ -131,16 +133,19 @@ jobs:
               '{
                 commands: [
                   "set -eu",
-                  "trap '\''rm -f /tmp/wevo-deploy.sh /tmp/wevo-compose.prod.yml'\'' EXIT",
+                  "trap '\''rm -f /tmp/wevo-deploy.sh /tmp/wevo-validate-production-ai-env.sh /tmp/wevo-compose.prod.yml'\'' EXIT",
                   ("printf %s " + ($script | @sh) + " | base64 --decode | gzip --decompress > /tmp/wevo-deploy.sh"),
+                  ("printf %s " + ($ai_env_validator | @sh) + " | base64 --decode | gzip --decompress > /tmp/wevo-validate-production-ai-env.sh"),
                   ("printf %s " + ($compose | @sh) + " | base64 --decode | gzip --decompress > /tmp/wevo-compose.prod.yml"),
                   "chmod 700 /tmp/wevo-deploy.sh",
+                  "chmod 700 /tmp/wevo-validate-production-ai-env.sh",
                   "chmod 600 /tmp/wevo-compose.prod.yml",
                   ("/usr/bin/env bash /tmp/wevo-deploy.sh "
                     + ($image | @sh) + " "
                     + ($region | @sh) + " "
                     + ($registry | @sh) + " "
-                    + "/tmp/wevo-compose.prod.yml")
+                    + "/tmp/wevo-compose.prod.yml "
+                    + "/tmp/wevo-validate-production-ai-env.sh")
                 ],
                 executionTimeout: [$execution_timeout]
               }'

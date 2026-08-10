@@ -31,7 +31,7 @@ spring:
 
 wevo:
   ai:
-    provider: nvidia
+    provider: openai
     default-options:
       model: test-model
       timeout: 1s
@@ -44,11 +44,14 @@ wevo:
       max-retries: 0
       initial-backoff: 0ms
       max-backoff: 0ms
-    nvidia:
-      api-key: test-nvidia-api-key
+    openai:
+      api-key: test-openai-api-key
       base-url: http://127.0.0.1:1
-      temperature: 0.1
-      reasoning-effort: none
+      model: test-model
+      timeout: 1s
+      max-output-tokens: 128
+      reasoning-effort: medium
+      model-context-limit: 2048
     structured-output:
       max-correction-retries: 2
     guardrails:

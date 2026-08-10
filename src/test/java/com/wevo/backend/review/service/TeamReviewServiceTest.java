@@ -40,7 +40,9 @@ class TeamReviewServiceTest {
     }
 
     private void givenReviews(TeamReview... reviews) {
-        given(teamReviewRepository.findByProjectSection_Id(SECTION_ID)).willReturn(List.of(reviews));
+        // 탈퇴 검토자 제외는 쿼리가 하므로(§6.1 목록과 같은 집합) 여기서는 남은 검토만 주어진다.
+        given(teamReviewRepository.findActiveReviewerReviewsByProjectSectionId(SECTION_ID))
+                .willReturn(List.of(reviews));
     }
 
     private ConfirmReviewGate evaluate() {

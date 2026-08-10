@@ -44,7 +44,7 @@ class AiEvaluationGateTest {
         AiEvaluationSample sample = new AiEvaluationSample(
                 fixture.metadata().id(), AiEvaluationOutcome.SUCCESS, candidate,
                 new com.wevo.backend.ai.client.AiUsageMetadata(
-                        "nvidia", "request", "model", 1L, 1L, null, null
+                        "test-provider", "request", "model", 1L, 1L, null, null
                 ),
                 com.wevo.backend.ai.domain.AiCostSnapshot.unpriced("trial"),
                 1, 1, List.of()

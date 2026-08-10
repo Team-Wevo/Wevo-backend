@@ -86,7 +86,7 @@ public class AiUsageService {
             int attemptCount,
             Long resultId
     ) {
-        AiCostSnapshot cost = costCalculator.calculate(usage);
+        AiCostSnapshot cost = costCalculator.calculate(usage, handle.modelId());
         LocalDateTime completedAt = LocalDateTime.now(clock);
         try {
             persistenceService.completeSuccess(
@@ -106,7 +106,7 @@ public class AiUsageService {
             AiUsageMetadata usage,
             Integer attemptCount
     ) {
-        AiCostSnapshot cost = costCalculator.calculate(usage);
+        AiCostSnapshot cost = costCalculator.calculate(usage, handle.modelId());
         AiErrorType errorType = errorClassifier.classify(throwable);
         String safeMessage = sanitizer.sanitize(errorClassifier.safeMessage(throwable));
         LocalDateTime completedAt = LocalDateTime.now(clock);

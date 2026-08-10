@@ -52,6 +52,25 @@ class AiCostCalculatorTest {
         ).estimatedCost()).isNull();
     }
 
+    @Test
+    void usesAliasPricingForDatedResponseSnapshotWhilePreservingActualModel() {
+        AiCostCalculator calculator = calculator(Map.of(
+                "gpt-5.6-luna",
+                new AiPricingProperties.ModelPricing(
+                        BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO
+                )
+        ));
+        AiUsageMetadata usage = new AiUsageMetadata(
+                "openai", "request-1", "gpt-5.6-luna-2026-07-29",
+                10L, 2L, 0L, 0L
+        );
+
+        AiCostSnapshot cost = calculator.calculate(usage);
+
+        assertThat(usage.modelId()).isEqualTo("gpt-5.6-luna-2026-07-29");
+        assertThat(cost.estimatedCost()).isEqualByComparingTo("0.000012000000");
+    }
+
     private AiCostCalculator calculator(Map<String, AiPricingProperties.ModelPricing> models) {
         return new AiCostCalculator(new AiPricingProperties("pricing-v1", models));
     }

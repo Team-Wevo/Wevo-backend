@@ -25,7 +25,8 @@ RDS PostgreSQL       Redis Container
 - 컨테이너 이미지는 ECR에서 Pull합니다.
 - Spring Boot 포트는 EC2의 `127.0.0.1`에만 공개하고 외부 요청은 Nginx를 통과시킵니다.
 - Actuator 헬스 엔드포인트는 컨테이너 내부 `127.0.0.1:8081`에서만 접근할 수 있습니다.
-- 운영 프로필에서는 Swagger UI와 OpenAPI 문서를 비활성화합니다.
+- 운영 프로필의 코드 기본값은 Swagger UI와 OpenAPI 문서 비활성화입니다.
+  평가 기간에만 §「평가 기간 임시 Swagger 공개」의 런타임 옵션으로 제한적으로 활성화할 수 있습니다.
 
 ## 보안 원칙
 
@@ -35,6 +36,8 @@ RDS PostgreSQL       Redis Container
 - RDS와 Redis는 서로 다른 비밀번호를 사용하며, `REDIS_PASSWORD`는 운영 배포의 필수 값입니다.
 - `docker compose config`는 비밀 값이 출력될 수 있으므로 사용하지 않습니다.
   구문 검증에는 반드시 `docker compose config --quiet`을 사용합니다.
+- 운영 `JAVA_TOOL_OPTIONS`로 `springdoc.api-docs.enabled`나 `springdoc.swagger-ui.enabled`를
+  덮어쓰지 않습니다. 운영 API 문서 비활성화 설정은 `application-prod.yml`을 따릅니다.
 - 배포 로그와 문서에 이메일 등 개인 식별정보를 남기지 않습니다.
 
 ## 배포 전 확인
@@ -58,9 +61,10 @@ git log -1 --oneline
 2. GitHub OIDC로 단기 AWS 자격 증명 발급
 3. 커밋 SHA를 태그로 사용해 Docker 이미지 빌드 및 ECR Push
 4. 같은 커밋의 `compose.prod.yml`과 배포 스크립트를 Systems Manager Run Command로 EC2에 전달
-5. 서버의 `.env.prod`로 새 Compose를 사전 검증하고 필수 값이 빠졌으면 기존 app을 교체하지 않고 중단
-6. 검증된 Compose를 `/opt/wevo/compose.prod.yml`에 원자적으로 설치하고 app 재생성
-7. 컨테이너 내부 Actuator 응답이 `UP`인지 확인
+5. 서버의 `.env.prod`에서 AI Provider와 guardrail 조합을 값 노출 없이 검증
+6. 새 Compose를 사전 검증하고 필수 값이 빠졌으면 기존 app을 교체하지 않고 중단
+7. 검증된 Compose를 `/opt/wevo/compose.prod.yml`에 원자적으로 설치하고 app 재생성
+8. 컨테이너 내부 Actuator 응답이 `UP`인지 확인
 
 GitHub 저장소의 `Settings > Secrets and variables > Actions > Variables`에는 다음 Repository variable이
 등록되어 있어야 합니다. 이 값들은 비밀번호가 아니며 운영 비밀 값은 계속 EC2의 `.env.prod`에서만
@@ -89,7 +93,37 @@ Flyway 전진 호환성을 보장할 수 없어 수행하지 않으며 아래 �
 
 CI의 `.github/scripts/test-production-deployment-assets.sh`는 정상 예시 환경에서 Compose 검증이
 통과하는지, DB·Redis·JWT·프론트 주소·초대·AI Provider 필수값을 하나씩 제거한 환경에서는 배포 전
-검증이 실패하는지, CD가 같은 commit의 Compose를 전달하는지 검사합니다.
+검증이 실패하는지, OpenAI Provider와 비활성 guardrail 조합을 거부하는지, `.env.example`의 운영 AI
+변수가 Compose에 전달되는지, CD가 같은 commit의 Compose와 AI 사전검증 스크립트를 전달하는지 검사합니다.
+
+## OpenAI 운영 활성화 사전검증
+
+`AI_PROVIDER=openai`를 적용하려면 최소한 `OPENAI_API_KEY`, `OPENAI_API_MODEL`,
+`AI_GUARDRAIL_ENABLED=true`가 먼저 등록돼 있어야 합니다. `AI_PROVIDER=none`은 장애 시 외부 AI 호출을
+격리하는 kill switch이며 다른 Provider로의 fallback을 의미하지 않습니다.
+
+수동 작업에서는 아래처럼 값 자체를 출력하지 않고 Provider·guardrail 조합만 검증합니다. 결과가
+`PASS`가 아니면 app을 재생성하지 않습니다.
+
+```bash
+cd /opt/wevo
+sudo awk -F= '
+$1 == "AI_PROVIDER" { provider_count++; provider=$2 }
+$1 == "AI_GUARDRAIL_ENABLED" { guardrail_count++; guardrail=$2 }
+END {
+  valid=(provider_count == 1 && guardrail_count == 1
+    && (provider == "openai" || provider == "none")
+    && (guardrail == "true" || guardrail == "false")
+    && (provider != "openai" || guardrail == "true"))
+  printf "AI provider/guardrail preflight: %s\n", valid ? "PASS" : "FAIL"
+  exit !valid
+}' .env.prod
+sudo docker compose --env-file .env.prod -f compose.prod.yml config --quiet
+```
+
+`.env.prod`를 수정해도 실행 중인 컨테이너 환경은 바뀌지 않습니다. 검증이 끝난 뒤 정식 CD를 실행하거나
+아래 수동 절차로 app을 재생성해야 반영됩니다. 단, 최신 이미지와 같은 커밋의 Compose가 준비되기 전에
+기존 정상 app을 먼저 재생성하지 않습니다.
 
 ## EC2 수동 배포
 
@@ -123,12 +157,15 @@ sudo systemctl is-active nginx
 
 정상 기준은 다음과 같습니다.
 
+- Compose의 `Started`는 컨테이너 프로세스를 생성했다는 뜻이며 배포 성공이 아닙니다.
+- `health: starting`은 초기화 중이므로 기다리면서 app 로그를 확인합니다. 반복 재시작하거나 제한 시간을
+  넘기면 실패로 판단합니다.
 - 앱과 Redis 컨테이너가 `healthy`
 - Flyway 마이그레이션 성공
 - RDS 연결 성공
 - Actuator 응답 `{"status":"UP"}` (DB와 Redis 상태 포함)
-- Spring Boot 직접 API 문서 요청 HTTP 404
-- Nginx 경유 API 문서 요청 HTTP 404
+- Swagger 기본 비활성 상태에서는 Spring Boot 직접·Nginx 경유 API 문서 요청 HTTP 404
+- 평가 기간 임시 공개 상태에서는 Spring Boot 직접·Nginx 경유 API 문서 요청 HTTP 200
 - Nginx 설정 검사 성공
 
 ## HTTPS 적용 확인
@@ -137,16 +174,51 @@ sudo systemctl is-active nginx
 도메인과 인증서를 적용한 뒤 다음 항목을 확인합니다.
 
 ```bash
+set -euo pipefail
+
 curl -sS -o /dev/null -w 'HTTP %{http_code}\n' https://<backend-domain>/v3/api-docs
 curl -sS -o /dev/null -w 'HTTP %{http_code}\n' https://<backend-domain>/swagger-ui/index.html
+root_body_file="$(mktemp)"
+trap 'rm -f "$root_body_file"' EXIT
+root_status="$(curl -sS -o "$root_body_file" -w '%{http_code}' https://<backend-domain>/)"
+test "$root_status" = "401"
+grep -Eq '"code"[[:space:]]*:[[:space:]]*"A001"' "$root_body_file"
 curl -sS -I http://<backend-domain>
 sudo certbot renew --dry-run
 ```
 
-- `https://<backend-domain>/v3/api-docs`가 HTTP 404
-- `https://<backend-domain>/swagger-ui/index.html`이 HTTP 404
+- Swagger 기본 비활성 상태에서는 `/v3/api-docs`와 `/swagger-ui/index.html`이 HTTP 404
+- 평가 기간 임시 공개 상태에서는 `/v3/api-docs`와 `/swagger-ui/index.html`이 HTTP 200
+- 루트 `/`는 헬스 엔드포인트가 아니며, 인증 없이 요청하면 정상적으로 HTTP 401(`A001`)
 - HTTP 요청이 HTTPS로 301 또는 308 리다이렉트
 - 인증서 자동 갱신 모의 실행 성공
+
+## 평가 기간 임시 Swagger 공개
+
+`application-prod.yml`은 기본적으로 `springdoc.api-docs.enabled=false`와
+`springdoc.swagger-ui.enabled=false`를 적용합니다. 최종 평가자가 API 계약을 확인해야 하는 기간에만
+EC2의 `.env.prod`에 이미 있는 `JAVA_TOOL_OPTIONS` 값을 보존하면서 다음 JVM 시스템 속성을 추가할 수
+있습니다.
+
+```text
+-Dspringdoc.api-docs.enabled=true
+-Dspringdoc.swagger-ui.enabled=true
+```
+
+`.env.prod` 또는 `JAVA_TOOL_OPTIONS` 전체를 화면이나 로그에 출력하지 않습니다. 다음과 같이 각 옵션의
+존재 여부만 확인합니다.
+
+```bash
+sudo docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' wevo-backend-app-1 \
+  | grep -q 'JAVA_TOOL_OPTIONS=.*-Dspringdoc.api-docs.enabled=true'
+sudo docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' wevo-backend-app-1 \
+  | grep -q 'JAVA_TOOL_OPTIONS=.*-Dspringdoc.swagger-ui.enabled=true'
+```
+
+2026년 8월 8일 운영 점검에서는 두 옵션이 모두 적용되어 있었고,
+`https://api.wevo.kr/v3/api-docs`와 `https://api.wevo.kr/swagger-ui/index.html`이 HTTP 200이었습니다.
+평가 종료 후에는 두 `springdoc` 옵션만 제거하고 app 컨테이너를 재생성한 뒤 두 경로가 다시 HTTP 404인지
+확인합니다. 메모리 비율과 KST 시간대 등 기존 `JAVA_TOOL_OPTIONS`의 다른 값은 삭제하지 않습니다.
 
 ## 상태와 로그 확인
 
@@ -213,6 +285,6 @@ sudo docker compose --env-file .env.prod -f compose.prod.yml exec -T app \
 - 프로젝트 생성·조회 성공
 - Redis를 사용하는 편집 잠금 흐름 성공
 - 초대 링크가 운영 프론트엔드 주소를 사용
-- 시크릿 모드에서 Swagger UI와 API 문서가 HTTP 404
+- 평가 기간에는 Swagger UI와 API 문서가 HTTP 200, 평가 종료 후에는 두 경로가 다시 HTTP 404
 - EC2 재부팅 또는 컨테이너 재생성 후 자동 복구 성공
 - 제출 링크의 공개 권한과 주소를 최종 확인

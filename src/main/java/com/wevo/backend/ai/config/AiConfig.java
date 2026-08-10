@@ -20,27 +20,6 @@ import java.util.concurrent.ScheduledExecutorService;
 public class AiConfig {
 
     @Bean
-    @ConditionalOnProperty(prefix = "wevo.ai", name = "provider", havingValue = "nvidia")
-    public ChatClient nvidiaChatClient(
-            AiProperties properties,
-            NvidiaProviderProperties nvidiaProperties
-    ) {
-        nvidiaProperties.validateConnectionSettings();
-        AiProperties.ModelOptions options = properties.providerDefaultOptions();
-        OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
-                .baseUrl(nvidiaProperties.clientBaseUrl())
-                .apiKey(nvidiaProperties.apiKey())
-                .model(options.model())
-                .maxTokens(options.maxOutputTokens())
-                .temperature(nvidiaProperties.temperature())
-                .reasoningEffort(nvidiaProperties.reasoningEffort())
-                .timeout(options.timeout())
-                .maxRetries(0)
-                .build();
-        return ChatClient.builder(OpenAiChatModel.builder().options(chatOptions).build()).build();
-    }
-
-    @Bean
     @ConditionalOnProperty(prefix = "wevo.ai", name = "provider", havingValue = "openai")
     public ChatClient openAiChatClient(
             AiProperties properties,

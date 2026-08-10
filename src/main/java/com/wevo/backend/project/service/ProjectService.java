@@ -7,6 +7,7 @@ import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.dto.request.ProjectCreateRequest;
+import com.wevo.backend.project.dto.request.ProjectSearchCondition;
 import com.wevo.backend.project.dto.request.ProjectUpdateRequest;
 import com.wevo.backend.project.dto.response.ProjectCreateResponse;
 import com.wevo.backend.project.dto.response.ProjectDetailResponse;
@@ -131,8 +132,12 @@ public class ProjectService {
      * 늘면 카드가 많아질수록 목록이 느려진다.
      */
     @Transactional(readOnly = true)
-    public List<ProjectSummaryResponse> getMyProjects(Long userId) {
-        List<ProjectMember> memberships = projectMemberRepository.findAllWithProjectByUserId(userId);
+    public List<ProjectSummaryResponse> getMyProjects(Long userId, ProjectSearchCondition condition) {
+        // 섹션을 읽기 전에 거른다 — 걸러낼 프로젝트의 섹션까지 조회할 이유가 없다.
+        List<ProjectMember> memberships = projectMemberRepository.findAllWithProjectByUserId(userId)
+                .stream()
+                .filter(membership -> condition.matches(membership.getProject()))
+                .toList();
         if (memberships.isEmpty()) {
             return List.of();
         }
@@ -199,7 +204,7 @@ public class ProjectService {
         ProjectMember membership = getMembershipOrThrow(projectId, userId);
         Project project = membership.getProject();
 
-        long memberCount = projectMemberRepository.countByProjectId(projectId);
+        long memberCount = projectMemberRepository.countActiveByProjectId(projectId);
         List<ProjectSection> sections = projectSectionRepository.findByProjectIdOrderBySectionOrder(projectId);
 
         return ProjectDetailResponse.of(project, membership.getRole(), memberCount,
@@ -222,13 +227,18 @@ public class ProjectService {
      * 프로젝트 멤버 목록을 조회한다. (멤버만 조회 가능 — API_SPEC §3.2.8)
      *
      * <p>정원이 최대 4명({@link Project#MAX_MEMBERS} — 정책서 §2.1)이라 페이지네이션 없이 전원을
-     * 반환한다. MVP 에 회원 탈퇴 기능이 없으므로 사용자 상태로 거르지 않는다.
+     * 반환한다.
+     *
+     * <p><b>탈퇴자도 목록에 남긴다</b> — 의견·검토의 작성자를 {@code userId} 로 매칭하는 화면이라
+     * 과거 참여자가 빠지면 작성자를 찾지 못한다(§3.3.3). 다만 {@code memberCount} 는 정원과 짝이
+     * 되는 값이므로 탈퇴자를 뺀 수를 내린다.
      */
     @Transactional(readOnly = true)
     public ProjectMemberListResponse getMembers(Long userId, Long projectId) {
         getMembershipOrThrow(projectId, userId);
 
-        return ProjectMemberListResponse.from(
+        return ProjectMemberListResponse.of(
+                projectMemberRepository.countActiveByProjectId(projectId),
                 projectMemberRepository.findAllWithUserByProjectId(projectId));
     }
 
@@ -299,7 +309,7 @@ public class ProjectService {
             project.changeDescription(request.description());
         }
 
-        long memberCount = projectMemberRepository.countByProjectId(projectId);
+        long memberCount = projectMemberRepository.countActiveByProjectId(projectId);
         List<ProjectSection> sections = projectSectionRepository.findByProjectIdOrderBySectionOrder(projectId);
 
         return ProjectDetailResponse.of(project, membership.getRole(), memberCount,

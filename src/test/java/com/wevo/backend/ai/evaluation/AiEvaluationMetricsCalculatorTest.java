@@ -215,7 +215,7 @@ class AiEvaluationMetricsCalculatorTest {
     }
 
     private AiUsageMetadata usage(Long input, Long output, Long cacheRead, Long cacheWrite) {
-        return new AiUsageMetadata("nvidia", "request", "model", input, output, cacheRead, cacheWrite);
+        return new AiUsageMetadata("test-provider", "request", "model", input, output, cacheRead, cacheWrite);
     }
 
     private AiCostSnapshot priced(String cost) {

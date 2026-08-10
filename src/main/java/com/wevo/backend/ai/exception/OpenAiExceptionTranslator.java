@@ -56,7 +56,7 @@ public class OpenAiExceptionTranslator implements AiExceptionTranslator {
             case 400, 413, 422 -> ErrorCode.AI_INVALID_REQUEST;
             case 401 -> ErrorCode.AI_PROVIDER_AUTHENTICATION_FAILED;
             case 403 -> ErrorCode.AI_PROVIDER_PERMISSION_DENIED;
-            case 404 -> ErrorCode.AI_MODEL_NOT_AVAILABLE;
+            case 404, 410 -> ErrorCode.AI_MODEL_NOT_AVAILABLE;
             case 408, 504 -> ErrorCode.AI_PROVIDER_TIMEOUT;
             case 429 -> ErrorCode.AI_RATE_LIMITED;
             default -> statusCode >= 500
