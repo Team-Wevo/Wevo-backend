@@ -14,16 +14,21 @@ import java.util.Map;
  *
  * <p>팀장이 수집 마감 전에 "몇 명이 아직 안 냈는지"를 확인하는 것이 1차 용도다
  * (§4.5 — "미제출 멤버가 있으면 팀장에게 'N명 작성 중' 경고 후 마감 진행").
- * 팀원에게도 같은 현황을 보여 수집이 어디까지 왔는지 공유한다.
+ *
+ * <p><b>멤버별 상태({@code items})는 팀장(OWNER)에게만 내린다.</b> §4.3은 제출 전 사용자에게
+ * "모인 의견 N개 카운트"까지만 허용하고, §4.5의 미제출 경고는 <b>팀장</b>에게 주도록 규정한다 —
+ * "누가 제출했고 누가 재편집 중인지"를 팀원에게 여는 근거가 두 절 어디에도 없다.
+ * 팀원에게는 집계(N/M)만 내려 수집이 어디까지 왔는지 공유한다.
  *
  * <p><b>분모 M({@code totalMembers}) 은 OWNER 를 포함한 프로젝트 멤버 전원이다.</b>
  * 팀 검토(§6.1)가 팀장을 분모에서 빼는 것과 다르다 — 검토는 팀장이 검토자가 아니라 확정 실행자지만,
  * 의견은 팀장도 작성·제출하는 참여자이기 때문이다(의견 API 가 모두 참여자 권한으로 열려 있다).
  * 두 화면의 분모가 다른 것은 <b>의도된 차이</b>이므로 한쪽에 맞춰 통일하지 않는다.
  *
- * <p><b>본문은 담지 않는다</b> — 이 응답은 진행 상태만 노출하므로, 제출 전 사용자에게 남의 의견
- * 내용을 감추는 공개 게이트(§4.3 베끼기 방지)와 충돌하지 않는다. 의견 본문이 필요하면
- * 게이트가 적용된 제출 의견 목록(API_SPEC §3.4.4)을 쓴다.
+ * <p><b>본문은 어느 역할에도 담지 않는다</b> — 의견 본문이 필요하면 공개 게이트가 적용된
+ * 제출 의견 목록(API_SPEC §3.4.4)을 쓴다. 다만 본문이 없다는 것이 <b>범위 제한이 필요 없다는
+ * 뜻은 아니다</b> — §4.3이 제출 전 사용자에게 허용하는 것은 카운트까지이므로, 제출자 식별이
+ * 들어가는 {@code items} 는 본문 유무와 무관하게 팀장 전용이다.
  *
  * @param collectionOpen  수집 게이트가 열려 있는지 — {@code sectionStatus == COLLECTING} 에서 파생(§4.5).
  *                        닫혀 있으면 미제출 인원이 남아 있어도 더 이상 제출을 받지 않는다
@@ -34,11 +39,13 @@ import java.util.Map;
  * @param notStartedCount 의견을 아직 만들지 않은 인원
  * @param pendingCount    미제출 인원 = {@code draftingCount + notStartedCount}.
  *                        마감 경고 문구가 쓰는 값이라 클라이언트가 더하지 않도록 서버가 계산해 내린다
- * @param items           멤버별 진행 상태 (OWNER 우선 → 참여 시각 오름차순)
+ * @param items           멤버별 진행 상태 (OWNER 우선 → 참여 시각 오름차순).
+ *                        <b>팀장에게만 내리며 팀원 응답에서는 키 자체가 생략된다</b>(§4.3·§4.5)
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 @Schema(requiredProperties = {
         "collectionOpen", "totalMembers", "submittedCount", "draftingCount",
-        "notStartedCount", "pendingCount", "items"
+        "notStartedCount", "pendingCount"
 })
 public record OpinionCollectionStatusResponse(
         boolean collectionOpen,
@@ -47,6 +54,7 @@ public record OpinionCollectionStatusResponse(
         long draftingCount,
         long notStartedCount,
         long pendingCount,
+        @Schema(description = "멤버별 진행 상태 — 팀장(OWNER)에게만 내려간다. 팀원 응답에는 키가 없다.")
         List<MemberCollectionStateResponse> items
 ) {
 
@@ -96,13 +104,18 @@ public record OpinionCollectionStatusResponse(
      * {@code NOT_STARTED} 로 세어야 분모 M 과 세 상태의 합이 맞기 때문이다.
      * (MVP 에는 멤버 탈퇴·강제 제외가 없어 로스터에 없는 작성자의 의견은 생기지 않는다.)
      *
+     * <p>멤버별 상태는 <b>요청자가 팀장일 때만</b> 응답에 담는다. 다만 집계는 팀원에게도 내려야
+     * 하므로 계산 자체는 언제나 로스터 전원을 대상으로 하고, 노출 여부만 마지막에 가른다.
+     *
      * @param collectionOpen   수집 게이트 개방 여부
      * @param roster           프로젝트 멤버 전원 (표시 순서가 그대로 {@code items} 순서가 된다)
      * @param opinionByAuthorId 작성자 ID → 그 멤버의 의견 (없는 멤버는 키 자체가 없다)
+     * @param owner            요청자가 팀장(OWNER)인지 — 멤버별 상태 노출 여부를 가른다 (§4.3·§4.5)
      */
     public static OpinionCollectionStatusResponse of(boolean collectionOpen,
                                                      List<ProjectMemberSummary> roster,
-                                                     Map<Long, Opinion> opinionByAuthorId) {
+                                                     Map<Long, Opinion> opinionByAuthorId,
+                                                     boolean owner) {
         List<MemberCollectionStateResponse> items = roster.stream()
                 .map(member -> MemberCollectionStateResponse.of(
                         member, opinionByAuthorId.get(member.userId())))
@@ -119,7 +132,7 @@ public record OpinionCollectionStatusResponse(
                 draftingCount,
                 notStartedCount,
                 draftingCount + notStartedCount,
-                items);
+                owner ? items : null);
     }
 
     private static long count(List<MemberCollectionStateResponse> items, OpinionCollectionState state) {

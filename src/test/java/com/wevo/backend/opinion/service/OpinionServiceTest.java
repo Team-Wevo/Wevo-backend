@@ -19,6 +19,7 @@ import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.service.ProjectMemberRosterQueryService;
 import com.wevo.backend.project.service.ProjectMemberSummary;
 import com.wevo.backend.project.service.SectionAccessGuard;
+import com.wevo.backend.project.service.VerifiedParticipantSection;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.service.DraftLeaseService;
@@ -45,6 +46,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -80,8 +82,7 @@ class OpinionServiceTest {
         User owner = user(USER_ID, "김민준");
         User drafting = user(2L, "이서연");
         User notStarted = user(3L, "박지훈");
-        given(sectionAccessGuard.requireParticipantSection(SECTION_ID, USER_ID))
-                .willReturn(section(ProjectSectionStatus.COLLECTING));
+        givenGranted(ProjectSectionStatus.COLLECTING, true);
         given(memberRosterQueryService.getParticipants(PROJECT_ID)).willReturn(List.of(
                 summary(owner), summary(drafting), summary(notStarted)));
         given(opinionRepository.findAllWithAuthorByProjectSectionId(SECTION_ID)).willReturn(List.of(
@@ -112,8 +113,7 @@ class OpinionServiceTest {
         User author = user(USER_ID, "김민준");
         Opinion reediting = opinionOf(author, CONTENT, OpinionStatus.SUBMITTED);
         reediting.updateContent(REVISED_CONTENT); // 제출본은 유지, 작업본만 갱신 (§4.1)
-        given(sectionAccessGuard.requireParticipantSection(SECTION_ID, USER_ID))
-                .willReturn(section(ProjectSectionStatus.COLLECTING));
+        givenGranted(ProjectSectionStatus.COLLECTING, true);
         given(memberRosterQueryService.getParticipants(PROJECT_ID)).willReturn(List.of(summary(author)));
         given(opinionRepository.findAllWithAuthorByProjectSectionId(SECTION_ID))
                 .willReturn(List.of(reediting));
@@ -134,8 +134,7 @@ class OpinionServiceTest {
     @DisplayName("수집 마감 후에도 현황을 조회하되 게이트는 닫힌 것으로 내린다")
     void getCollectionStatus_readableAfterGateClosed() {
         User author = user(USER_ID, "김민준");
-        given(sectionAccessGuard.requireParticipantSection(SECTION_ID, USER_ID))
-                .willReturn(section(ProjectSectionStatus.SYNTHESIZING));
+        givenGranted(ProjectSectionStatus.SYNTHESIZING, true);
         given(memberRosterQueryService.getParticipants(PROJECT_ID)).willReturn(List.of(summary(author)));
         given(opinionRepository.findAllWithAuthorByProjectSectionId(SECTION_ID))
                 .willReturn(List.of(opinionOf(author, CONTENT, OpinionStatus.SUBMITTED)));
@@ -151,13 +150,51 @@ class OpinionServiceTest {
     @DisplayName("비멤버의 수집 현황 조회는 섹션 존재를 숨겨 404로 막는다")
     void getCollectionStatus_hidesSectionFromNonMember() {
         willThrow(new BusinessException(ErrorCode.SECTION_NOT_FOUND))
-                .given(sectionAccessGuard).requireParticipantSection(SECTION_ID, USER_ID);
+                .given(sectionAccessGuard).requireParticipantSectionAccess(SECTION_ID, USER_ID);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> opinionService.getCollectionStatus(SECTION_ID, USER_ID));
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_NOT_FOUND);
         verifyNoInteractions(memberRosterQueryService);
+    }
+
+    @Test
+    @DisplayName("팀원에게는 집계만 내리고 멤버별 상태는 감춘다")
+    void getCollectionStatus_hidesMemberStatesFromMember() {
+        User owner = user(2L, "김민준");
+        User me = user(USER_ID, "이서연");
+        givenGranted(ProjectSectionStatus.COLLECTING, false);
+        given(memberRosterQueryService.getParticipants(PROJECT_ID))
+                .willReturn(List.of(summary(owner), summary(me)));
+        given(opinionRepository.findAllWithAuthorByProjectSectionId(SECTION_ID))
+                .willReturn(List.of(opinionOf(owner, CONTENT, OpinionStatus.SUBMITTED)));
+
+        OpinionCollectionStatusResponse response =
+                opinionService.getCollectionStatus(SECTION_ID, USER_ID);
+
+        // 집계는 그대로 — "모인 의견 N개"는 §4.3이 제출 전 사용자에게도 허용하는 범위다.
+        assertThat(response.totalMembers()).isEqualTo(2);
+        assertThat(response.submittedCount()).isEqualTo(1);
+        assertThat(response.pendingCount()).isEqualTo(1);
+        // 누가 제출했고 누가 재편집 중인지는 팀장만 본다 (§4.5).
+        assertThat(response.items()).isNull();
+    }
+
+    /**
+     * 수집 현황 조회의 인가 통과를 흉내 낸다.
+     *
+     * <p>{@code VerifiedParticipantSection} 은 {@code SectionAccessGuard} 만 만들 수 있는 증거
+     * 타입이라 테스트에서 직접 생성하지 않고 목으로 대신한다. (프로덕션 계약을 열지 않기 위해)
+     *
+     * @param owner 요청자가 팀장인지 — 멤버별 상태 노출 여부를 가르는 값
+     */
+    private void givenGranted(ProjectSectionStatus status, boolean owner) {
+        VerifiedParticipantSection granted = mock(VerifiedParticipantSection.class);
+        given(granted.section()).willReturn(section(status));
+        given(granted.isOwner()).willReturn(owner);
+        given(sectionAccessGuard.requireParticipantSectionAccess(SECTION_ID, USER_ID))
+                .willReturn(granted);
     }
 
     private ProjectMemberSummary summary(User user) {

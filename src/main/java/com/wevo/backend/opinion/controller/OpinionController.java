@@ -119,11 +119,13 @@ public class OpinionController {
     }
 
     /**
-     * 섹션의 의견 수집 현황을 조회한다. (제출 N/M + 멤버별 진행 상태)
+     * 섹션의 의견 수집 현황을 조회한다. (제출 N/M — 팀장은 멤버별 진행 상태까지)
      *
-     * <p>본문은 담지 않으므로 공개 게이트와 무관하게 참여자 전체가 조회할 수 있다.
+     * <p>참여자 전체가 호출할 수 있지만 응답 범위는 역할로 갈린다 — 멤버별 상태({@code items})는
+     * 팀장(OWNER)에게만 내려간다. (정책서 §4.3·§4.5)
      */
-    @Operation(summary = "의견 수집 현황 — 제출 N/M·미제출 인원·멤버별 진행 상태 (본문 미포함)")
+    @Operation(summary = "의견 수집 현황 — 제출 N/M·미제출 인원 (본문 미포함). "
+            + "멤버별 진행 상태(items)는 팀장에게만 내려간다")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "OK"),

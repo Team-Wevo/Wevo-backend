@@ -406,6 +406,20 @@ class OpinionControllerWebMvcTest {
     }
 
     @Test
+    @DisplayName("팀원 응답에서는 items 키 자체가 빠진다")
+    void getCollectionStatus_omitsItemsForMember() throws Exception {
+        given(opinionService.getCollectionStatus(eq(10L), eq(7L)))
+                .willReturn(new OpinionCollectionStatusResponse(true, 3, 1, 1, 1, 2, null));
+
+        mockMvc.perform(get(COLLECTION_STATUS_URL).with(authenticatedUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.submittedCount").value(1))
+                .andExpect(jsonPath("$.data.pendingCount").value(2))
+                // null 은 직렬화에서 빠진다 — FE 는 items 를 옵셔널로 다뤄야 한다 (§4.3·§4.5)
+                .andExpect(jsonPath("$.data.items").doesNotExist());
+    }
+
+    @Test
     @DisplayName("수집 현황은 집계와 멤버별 상태를 함께 반환한다")
     void getCollectionStatus_returnsCountsAndItems() throws Exception {
         given(opinionService.getCollectionStatus(eq(10L), eq(7L)))

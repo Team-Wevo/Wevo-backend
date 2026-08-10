@@ -2,6 +2,7 @@ package com.wevo.backend.project.service;
 
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectMember;
+import com.wevo.backend.project.domain.ProjectMemberRole;
 
 /**
  * 프로젝트 멤버십 검증을 <b>이미 통과했다는 증거</b>.
@@ -45,5 +46,19 @@ public final class VerifiedProjectAccess {
 
     public ProjectMember membership() {
         return membership;
+    }
+
+    /**
+     * 요청자가 이 프로젝트의 팀장(OWNER)인지.
+     *
+     * <p>"참여자면 통과하되 응답 범위는 팀장에게만 넓히는" 조회(예: 의견 수집 현황 — 정책서 §4.5)가
+     * 쓴다. 역할 부족을 <b>오류로 막는</b> 경우는 이 값이 아니라 {@link ProjectAccessGuard} 의
+     * 역할 검사를 쓴다.
+     *
+     * <p>타 도메인이 {@link #membership()} 으로 엔티티를 꺼내 역할을 직접 보지 않도록 값으로
+     * 노출한다. (CLAUDE.md §6)
+     */
+    public boolean isOwner() {
+        return membership.getRole() == ProjectMemberRole.OWNER;
     }
 }
