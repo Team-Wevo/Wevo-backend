@@ -22,17 +22,26 @@ import org.springframework.util.StringUtils;
  *
  * <p>키 형식은 <b>UUID v4</b> 로 통일한다. (API_SPEC §3.5 — FE가 UUID v4를 생성해 헤더로 보낸다)
  *
- * <p>해석 우선순위:
+ * <p>해석 우선순위 — <b>서버가 심은 쿠키가 1차, 클라이언트 헤더는 보조</b>다:
  * <ol>
- *   <li>요청 헤더 {@code X-Anonymous-Reviewer-Id} — 프론트가 로컬 저장소에 보관한 키를 보낼 때.
- *       <b>UUID v4 형식이 아니면 400(C001)</b>로 거부한다 (클라이언트 계약 위반).</li>
- *   <li>쿠키 {@code wevo_reviewer_id} — 서버가 심어 브라우저가 자동으로 되돌려 보내는 키.
- *       형식이 깨진 쿠키는 오류가 아니라 <b>재발급</b>으로 처리한다 (서버 발급 값이므로).</li>
+ *   <li>쿠키 {@code wevo_reviewer_id} — 서버가 발급해 브라우저가 자동으로 되돌려 보내는 키.
+ *       유효하면 <b>헤더를 보지 않고</b> 이 값을 쓴다. 형식이 깨진 쿠키는 오류가 아니라
+ *       <b>재발급</b>으로 처리한다 (서버 발급 값이므로).</li>
+ *   <li>요청 헤더 {@code X-Anonymous-Reviewer-Id} — 쿠키가 없을 때만 채택한다. 교차 출처에서
+ *       쿠키를 쓸 수 없는 클라이언트를 위한 폴백이며, <b>UUID v4 형식이 아니면 400(C001)</b>로
+ *       거부한다 (클라이언트 계약 위반). 채택한 값은 응답 쿠키로도 심어, 다음 요청부터는 서버가
+ *       고정한 키가 우선하게 만든다.</li>
  *   <li>둘 다 없으면 새 키를 발급하고 쿠키로 내려준다.</li>
  * </ol>
  *
- * <p>쿠키 삭제·시크릿 모드로 키를 새로 만들면 재제출 가능
- * (IP 기준 제한은 학교·회사 공유망 오탐 때문에 쓰지 않는다.)
+ * <p><b>왜 헤더를 강등했나</b> — 헤더가 쿠키를 이기면, 쿠키를 그대로 둔 채 매 요청 새 UUID 만
+ * 헤더에 넣어도 매번 "새 브라우저"로 인정돼 중복 제출 차단({@code R002})이 무력화된다. 쿠키를
+ * 먼저 보면 최소한 <b>쿠키를 정상적으로 저장하는 클라이언트</b>에서는 키를 바꿔치기할 수 없다.
+ *
+ * <p>다만 이것으로 위조 자체가 막히지는 않는다 — 쿠키를 아예 보내지 않는 스크립트는 여전히 매번
+ * 새 키를 쓸 수 있다. 익명 검토는 본질적으로 신원 보증이 없는 설계이므로, 자동화된 대량 제출은
+ * 신원이 아니라 속도로 막는다({@link com.wevo.backend.review.service.PublicSubmissionRateLimiter})
+ * 그리고 결과 조회에 이상 신호를 함께 내려 팀장이 오염을 알아볼 수 있게 한다.
  */
 @Component
 public class AnonymousReviewerResolver {
@@ -63,23 +72,31 @@ public class AnonymousReviewerResolver {
      * @throws BusinessException 헤더 키가 UUID v4 형식이 아니면 {@link ErrorCode#INVALID_INPUT}
      */
     public String resolve(HttpServletRequest request, HttpServletResponse response) {
+        // 헤더는 쿠키가 없을 때만 쓰지만, 형식 검증은 쿠키 유무와 무관하게 먼저 한다 —
+        // 잘못된 헤더를 조용히 무시하면 클라이언트가 계약 위반을 눈치채지 못한다.
         String fromHeader = request.getHeader(HEADER_NAME);
-        if (StringUtils.hasText(fromHeader)) {
-            if (!UUID_V4.matcher(fromHeader).matches()) {
-                throw new BusinessException(ErrorCode.INVALID_INPUT,
-                        List.of(new FieldError(HEADER_NAME, "UUID v4 형식이어야 합니다.")));
-            }
-            return fromHeader;
+        if (StringUtils.hasText(fromHeader) && !UUID_V4.matcher(fromHeader).matches()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    List.of(new FieldError(HEADER_NAME, "UUID v4 형식이어야 합니다.")));
         }
 
+        // 1차 — 서버가 심은 쿠키. 클라이언트가 헤더로 다른 키를 보내도 이 값을 이긴다.
         String fromCookie = readCookie(request);
-        if (StringUtils.hasText(fromCookie) && UUID_V4.matcher(fromCookie).matches()) {
+        if (isValidKey(fromCookie)) {
             return fromCookie;
         }
 
-        String issued = UUID.randomUUID().toString();
-        response.addHeader(HttpHeaders.SET_COOKIE, buildCookie(issued).toString());
-        return issued;
+        // 여기부터는 쓸 수 있는 쿠키가 없다는 뜻이므로, 어느 경로로 키를 정하든 **항상**
+        // 응답 쿠키로 덮어쓴다. 형식이 깨진 쿠키를 그대로 두면 클라이언트가 매 요청 같은
+        // 쓰레기 값을 다시 보내고, 그때마다 서버는 새 키를 만들어 중복 제출 판정이 흔들린다.
+        String key = isValidKey(fromHeader) ? fromHeader : UUID.randomUUID().toString();
+        response.addHeader(HttpHeaders.SET_COOKIE, buildCookie(key).toString());
+        return key;
+    }
+
+    /** 검토자 키로 쓸 수 있는 값인지. (형식 검증 규칙을 한 곳에 둔다) */
+    private boolean isValidKey(String value) {
+        return StringUtils.hasText(value) && UUID_V4.matcher(value).matches();
     }
 
     private String readCookie(HttpServletRequest request) {

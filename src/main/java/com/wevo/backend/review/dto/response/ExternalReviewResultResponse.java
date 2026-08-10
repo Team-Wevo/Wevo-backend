@@ -1,5 +1,6 @@
 package com.wevo.backend.review.dto.response;
 
+import com.wevo.backend.review.config.ReviewAbuseProperties;
 import com.wevo.backend.review.domain.ReviewSubmission;
 import com.wevo.backend.review.domain.ReviewIntentComparison;
 import com.wevo.backend.review.domain.UnderstandingSignal;
@@ -21,15 +22,20 @@ import java.util.function.Function;
  * 최신 본문 평가와 섞이므로, 버전별 집계({@code byVersion} — 최신 버전 먼저)를 함께 내려
  * 어느 본문에 대한 결과인지 구분할 수 있게 한다.
  *
+ * <p>외부 검토는 비인증이라 제출자가 신원을 스스로 정한다 — 한 사람이 여러 건을 넣어 분포를
+ * 왜곡할 수 있으므로, 수치만 내려주지 않고 이상 신호({@code anomaly})를 함께 담아 팀장이 결과의
+ * 신뢰도를 판단할 수 있게 한다.
+ *
  * @param totalCount    전체 제출 수 (모든 버전 합산)
  * @param clearCount    이해됨(CLEAR) 수 (모든 버전 합산)
  * @param partialCount  애매함(PARTIAL) 수 (모든 버전 합산)
  * @param unclearCount  이해 어려움(UNCLEAR) 수 (모든 버전 합산)
  * @param byVersion     검토한 본문 버전별 집계 (최신 버전 먼저)
+ * @param anomaly       제출 간격·본문 중복 기반 신뢰도 신호 (IP 미사용 — 정책서 §6.2.4)
  * @param items         제출 목록(최신순)
  */
 @Schema(requiredProperties = {
-        "totalCount", "clearCount", "partialCount", "unclearCount", "byVersion", "items"
+        "totalCount", "clearCount", "partialCount", "unclearCount", "byVersion", "anomaly", "items"
 })
 public record ExternalReviewResultResponse(
         long totalCount,
@@ -37,6 +43,7 @@ public record ExternalReviewResultResponse(
         long partialCount,
         long unclearCount,
         List<VersionCountResponse> byVersion,
+        SubmissionAnomalyResponse anomaly,
         List<ExternalReviewItemResponse> items
 ) {
 
@@ -70,9 +77,14 @@ public record ExternalReviewResultResponse(
         }
     }
 
+    /**
+     * @param anomalyThresholds 이상 신호 판정 기준
+     *                          (설정 정본: {@code app.review.abuse.anomaly})
+     */
     public static ExternalReviewResultResponse from(
             List<ReviewSubmission> submissions,
-            List<ReviewIntentComparison> comparisons
+            List<ReviewIntentComparison> comparisons,
+            ReviewAbuseProperties.Anomaly anomalyThresholds
     ) {
         Map<Long, ReviewIntentComparison> comparisonBySubmission = comparisons.stream()
                 .collect(Collectors.toMap(
@@ -99,6 +111,7 @@ public record ExternalReviewResultResponse(
                 count(submissions, UnderstandingSignal.PARTIAL),
                 count(submissions, UnderstandingSignal.UNCLEAR),
                 byVersion,
+                SubmissionAnomalyResponse.from(submissions, anomalyThresholds),
                 items);
     }
 
