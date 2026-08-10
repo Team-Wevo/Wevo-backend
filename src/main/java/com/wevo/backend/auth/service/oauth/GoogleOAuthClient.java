@@ -36,7 +36,11 @@ public class GoogleOAuthClient implements OAuthClient {
     @Override
     public OAuthUserInfo fetchUserInfo(String authorizationCode, String redirectUri) {
         String accessToken = requestAccessToken(authorizationCode, redirectUri);
-        Map<String, Object> userInfo = requestUserInfo(accessToken);
+        return mapToUserInfo(requestUserInfo(accessToken));
+    }
+
+    /** 응답 본문 매핑만 분리한다 — HTTP 호출 없이 검증할 수 있게. ({@code KakaoOAuthClient} 와 동일 구조) */
+    OAuthUserInfo mapToUserInfo(Map<String, Object> userInfo) {
         return new OAuthUserInfo(
                 AuthProvider.GOOGLE,
                 String.valueOf(userInfo.get("sub")),

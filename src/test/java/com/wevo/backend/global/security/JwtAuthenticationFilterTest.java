@@ -39,6 +39,22 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    @DisplayName("위조된 토큰이면 사유를 요청 속성에 남겨 EntryPoint 가 A003 을 내려줄 수 있게 한다")
+    void invalidToken_recordsErrorCode() throws Exception {
+        // A004(만료)와 달리 재발급 대상이 아니다. 필터가 이 구분을 넘기지 않으면 EntryPoint 가
+        // 알 방법이 없다.
+        MockHttpServletRequest request = requestWithToken("forged");
+        given(jwtProvider.parseUserId("forged", TokenType.ACCESS))
+                .willThrow(new BusinessException(ErrorCode.INVALID_TOKEN));
+
+        doFilter(request);
+
+        assertThat(request.getAttribute(JwtAuthenticationFilter.AUTHENTICATION_ERROR_CODE))
+                .isEqualTo(ErrorCode.INVALID_TOKEN);
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
     @DisplayName("유효한 토큰이면 사유를 남기지 않는다")
     void validToken_doesNotRecordErrorCode() throws Exception {
         MockHttpServletRequest request = requestWithToken("valid");
