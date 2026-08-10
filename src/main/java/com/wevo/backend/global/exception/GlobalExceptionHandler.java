@@ -219,7 +219,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleUnexpectedException(Exception exception) {
         if (exception instanceof ErrorResponse errorResponse) {
             HttpStatusCode status = errorResponse.getStatusCode();
-            return ResponseEntity.status(status).body(ApiResponse.error(protocolErrorCode(status)));
+            // Spring 이 실은 응답 헤더를 그대로 넘긴다 — 405 의 Allow 는 표준상 필수고(RFC 9110),
+            // 415 의 Accept 계열도 클라이언트가 요청을 고치는 데 필요한 정보다.
+            return ResponseEntity.status(status)
+                    .headers(errorResponse.getHeaders())
+                    .body(ApiResponse.error(protocolErrorCode(status)));
         }
 
         log.error("Unhandled server exception. exceptionType={}", exception.getClass().getName());

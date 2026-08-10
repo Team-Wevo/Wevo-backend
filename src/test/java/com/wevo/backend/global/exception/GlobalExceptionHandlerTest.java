@@ -6,10 +6,12 @@ import jakarta.validation.constraints.Min;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -112,11 +114,25 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void wrongHttpMethodReturnsCommonErrorBody() throws Exception {
+    void wrongHttpMethodReturnsCommonErrorBodyAndKeepsAllowHeader() throws Exception {
+        // 본문을 채우면서 Spring 이 실어 둔 헤더를 버리면 안 된다 — 405 의 Allow 는 표준상 필수다.
         mockMvc.perform(post("/test/business-exception"))
                 .andExpect(status().isMethodNotAllowed())
+                .andExpect(header().string("Allow", containsString("GET")))
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("C005"))
+                .andExpect(jsonPath("$.timestamp").exists());
+    }
+
+    @Test
+    void unsupportedContentTypeReturnsCommonErrorBody() throws Exception {
+        mockMvc.perform(post("/test/json-only")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("plain text"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("C006"))
+                .andExpect(jsonPath("$.message").exists())
                 .andExpect(jsonPath("$.timestamp").exists());
     }
 
@@ -231,6 +247,10 @@ class GlobalExceptionHandlerTest {
 
         @GetMapping("/test/validated")
         void validatedParameter(@RequestParam @Min(1) int page) {
+        }
+
+        @PostMapping(value = "/test/json-only", consumes = MediaType.APPLICATION_JSON_VALUE)
+        void jsonOnly() {
         }
 
         @GetMapping("/test/unexpected-exception")
