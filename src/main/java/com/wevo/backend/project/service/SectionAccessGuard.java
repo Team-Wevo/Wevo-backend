@@ -2,6 +2,7 @@ package com.wevo.backend.project.service;
 
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
+import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.repository.ProjectSectionRepository;
 import java.util.function.Supplier;
@@ -44,6 +45,26 @@ public class SectionAccessGuard {
         ProjectSection section = requireSection(sectionId);
         hideNonMember(() -> projectAccessGuard.requireParticipant(section.getProject().getId(), userId));
         return section;
+    }
+
+    /**
+     * 섹션을 조회하고 요청자가 프로젝트 참여자인지 검증하되, <b>요청자의 역할까지</b> 함께 반환한다.
+     *
+     * <p>참여자면 통과하지만 응답 범위는 팀장(OWNER)에게만 넓히는 조회 API를 위한 진입점이다.
+     * (의견 수집 현황 — 팀원은 집계만, 팀장은 멤버별 상태까지. 정책서 §4.5)
+     * 역할 부족을 오류로 막는 것이 아니므로 {@link #requireOwnedSection}을 쓸 수 없고,
+     * {@link #requireParticipantSection} 뒤에 역할 검사를 덧붙이면 멤버십을 두 번 조회하게 된다.
+     *
+     * @return 접근 권한이 확인된 섹션과 요청자의 역할
+     * @throws BusinessException 섹션이 없거나 프로젝트에 참여하지 않았으면(존재 숨김)
+     *                           {@link ErrorCode#SECTION_NOT_FOUND}
+     */
+    public VerifiedParticipantSection requireParticipantSectionWithRole(Long sectionId, Long userId) {
+        ProjectSection section = requireSection(sectionId);
+        ProjectMember membership = ProjectAccessGuard.hidingNonMember(
+                ErrorCode.SECTION_NOT_FOUND,
+                () -> projectAccessGuard.requireParticipant(section.getProject().getId(), userId));
+        return VerifiedParticipantSection.of(section, membership);
     }
 
     /**

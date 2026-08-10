@@ -16,6 +16,7 @@ import com.wevo.backend.opinion.dto.response.SubmittedOpinionListResponse;
 import com.wevo.backend.opinion.repository.OpinionRepository;
 import com.wevo.backend.project.service.ProjectMemberRosterQueryService;
 import com.wevo.backend.project.service.SectionAccessGuard;
+import com.wevo.backend.project.service.VerifiedParticipantSection;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.service.DraftLeaseService;
@@ -150,11 +151,13 @@ public class OpinionService {
     /**
      * 섹션의 의견 수집 현황을 조회한다. (제출 N/M + 멤버별 진행 상태 — 정책서 §4.5)
      *
-     * <p>팀장이 마감 전에 미제출 인원을 확인하는 것이 1차 용도이지만
-     * (§4.5 — "미제출 멤버가 있으면 팀장에게 'N명 작성 중' 경고 후 마감 진행"),
-     * <b>권한은 참여자 전체</b>로 연다. 수집이 어디까지 왔는지는 팀원도 공유해야 할 진행 정보이고,
-     * 응답에 의견 <b>본문이 없어</b> 공개 게이트(§4.3 베끼기 방지)가 지키려는 대상과 무관하기 때문이다.
-     * 같은 이유로 팀 검토 현황(§6.1)도 멤버별 {@code PENDING} 을 참여자 전체에 노출한다.
+     * <p><b>참여자 전체가 호출할 수 있지만 응답 범위는 역할로 갈린다</b> — 팀원은 집계(N/M)만,
+     * 팀장은 멤버별 상태({@code items})까지 받는다. 정책서 §4.3은 제출 전 사용자에게 "모인 의견
+     * N개 카운트"까지만 허용하고, §4.5의 미제출 경고는 <b>팀장</b>에게 주도록 규정한다. 응답에 의견
+     * 본문이 없더라도 "누가 제출했고 누가 재편집 중인지"를 팀원에게 열 근거는 두 절 어디에도 없다.
+     *
+     * <p>특히 {@code hasUnsubmittedChanges}(재편집 중 여부)는 다른 어떤 API 로도 얻을 수 없어
+     * 이 응답이 유일한 노출 경로다.
      *
      * <p>분모는 <b>OWNER 를 포함한 멤버 전원</b>이다 — 팀장도 의견을 작성·제출하는 참여자다.
      * (팀 검토 분모가 팀장을 빼는 것과 다르며, 이는 의도된 차이다.)
@@ -164,7 +167,9 @@ public class OpinionService {
      * 게이트 개방 여부는 {@code collectionOpen} 으로 함께 내려 화면이 분기하게 한다.
      */
     public OpinionCollectionStatusResponse getCollectionStatus(Long projectSectionId, Long userId) {
-        ProjectSection section = sectionAccessGuard.requireParticipantSection(projectSectionId, userId);
+        VerifiedParticipantSection granted =
+                sectionAccessGuard.requireParticipantSectionWithRole(projectSectionId, userId);
+        ProjectSection section = granted.section();
 
         Map<Long, Opinion> opinionByAuthorId = opinionRepository
                 .findAllWithAuthorByProjectSectionId(projectSectionId).stream()
@@ -173,7 +178,8 @@ public class OpinionService {
         return OpinionCollectionStatusResponse.of(
                 section.getStatus() == ProjectSectionStatus.COLLECTING,
                 memberRosterQueryService.getParticipants(section.getProject().getId()),
-                opinionByAuthorId);
+                opinionByAuthorId,
+                granted.isOwner());
     }
 
     /**

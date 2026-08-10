@@ -60,6 +60,34 @@ class SectionAccessGuardTest {
     }
 
     @Test
+    @DisplayName("역할 포함 참여자 검사는 멤버십을 한 번만 읽고 OWNER 여부를 함께 돌려준다")
+    void requireParticipantSectionWithRole_returnsSectionAndRole() {
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectAccessGuard.requireParticipant(PROJECT_ID, USER_ID))
+                .willReturn(membership(ProjectMemberRole.OWNER));
+
+        VerifiedParticipantSection granted =
+                sectionAccessGuard.requireParticipantSectionWithRole(SECTION_ID, USER_ID);
+
+        assertThat(granted.section()).isSameAs(section);
+        assertThat(granted.isOwner()).isTrue();
+        // 역할까지 얻으려고 멤버십을 두 번 읽지 않는다 (존재 숨김 밖에서 403 이 새는 경로 차단)
+        verify(projectAccessGuard).requireParticipant(PROJECT_ID, USER_ID);
+        verifyNoMoreInteractions(projectAccessGuard);
+    }
+
+    @Test
+    @DisplayName("역할 포함 참여자 검사에서 MEMBER 는 OWNER 가 아니다")
+    void requireParticipantSectionWithRole_marksMemberAsNonOwner() {
+        given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
+        given(projectAccessGuard.requireParticipant(PROJECT_ID, USER_ID))
+                .willReturn(membership(ProjectMemberRole.MEMBER));
+
+        assertThat(sectionAccessGuard.requireParticipantSectionWithRole(SECTION_ID, USER_ID).isOwner())
+                .isFalse();
+    }
+
+    @Test
     @DisplayName("팀장 전용 섹션 검사는 OWNER 검사를 사용한다")
     void requireOwnedSection_delegatesOwnerCheck() {
         given(projectSectionRepository.findById(SECTION_ID)).willReturn(Optional.of(section));
@@ -173,5 +201,12 @@ class SectionAccessGuardTest {
                 () -> sectionAccessGuard.requireOwnedSection(SECTION_ID, USER_ID));
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
+    private ProjectMember membership(ProjectMemberRole role) {
+        return ProjectMember.builder()
+                .project(section.getProject())
+                .role(role)
+                .build();
     }
 }
