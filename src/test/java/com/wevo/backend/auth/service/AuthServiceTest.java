@@ -228,6 +228,63 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("동시 최초 로그인으로 소셜 계정 유니크 제약이 깨지면 기존 계정을 찾아 멱등 성공한다")
+    void login_concurrentFirstLogin_recoversIdempotently() {
+        // 로그인 버튼 연타 등으로 같은 계정의 최초 로그인이 동시에 들어오면 양쪽 모두 "연결된 계정
+        // 없음"을 보고 가입을 시도한다. 늦은 쪽이 제약에 걸리는 건 오류가 아니라 본인 계정이 방금
+        // 만들어졌다는 뜻이다. (이메일을 주지 않는 제공자에서 나타나는 형태)
+        OAuthUserInfo userInfo = new OAuthUserInfo(
+                AuthProvider.KAKAO, "kakao-race", null, "카카오유저", null);
+        User winner = User.builder().name("카카오유저").status(UserStatus.ACTIVE).build();
+        ReflectionTestUtils.setField(winner, "id", 42L);
+
+        given(oAuthClientRouter.getClient(AuthProvider.KAKAO)).willReturn(oAuthClient);
+        given(oAuthClient.fetchUserInfo("code", "uri")).willReturn(userInfo);
+        given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.KAKAO, "kakao-race"))
+                .willReturn(Optional.empty())
+                .willReturn(Optional.of(AuthAccount.builder()
+                        .user(winner).provider(AuthProvider.KAKAO).providerUserId("kakao-race").build()));
+        given(userRepository.saveAndFlush(any(User.class))).willAnswer(call -> call.getArgument(0));
+        given(authAccountRepository.save(any(AuthAccount.class)))
+                .willThrow(new DataIntegrityViolationException("uk_auth_accounts_provider_user"));
+        given(jwtProvider.createAccessToken(42L)).willReturn("access");
+        given(jwtProvider.createRefreshToken(42L)).willReturn("refresh");
+        given(jwtProvider.getRefreshTokenValidityMs()).willReturn(1_000L);
+
+        TokenResponse response = authService.login(AuthProvider.KAKAO, "code", "uri");
+
+        assertThat(response.accessToken()).isEqualTo("access");
+    }
+
+    @Test
+    @DisplayName("이메일 중복으로 실패했어도 내 소셜 계정이 생겼으면 멱등 성공으로 잇는다")
+    void login_concurrentFirstLoginWithEmail_recoversIdempotently() {
+        // 이메일을 주는 제공자에서는 users 유니크 제약이 먼저 걸려 U002 로 변환된다. 그대로 두면
+        // 본인에게 "이미 다른 방식으로 가입된 이메일입니다"가 표시된다.
+        OAuthUserInfo userInfo = new OAuthUserInfo(
+                AuthProvider.GOOGLE, "google-race2", "me@wevo.com", "홍길동", null);
+        User winner = User.builder().name("홍길동").email("me@wevo.com").status(UserStatus.ACTIVE).build();
+        ReflectionTestUtils.setField(winner, "id", 43L);
+
+        given(oAuthClientRouter.getClient(AuthProvider.GOOGLE)).willReturn(oAuthClient);
+        given(oAuthClient.fetchUserInfo("code", "uri")).willReturn(userInfo);
+        given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.GOOGLE, "google-race2"))
+                .willReturn(Optional.empty())
+                .willReturn(Optional.of(AuthAccount.builder()
+                        .user(winner).provider(AuthProvider.GOOGLE).providerUserId("google-race2").build()));
+        given(userRepository.findByEmail("me@wevo.com")).willReturn(Optional.empty());
+        given(userRepository.saveAndFlush(any(User.class)))
+                .willThrow(new DataIntegrityViolationException("uk_users_email"));
+        given(jwtProvider.createAccessToken(43L)).willReturn("access");
+        given(jwtProvider.createRefreshToken(43L)).willReturn("refresh");
+        given(jwtProvider.getRefreshTokenValidityMs()).willReturn(1_000L);
+
+        TokenResponse response = authService.login(AuthProvider.GOOGLE, "code", "uri");
+
+        assertThat(response.accessToken()).isEqualTo("access");
+    }
+
+    @Test
     @DisplayName("이메일 제약이 아닌 무결성 위반은 DUPLICATE_EMAIL 로 바꾸지 않고 그대로 전파한다")
     void login_nonEmailConstraintViolation_isNotTranslated() {
         // 예: 소셜 제공자가 닉네임을 주지 않아 name NOT NULL 이 깨진 경우.
