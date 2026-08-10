@@ -113,6 +113,24 @@ readonly REQUIRED_PRODUCTION_VARIABLES=(
   OPENAI_API_MODEL
 )
 
+readonly OPENAI_PRODUCTION_VARIABLES=(
+  OPENAI_API_KEY
+  OPENAI_API_BASE_URL
+  OPENAI_API_MODEL
+  OPENAI_API_TIMEOUT
+  OPENAI_API_MAX_TOKENS
+  OPENAI_API_REASONING_EFFORT
+  OPENAI_API_CONTEXT_LIMIT
+  OPENAI_PROMPT_CACHE_OPTIMIZATION_ENABLED
+  OPENAI_PROMPT_CACHE_EXPLICIT_FEATURES
+  OPENAI_PROMPT_CACHE_EXPLICIT_MODELS
+  OPENAI_PROMPT_CACHE_TTL
+)
+
+for variable_name in "${OPENAI_PRODUCTION_VARIABLES[@]}"; do
+  assert_contains "$COMPOSE_FILE" "$variable_name: \${$variable_name"
+done
+
 for variable_name in "${REQUIRED_PRODUCTION_VARIABLES[@]}"; do
   missing_variable_env="$test_directory/missing-${variable_name}.env"
   compose_error="$test_directory/${variable_name}-compose-error.log"

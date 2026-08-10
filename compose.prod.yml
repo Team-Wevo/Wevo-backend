@@ -54,6 +54,7 @@ services:
       # 계산 가능한 토큰이 조용히 발급되므로 의도적으로 필수다.
       INVITE_TOKEN_SECRET: ${INVITE_TOKEN_SECRET:?INVITE_TOKEN_SECRET must be set}
       AI_PROVIDER: ${AI_PROVIDER:?AI_PROVIDER must be set}
+      AI_GUARDRAIL_ENABLED: ${AI_GUARDRAIL_ENABLED:?AI_GUARDRAIL_ENABLED must be set}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be set}
       OPENAI_API_BASE_URL: ${OPENAI_API_BASE_URL:-https://api.openai.com}
       OPENAI_API_MODEL: ${OPENAI_API_MODEL:?OPENAI_API_MODEL must be set}
