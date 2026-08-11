@@ -36,7 +36,8 @@ public interface AiUsageLogRepository extends JpaRepository<AiUsageLog, Long> {
             @Param("threshold") LocalDateTime threshold
     );
 
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    // 완료 트랜잭션이 관리 중인 AiJob까지 clear하면 후속 성공 전이가 dirty checking에서 누락된다.
+    @Modifying(flushAutomatically = true)
     @Query("""
             update AiUsageLog log
             set log.resultId = :resultId

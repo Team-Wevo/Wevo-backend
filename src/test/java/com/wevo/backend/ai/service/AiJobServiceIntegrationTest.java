@@ -343,7 +343,7 @@ class AiJobServiceIntegrationTest {
     }
 
     @Test
-    void successfulChunkUsageLogsAreLinkedAfterFinalResultIsPersisted() {
+    void usageResultLinkDoesNotDetachCompletedJob() {
         UUID requestId = jobService.createOrGet(command()).requestId();
         AiJob job = jobRepository.findByRequestId(requestId).orElseThrow();
         jobService.start(requestId, SNAPSHOT);
@@ -371,6 +371,18 @@ class AiJobServiceIntegrationTest {
         assertThat(usageLogRepository.findAll())
                 .hasSize(3)
                 .allSatisfy(log -> assertThat(log.getResultId()).isEqualTo(91L));
+
+        AiJob completed = jobRepository.findByRequestId(requestId).orElseThrow();
+        assertThat(completed.getStatus()).isEqualTo(AiJobStatus.SUCCEEDED);
+        assertThat(completed.getResultId()).isEqualTo(91L);
+        assertThat(completed.getCompletedAt()).isNotNull();
+        assertThat(completed.getFinalErrorType()).isNull();
+        assertThat(completed.getFailedAt()).isNull();
+
+        assertThat(jobService.recoverIfHeartbeatStale(
+                requestId,
+                LocalDateTime.now(clock).plusMinutes(1)
+        )).isFalse();
     }
 
     @Test
