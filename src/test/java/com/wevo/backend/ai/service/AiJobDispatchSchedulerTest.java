@@ -37,6 +37,7 @@ class AiJobDispatchSchedulerTest {
 
     @Mock private AiJobService aiJobService;
     @Mock private AiJobExecutor aiJobExecutor;
+    @Mock private ReviewIntentComparisonRecoveryService comparisonRecoveryService;
 
     private AiJobDispatchScheduler scheduler;
 
@@ -45,7 +46,8 @@ class AiJobDispatchSchedulerTest {
         AiJobDispatchProperties properties = new AiJobDispatchProperties(true, Duration.ofSeconds(2), 20, 8,
                 Duration.ofSeconds(15), Duration.ofSeconds(60), Duration.ofSeconds(60));
         Clock clock = Clock.fixed(Instant.parse("2026-07-24T05:00:00Z"), ZoneOffset.UTC);
-        scheduler = new AiJobDispatchScheduler(aiJobService, aiJobExecutor, properties, clock);
+        scheduler = new AiJobDispatchScheduler(
+                aiJobService, aiJobExecutor, comparisonRecoveryService, properties, clock);
     }
 
     @Test
@@ -95,6 +97,7 @@ class AiJobDispatchSchedulerTest {
         scheduler.recoverStalledRunning();
 
         verify(aiJobService).recoverIfHeartbeatStale(eq(stalled), any());
+        verify(comparisonRecoveryService).recoverPendingComparisons(any(), eq(20));
     }
 
     @Test
