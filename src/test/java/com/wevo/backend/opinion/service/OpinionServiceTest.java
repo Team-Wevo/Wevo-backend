@@ -492,7 +492,7 @@ class OpinionServiceTest {
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.OPINION_NOT_FOUND);
         assertThat(exception.getErrors()).singleElement().satisfies(error -> {
-            assertThat(error.getField()).isEqualTo("projectSectionId");
+            assertThat(error.getField()).isEqualTo("sectionId");
             assertThat(error.getReason()).isEqualTo("no draft opinion to submit");
         });
     }

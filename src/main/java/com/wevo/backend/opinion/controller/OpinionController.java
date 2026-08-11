@@ -54,12 +54,12 @@ public class OpinionController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)")
     })
-    @GetMapping("/{projectSectionId}/my-opinion")
+    @GetMapping("/{sectionId}/my-opinion")
     public ResponseEntity<ApiResponse<MyOpinionResponse>> getMyOpinion(
-            @PathVariable Long projectSectionId,
+            @PathVariable Long sectionId,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
-        MyOpinionResponse response = opinionService.getMyOpinion(projectSectionId, principal.userId());
+        MyOpinionResponse response = opinionService.getMyOpinion(sectionId, principal.userId());
         return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", response));
     }
 
@@ -85,13 +85,13 @@ public class OpinionController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409", description = "O003 — 의견 수집 마감됨")
     })
-    @PatchMapping("/{projectSectionId}/my-opinion/draft")
+    @PatchMapping("/{sectionId}/my-opinion/draft")
     public ResponseEntity<ApiResponse<OpinionDraftResponse>> saveDraft(
-            @PathVariable Long projectSectionId,
+            @PathVariable Long sectionId,
             @AuthenticationPrincipal AuthPrincipal principal,
             @Valid @RequestBody OpinionDraftRequest request
     ) {
-        OpinionDraftResponse response = opinionService.saveDraft(projectSectionId, principal.userId(), request);
+        OpinionDraftResponse response = opinionService.saveDraft(sectionId, principal.userId(), request);
         return ResponseEntity.ok(ApiResponse.success("OPINION_DRAFT_SAVED", "의견이 임시저장되었습니다.", response));
     }
 
@@ -108,13 +108,13 @@ public class OpinionController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)")
     })
-    @GetMapping("/{projectSectionId}/opinions")
+    @GetMapping("/{sectionId}/opinions")
     public ResponseEntity<ApiResponse<SubmittedOpinionListResponse>> getSubmittedOpinions(
-            @PathVariable Long projectSectionId,
+            @PathVariable Long sectionId,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
         SubmittedOpinionListResponse response =
-                opinionService.getSubmittedOpinions(projectSectionId, principal.userId());
+                opinionService.getSubmittedOpinions(sectionId, principal.userId());
         return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", response));
     }
 
@@ -138,13 +138,13 @@ public class OpinionController {
                     content = @Content(examples = @ExampleObject(
                             name = "S001", ref = ApiExampleRefs.SECTION_NOT_FOUND)))
     })
-    @GetMapping("/{projectSectionId}/opinion-collection-status")
+    @GetMapping("/{sectionId}/opinion-collection-status")
     public ResponseEntity<ApiResponse<OpinionCollectionStatusResponse>> getCollectionStatus(
-            @PathVariable Long projectSectionId,
+            @PathVariable Long sectionId,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
         OpinionCollectionStatusResponse response =
-                opinionService.getCollectionStatus(projectSectionId, principal.userId());
+                opinionService.getCollectionStatus(sectionId, principal.userId());
         return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", response));
     }
 
@@ -170,12 +170,12 @@ public class OpinionController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "422", description = "C002 — 제출 기준(20자) 미달")
     })
-    @PostMapping("/{projectSectionId}/my-opinion/submit")
+    @PostMapping("/{sectionId}/my-opinion/submit")
     public ResponseEntity<ApiResponse<OpinionSubmitResponse>> submitMyOpinion(
-            @PathVariable Long projectSectionId,
+            @PathVariable Long sectionId,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
-        OpinionSubmitResponse response = opinionService.submitMyOpinion(projectSectionId, principal.userId());
+        OpinionSubmitResponse response = opinionService.submitMyOpinion(sectionId, principal.userId());
         return ResponseEntity.ok(ApiResponse.success("OPINION_SUBMITTED", "의견이 제출되었습니다.", response));
     }
 
@@ -192,12 +192,12 @@ public class OpinionController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409", description = "O004 — 제출된 의견 없음 / S002 — COLLECTING 아님")
     })
-    @PostMapping("/{projectSectionId}/opinion-gate/close")
+    @PostMapping("/{sectionId}/opinion-gate/close")
     public ResponseEntity<ApiResponse<OpinionGateCloseResponse>> closeOpinionGate(
-            @PathVariable Long projectSectionId,
+            @PathVariable Long sectionId,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
-        OpinionGateCloseResponse response = opinionService.closeOpinionGate(projectSectionId, principal.userId());
+        OpinionGateCloseResponse response = opinionService.closeOpinionGate(sectionId, principal.userId());
         return ResponseEntity.ok(ApiResponse.success("OPINION_GATE_CLOSED", "의견 수집이 마감되었습니다.", response));
     }
 
@@ -214,12 +214,12 @@ public class OpinionController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409", description = "S002 — 이미 열림 또는 CONFIRMED / S004 — 타인이 편집 중")
     })
-    @PostMapping("/{projectSectionId}/opinion-gate/reopen")
+    @PostMapping("/{sectionId}/opinion-gate/reopen")
     public ResponseEntity<ApiResponse<OpinionGateReopenResponse>> reopenOpinionGate(
-            @PathVariable Long projectSectionId,
+            @PathVariable Long sectionId,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
-        OpinionGateReopenResponse response = opinionService.reopenOpinionGate(projectSectionId, principal.userId());
+        OpinionGateReopenResponse response = opinionService.reopenOpinionGate(sectionId, principal.userId());
         return ResponseEntity.ok(ApiResponse.success("OPINION_GATE_REOPENED", "의견 수집이 다시 열렸습니다.", response));
     }
 }

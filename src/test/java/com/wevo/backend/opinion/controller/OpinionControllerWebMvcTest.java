@@ -245,13 +245,13 @@ class OpinionControllerWebMvcTest {
     }
 
     @Test
-    @DisplayName("임시저장된 의견이 없으면 O001과 projectSectionId 필드 오류를 반환한다")
+    @DisplayName("임시저장된 의견이 없으면 O001과 sectionId 필드 오류를 반환한다")
     void submitMyOpinion_opinionNotFound_returnsO001() throws Exception {
         given(opinionService.submitMyOpinion(10L, 7L))
                 .willThrow(new BusinessException(
                         ErrorCode.OPINION_NOT_FOUND,
                         List.of(new FieldError(
-                                "projectSectionId",
+                                "sectionId",
                                 "no draft opinion to submit"
                         ))
                 ));
@@ -261,7 +261,7 @@ class OpinionControllerWebMvcTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("O001"))
                 .andExpect(jsonPath("$.message").value("의견을 찾을 수 없습니다."))
-                .andExpect(jsonPath("$.errors[0].field").value("projectSectionId"))
+                .andExpect(jsonPath("$.errors[0].field").value("sectionId"))
                 .andExpect(jsonPath("$.errors[0].reason").value("no draft opinion to submit"))
                 .andExpect(jsonPath("$.timestamp").exists());
     }

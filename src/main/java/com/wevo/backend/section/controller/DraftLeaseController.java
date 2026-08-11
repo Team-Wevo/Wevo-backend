@@ -44,13 +44,13 @@ public class DraftLeaseController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409", description = "S002 — 편집 불가 상태 / S004 — 타인이 편집권 보유")
     })
-    @PostMapping("/{projectSectionId}/draft/lease")
+    @PostMapping("/{sectionId}/draft/lease")
     public ResponseEntity<ApiResponse<DraftLeaseAcquireResponse>> acquire(
-            @PathVariable Long projectSectionId,
+            @PathVariable Long sectionId,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
         DraftLeaseAcquireResponse response =
-                draftLeaseService.acquire(projectSectionId, principal.userId());
+                draftLeaseService.acquire(sectionId, principal.userId());
         return ResponseEntity.ok(
                 ApiResponse.success("DRAFT_LEASE_ACQUIRED", "편집권을 획득했습니다.", response)
         );
@@ -65,13 +65,13 @@ public class DraftLeaseController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김)")
     })
-    @GetMapping("/{projectSectionId}/draft/lease")
+    @GetMapping("/{sectionId}/draft/lease")
     public ResponseEntity<ApiResponse<DraftLeaseStatusResponse>> getStatus(
-            @PathVariable Long projectSectionId,
+            @PathVariable Long sectionId,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
         DraftLeaseStatusResponse response =
-                draftLeaseService.getStatus(projectSectionId, principal.userId());
+                draftLeaseService.getStatus(sectionId, principal.userId());
         return ResponseEntity.ok(ApiResponse.success("OK", "조회에 성공했습니다.", response));
     }
 
@@ -86,13 +86,13 @@ public class DraftLeaseController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409", description = "S004 — 만료 사이 타인이 획득 / S005 — 편집권 미보유")
     })
-    @PutMapping("/{projectSectionId}/draft/lease")
+    @PutMapping("/{sectionId}/draft/lease")
     public ResponseEntity<ApiResponse<DraftLeaseRenewResponse>> renew(
-            @PathVariable Long projectSectionId,
+            @PathVariable Long sectionId,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
         DraftLeaseRenewResponse response =
-                draftLeaseService.renew(projectSectionId, principal.userId());
+                draftLeaseService.renew(sectionId, principal.userId());
         return ResponseEntity.ok(
                 ApiResponse.success("DRAFT_LEASE_RENEWED", "편집권이 연장되었습니다.", response));
     }
@@ -108,12 +108,12 @@ public class DraftLeaseController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409", description = "S004 — 타인이 편집권 보유 / S005 — 편집권 미보유")
     })
-    @DeleteMapping("/{projectSectionId}/draft/lease")
+    @DeleteMapping("/{sectionId}/draft/lease")
     public ResponseEntity<ApiResponse<Void>> release(
-            @PathVariable Long projectSectionId,
+            @PathVariable Long sectionId,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
-        draftLeaseService.release(projectSectionId, principal.userId());
+        draftLeaseService.release(sectionId, principal.userId());
         return ResponseEntity.ok(
                 ApiResponse.success("DRAFT_LEASE_RELEASED", "편집을 종료했습니다.", null));
     }
