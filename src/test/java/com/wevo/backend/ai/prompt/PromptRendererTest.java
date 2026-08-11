@@ -46,10 +46,12 @@ class PromptRendererTest {
 
         assertInvalid(() -> renderer.render(definition, java.util.Collections.singletonMap("sourceText", null)));
         assertInvalid(() -> renderer.render(definition, Map.of("sourceText", "   ")));
-        assertInvalid(() -> renderer.render(
+        assertThatThrownBy(() -> renderer.render(
                 definition,
-                Map.of("sourceText", "x".repeat(PromptRenderer.MAX_VARIABLE_LENGTH + 1))
-        ));
+                Map.of("sourceText", "x".repeat(PromptRenderer.MAX_VARIABLE_LENGTH + 1))))
+                .isInstanceOf(PromptException.class)
+                .extracting(exception -> ((PromptException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.AI_INPUT_BUDGET_EXCEEDED);
     }
 
     private String resource(String fileName) throws IOException {

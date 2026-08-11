@@ -76,10 +76,7 @@ public class SynthesisPromptFactory {
     ) {
         StructuredAiProviderRequest<SynthesisAiOutput> request =
                 providerRequest(context, allowedOpinionIds, promptVersion);
-        return AiTokenBudgetInput.of(
-                request.prompt().systemPrompt(),
-                StructuredPromptFormatter.initialUserPrompt(request)
-        );
+        return StructuredPromptFormatter.tokenBudgetInput(request, true);
     }
 
     private String serialize(SynthesisPromptContext context) {

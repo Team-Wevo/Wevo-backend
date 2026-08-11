@@ -1,7 +1,9 @@
 package com.wevo.backend.ai.service;
 
+import com.wevo.backend.ai.context.AiInputBudgetExceededException;
 import com.wevo.backend.ai.domain.AiErrorType;
 import com.wevo.backend.ai.exception.AiProviderException;
+import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import org.springframework.stereotype.Component;
 
@@ -9,6 +11,9 @@ import org.springframework.stereotype.Component;
 public class AiErrorClassifier {
 
     public AiErrorType classify(Throwable throwable) {
+        if (isInputBudgetExceeded(throwable)) {
+            return AiErrorType.INPUT_BUDGET_EXCEEDED;
+        }
         if (!(throwable instanceof AiProviderException exception)) {
             return AiErrorType.INTERNAL_ERROR;
         }
@@ -30,14 +35,24 @@ public class AiErrorClassifier {
             case AI_STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED -> AiErrorType.SCHEMA_VALIDATION_FAILED;
             case AI_STRUCTURED_OUTPUT_CONVERSION_FAILED -> AiErrorType.TYPE_CONVERSION_FAILED;
             case AI_STRUCTURED_OUTPUT_SEMANTIC_VALIDATION_FAILED -> AiErrorType.SEMANTIC_VALIDATION_FAILED;
+            case AI_INPUT_BUDGET_EXCEEDED -> AiErrorType.INPUT_BUDGET_EXCEEDED;
             default -> AiErrorType.PROVIDER_ERROR;
         };
     }
 
     public String safeMessage(Throwable throwable) {
+        if (isInputBudgetExceeded(throwable)) {
+            return ErrorCode.AI_INPUT_BUDGET_EXCEEDED.getMessage();
+        }
         if (throwable instanceof AiProviderException exception) {
             return exception.getErrorCode().getMessage();
         }
         return "예상하지 못한 AI 처리 오류가 발생했습니다.";
+    }
+
+    private boolean isInputBudgetExceeded(Throwable throwable) {
+        return throwable instanceof AiInputBudgetExceededException
+                || (throwable instanceof BusinessException businessException
+                    && businessException.getErrorCode() == ErrorCode.AI_INPUT_BUDGET_EXCEEDED);
     }
 }

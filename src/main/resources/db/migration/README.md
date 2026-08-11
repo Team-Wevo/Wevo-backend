@@ -147,3 +147,8 @@ otherwise fail the constraint. The widened status CHECK is added as `NOT VALID`;
 `V19__validate_review_link_status_constraint.sql` validates existing rows after V18 commits so the
 scan does not retain V18's stronger lock. The new CHECK is a superset of the previous one, so no
 existing row can violate it.
+
+`V22__add_ai_input_budget_error_type.sql` extends the `ai_jobs.final_error_type` CHECK with
+`INPUT_BUDGET_EXCEEDED`, allowing deterministic oversized-input failures to be stored separately
+from internal failures. It adds the replacement CHECK as `NOT VALID`; V23 validates existing AI
+job history in a separate migration so the validation scan does not retain V22's stronger lock.

@@ -38,7 +38,10 @@ public class PromptRenderer {
     }
 
     private void validateValue(String variable, String value) {
-        if (value == null || value.isBlank() || value.length() > MAX_VARIABLE_LENGTH) {
+        if (value != null && value.length() > MAX_VARIABLE_LENGTH) {
+            throw new PromptException(ErrorCode.AI_INPUT_BUDGET_EXCEEDED);
+        }
+        if (value == null || value.isBlank()) {
             throw new PromptException(ErrorCode.AI_PROMPT_VARIABLE_INVALID);
         }
     }

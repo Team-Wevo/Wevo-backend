@@ -285,6 +285,51 @@ class AbstractSpringAiGatewayTest {
     }
 
     @Test
+    void rejectsStructuredInputBeforeFirstCallWhenCorrectionReserveWouldExceedBudget() {
+        StructuredAiProviderRequest<TestOutput> request = structuredRequest(Set.of(7L));
+        int initialBudget = Math.toIntExact(StructuredPromptFormatter
+                .tokenBudgetInput(request, false)
+                .segments()
+                .stream()
+                .mapToLong(value -> value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+                .sum());
+        AtomicInteger calls = new AtomicInteger();
+        AbstractSpringAiGateway gateway = gateway(prompt -> {
+            calls.incrementAndGet();
+            return response("not-json");
+        }, Duration.ofSeconds(1), 0, 2, initialBudget);
+
+        assertThatThrownBy(() -> gateway.generateStructured(request))
+                .isInstanceOf(AiInputBudgetExceededException.class);
+        assertThat(calls).hasValue(0);
+    }
+
+    @Test
+    void correctionRetrySucceedsAtWorstCaseReservedBudgetBoundary() {
+        StructuredAiProviderRequest<TestOutput> request = structuredRequest(Set.of(7L));
+        int reservedBudget = Math.toIntExact(StructuredPromptFormatter
+                .tokenBudgetInput(request, true)
+                .segments()
+                .stream()
+                .mapToLong(value -> value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+                .sum());
+        AtomicInteger calls = new AtomicInteger();
+        AbstractSpringAiGateway gateway = gateway(prompt -> {
+            if (calls.incrementAndGet() == 1) {
+                return response("not-json");
+            }
+            return response("{\"resourceId\":7,\"signal\":\"CLEAR\"}");
+        }, Duration.ofSeconds(1), 0, 2, reservedBudget);
+
+        StructuredAiProviderResponse<TestOutput> response = gateway.generateStructured(request);
+
+        assertThat(calls).hasValue(2);
+        assertThat(response.result()).isEqualTo(new TestOutput(7L, TestSignal.CLEAR));
+        assertThat(response.usageMetadata().inputTokens()).isEqualTo(10L);
+        assertThat(response.correctionRetryCount()).isEqualTo(1);
+    }
+
+    @Test
     void classifiesFinalStructuredFailuresAndDoesNotRetrySemanticFailure() {
         AbstractSpringAiGateway malformedGateway = gateway(
                 prompt -> response("not-json"), Duration.ofSeconds(1), 0, 0
@@ -386,6 +431,44 @@ class AbstractSpringAiGatewayTest {
             Duration timeout,
             int maxTransportRetries,
             int maxCorrectionRetries,
+            int maxInputTokens
+    ) {
+        return gateway(
+                chatModel,
+                timeout,
+                maxTransportRetries,
+                maxCorrectionRetries,
+                maxInputTokens,
+                new AiRetrySleeper() {
+                    @Override
+                    public void sleep(Duration duration) {
+                        // 단위 테스트에서는 backoff를 기다리지 않는다.
+                    }
+                });
+    }
+
+    private AbstractSpringAiGateway gateway(
+            ChatModel chatModel,
+            Duration timeout,
+            int maxTransportRetries,
+            int maxCorrectionRetries,
+            AiRetrySleeper retrySleeper
+    ) {
+        return gateway(
+                chatModel,
+                timeout,
+                maxTransportRetries,
+                maxCorrectionRetries,
+                100_000,
+                retrySleeper);
+    }
+
+    private AbstractSpringAiGateway gateway(
+            ChatModel chatModel,
+            Duration timeout,
+            int maxTransportRetries,
+            int maxCorrectionRetries,
+            int maxInputTokens,
             AiRetrySleeper retrySleeper
     ) {
         AiProperties properties = new AiProperties(
@@ -393,7 +476,7 @@ class AbstractSpringAiGatewayTest {
                 new AiProperties.ModelOptions(
                         "test-model",
                         timeout,
-                        100_000,
+                        maxInputTokens,
                         128,
                         131_072,
                         8_192,

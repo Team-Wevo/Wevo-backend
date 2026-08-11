@@ -6,6 +6,7 @@ import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiJobStatus;
 import com.wevo.backend.ai.domain.AiUsageLog;
 import com.wevo.backend.ai.client.AiUsageMetadata;
+import com.wevo.backend.ai.context.AiInputBudgetExceededException;
 import com.wevo.backend.ai.exception.AiProviderException;
 import com.wevo.backend.ai.repository.AiJobRepository;
 import com.wevo.backend.ai.repository.AiUsageLogRepository;
@@ -342,6 +343,23 @@ class AiJobServiceIntegrationTest {
                     .isEqualTo(entry.getKey().getMessage())
                     .doesNotContain("sk-ant");
         }
+    }
+
+    @Test
+    void inputBudgetFailureIsPersistedWithActionableExternalCode() {
+        UUID requestId = jobService.createOrGet(command()).requestId();
+        jobService.start(requestId, SNAPSHOT);
+
+        jobService.fail(requestId, new AiInputBudgetExceededException(
+                AiFeature.OPINION_SYNTHESIS, 100_001, 100_000));
+
+        AiJob failed = jobRepository.findByRequestId(requestId).orElseThrow();
+        assertThat(failed.getStatus()).isEqualTo(AiJobStatus.FAILED);
+        assertThat(failed.getFinalErrorType()).isEqualTo(AiErrorType.INPUT_BUDGET_EXCEEDED);
+        assertThat(failed.getFinalErrorType().toErrorCode())
+                .isEqualTo(ErrorCode.AI_INPUT_BUDGET_EXCEEDED);
+        assertThat(failed.getSafeErrorMessage())
+                .isEqualTo(ErrorCode.AI_INPUT_BUDGET_EXCEEDED.getMessage());
     }
 
     @Test
