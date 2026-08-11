@@ -69,6 +69,7 @@ class AiOperationalMetricsTest {
         metrics.recordJobEvent(AiFeature.DRAFT_REVIEW, "stale_discarded");
         metrics.recordJobEvent(null, "orphan_recovered");
         metrics.recordGuardrailRejection(AiFeature.DRAFT_REVIEW, "redis_fail_closed");
+        metrics.recordGuardrailLifecycleStateMismatch(AiFeature.DRAFT_REVIEW, "settlement");
 
         assertThat(registry.get(AiOperationalMetrics.REQUESTS)
                 .tag("model_family", "other")
@@ -80,6 +81,8 @@ class AiOperationalMetricsTest {
                 .containsExactlyInAnyOrder("stale_discarded", "orphan_recovered");
         assertThat(registry.get(AiOperationalMetrics.GUARDRAIL_REJECTIONS)
                 .tag("reason", "redis_fail_closed").counter().count()).isEqualTo(1);
+        assertThat(registry.get(AiOperationalMetrics.GUARDRAIL_LIFECYCLE_STATE_MISMATCHES)
+                .tag("event", "settlement").counter().count()).isEqualTo(1);
     }
 
     @Test

@@ -7,6 +7,10 @@ import com.wevo.backend.ai.domain.AiCostSnapshot;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.exception.AiGuardrailExceededException;
+import com.wevo.backend.ai.operations.AiOperationalMetrics;
+import com.wevo.backend.global.exception.BusinessException;
+import com.wevo.backend.global.exception.ErrorCode;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +37,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -100,17 +105,18 @@ class AiGuardrailRedisIntegrationTest {
     }
 
     @Test
-    void sameIdempotencyExecutionSharesOneReservation() {
+    void existingActiveLedgerFailsClosedInsteadOfReturningInactiveReservation() {
         AiGuardrailService service = service(Clock.fixed(
                 Instant.parse("2026-08-02T03:00:00Z"), ZoneOffset.UTC), 1);
         UUID identity = UUID.randomUUID();
 
         AiGuardrailReservation first = service.reserve(command(identity, 1L, 7L));
-        AiGuardrailReservation duplicate = service.reserve(command(identity, 1L, 7L));
-        service.rollback(duplicate);
 
         assertThat(first.active()).isTrue();
-        assertThat(duplicate.active()).isFalse();
+        assertThatThrownBy(() -> service.reserve(command(identity, 1L, 7L)))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.AI_GUARDRAIL_UNAVAILABLE));
         assertThat(redisTemplate.opsForValue().get(first.counterKeys().getFirst()))
                 .isEqualTo("1");
     }
@@ -214,6 +220,63 @@ class AiGuardrailRedisIntegrationTest {
                 .isEqualTo("0");
     }
 
+    @Test
+    void immediateRetryAfterRollbackReservesQuotaAndCostAgain() {
+        AiGuardrailService service = service(Clock.fixed(
+                Instant.parse("2026-08-02T03:00:00Z"), ZoneOffset.UTC), 10);
+        UUID identity = UUID.randomUUID();
+        AiGuardrailReservation first = service.reserve(command(identity, 1L, 7L));
+        String reserved = redisTemplate.opsForHash().get(first.ledgerKey(), "reserved").toString();
+
+        service.rollback(first);
+        AiGuardrailReservation retried = service.reserve(command(identity, 1L, 7L));
+
+        assertThat(retried.active()).isTrue();
+        assertThat(redisTemplate.opsForHash().get(retried.ledgerKey(), "state"))
+                .isEqualTo("RESERVED");
+        assertThat(redisTemplate.opsForHash().get(retried.ledgerKey(), "reserved"))
+                .isEqualTo(reserved);
+        assertThat(redisTemplate.opsForValue().get(retried.counterKeys().getFirst()))
+                .isEqualTo("1");
+        assertThat(redisTemplate.opsForValue().get(retried.counterKeys().get(6)))
+                .isEqualTo(reserved);
+
+        AiJob retriedJob = job(identity);
+        service.markProviderStarted(retriedJob);
+        service.recordUsage(retriedJob, UUID.randomUUID(), cost("0.000010"));
+        service.settle(retriedJob);
+
+        assertThat(redisTemplate.opsForHash().get(retried.ledgerKey(), "state"))
+                .isEqualTo("SETTLED");
+        assertThat(redisTemplate.opsForValue().get(retried.counterKeys().getFirst()))
+                .isEqualTo("1");
+        assertThat(redisTemplate.opsForValue().get(retried.counterKeys().get(6)))
+                .isEqualTo("10");
+    }
+
+    @Test
+    void lifecycleStateMismatchesAreRecordedWithoutChangingRolledBackLedger() {
+        AiGuardrailService service = service(Clock.fixed(
+                Instant.parse("2026-08-02T03:00:00Z"), ZoneOffset.UTC), 10);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        service.setMetrics(new AiOperationalMetrics(registry));
+        UUID identity = UUID.randomUUID();
+        AiGuardrailReservation reservation = service.reserve(command(identity, 1L, 7L));
+        AiJob job = job(identity);
+        service.rollback(reservation);
+
+        service.markProviderStarted(job);
+        service.recordUsage(job, UUID.randomUUID(), cost("0.000010"));
+        service.settle(job);
+
+        assertThat(registry.get(AiOperationalMetrics.GUARDRAIL_LIFECYCLE_STATE_MISMATCHES)
+                .counters())
+                .extracting(counter -> counter.getId().getTag("event"))
+                .containsExactlyInAnyOrder("provider_start", "usage_record", "settlement");
+        assertThat(redisTemplate.opsForHash().get(reservation.ledgerKey(), "state"))
+                .isEqualTo("ROLLED_BACK");
+    }
+
     private AiGuardrailService service(Clock clock, int userPerMinute) {
         return service(
                 clock, userPerMinute, 100, 100,
@@ -268,6 +331,7 @@ class AiGuardrailRedisIntegrationTest {
         when(job.getRequestId()).thenReturn(requestId);
         when(job.getIdempotencyKey()).thenReturn(hashSeed(requestId));
         when(job.getExecutionSequence()).thenReturn(1);
+        when(job.getFeature()).thenReturn(AiFeature.DRAFT_GENERATION);
         return job;
     }
 

@@ -50,7 +50,13 @@ public class AiGuardrailService {
     private static final DateTimeFormatter MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyyMM");
 
     private static final DefaultRedisScript<List> RESERVE_SCRIPT = script("""
-            if redis.call('EXISTS', KEYS[1]) == 1 then return {11, 0} end
+            if redis.call('EXISTS', KEYS[1]) == 1 then
+              if redis.call('HGET', KEYS[1], 'state') == 'ROLLED_BACK' then
+                redis.call('DEL', KEYS[1])
+              else
+                return {11, 0}
+              end
+            end
             for i = 2, 7 do
               local current = tonumber(redis.call('GET', KEYS[i]) or '0')
               local limit = tonumber(ARGV[i - 1])
@@ -114,7 +120,7 @@ public class AiGuardrailService {
             if redis.call('EXISTS', KEYS[1]) == 0 then return -1 end
             local state = redis.call('HGET', KEYS[1], 'state')
             if state ~= 'RESERVED' then return 0 end
-            if redis.call('HSETNX', KEYS[1], ARGV[1], ARGV[2]) == 0 then return 0 end
+            if redis.call('HSETNX', KEYS[1], ARGV[1], ARGV[2]) == 0 then return 2 end
             if ARGV[2] == 'UNMEASURED' then
               redis.call('HSET', KEYS[1], 'unmeasured', 1)
             else
@@ -179,7 +185,7 @@ public class AiGuardrailService {
             return reserveInternal(command);
         } catch (BusinessException exception) {
             if (metrics != null) {
-                metrics.recordGuardrailRejection(command.feature(), guardrailReason(exception.getErrorCode()));
+                metrics.recordGuardrailRejection(command.feature(), guardrailReason(exception));
             }
             throw exception;
         }
@@ -238,15 +244,18 @@ public class AiGuardrailService {
         if (code == 4) {
             throw exceeded(ErrorCode.AI_PROJECT_COST_BUDGET_EXCEEDED, retryAfter);
         }
-        if (code != 10 && code != 11) {
+        if (code == 11) {
+            throw new LedgerReservationConflictException();
+        }
+        if (code != 10) {
             throw unavailable();
         }
-        if (code == 10 && metrics != null) {
+        if (metrics != null) {
             metrics.recordBudgetUtilization(
                     ((Number) result.get(1)).doubleValue()
                             / Math.max(1.0d, toMicros(properties.cost().dailyBudgetUsd())));
         }
-        return new AiGuardrailReservation(code == 10, keys.getFirst(), keys.subList(1, keys.size()));
+        return new AiGuardrailReservation(true, keys.getFirst(), keys.subList(1, keys.size()));
     }
 
     public boolean isEnabled() {
@@ -268,9 +277,10 @@ public class AiGuardrailService {
             return;
         }
         Long result = execute(START_SCRIPT, List.of(ledgerKey(job)), List.of());
-        if (result == null || result < 0) {
+        if (result == null || result < 0 || result > 1) {
             throw unavailable();
         }
+        recordLifecycleStateMismatch(job, "provider_start", result);
     }
 
     public void recordUsage(AiJob job, UUID usageRequestId, AiCostSnapshot cost) {
@@ -294,9 +304,10 @@ public class AiGuardrailService {
             }
             throw exception;
         }
-        if (result == null || result < 0) {
+        if (result == null || result < 0 || result > 2) {
             throw unavailable();
         }
+        recordLifecycleStateMismatch(job, "usage_record", result);
     }
 
     /** 성공·실패·stale 모두 동일하게 실제 누적 비용으로 멱등 정산한다. */
@@ -325,9 +336,10 @@ public class AiGuardrailService {
                 List.of(ledgerKey, budgetKeys.get(0).toString(), budgetKeys.get(1).toString()),
                 List.of()
         );
-        if (result == null || result < 0) {
+        if (result == null || result < 0 || result > 2) {
             throw unavailable();
         }
+        recordLifecycleStateMismatch(job, "settlement", result);
     }
 
     private long estimateMicros(AiGuardrailReservationCommand command) {
@@ -450,8 +462,17 @@ public class AiGuardrailService {
         this.metrics = metrics;
     }
 
-    private String guardrailReason(ErrorCode errorCode) {
-        return switch (errorCode) {
+    private void recordLifecycleStateMismatch(AiJob job, String operation, long result) {
+        if (result == 0 && metrics != null) {
+            metrics.recordGuardrailLifecycleStateMismatch(job.getFeature(), operation);
+        }
+    }
+
+    private String guardrailReason(BusinessException exception) {
+        if (exception instanceof LedgerReservationConflictException) {
+            return "reservation_state_conflict";
+        }
+        return switch (exception.getErrorCode()) {
             case AI_REQUEST_QUOTA_EXCEEDED -> "request_quota";
             case AI_PROJECT_QUOTA_EXCEEDED -> "project_quota";
             case AI_PROJECT_COST_BUDGET_EXCEEDED -> "budget";
@@ -459,6 +480,13 @@ public class AiGuardrailService {
             case AI_GUARDRAIL_UNAVAILABLE -> "redis_fail_closed";
             default -> "reservation_error";
         };
+    }
+
+    private static final class LedgerReservationConflictException extends BusinessException {
+
+        private LedgerReservationConflictException() {
+            super(ErrorCode.AI_GUARDRAIL_UNAVAILABLE);
+        }
     }
 
     private record Window(
