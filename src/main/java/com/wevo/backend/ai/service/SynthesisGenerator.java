@@ -1,6 +1,7 @@
 package com.wevo.backend.ai.service;
 
 import com.wevo.backend.ai.client.StructuredAiProviderRequest;
+import com.wevo.backend.ai.client.StructuredOutputExecutionContext;
 import com.wevo.backend.ai.context.AiGapAnswerContext;
 import com.wevo.backend.ai.context.AiOpinionContext;
 import com.wevo.backend.ai.context.ContextChunkPlan;
@@ -77,7 +78,9 @@ public class SynthesisGenerator {
             SynthesisAiOutput output = invoke(
                     usage,
                     promptFactory.providerRequest(
-                            context, Set.copyOf(chunk.opinionIds()), job.getPromptVersion())
+                            context, Set.copyOf(chunk.opinionIds()), job.getPromptVersion()),
+                    SynthesisPromptContext.PARTIAL,
+                    chunk.index()
             );
             partials.add(new PartialSynthesis(chunk.index(), chunk.opinionIds(), output));
         }
@@ -98,17 +101,22 @@ public class SynthesisGenerator {
                         mergeContext,
                         Set.copyOf(plan.eligibleOpinionIds()),
                         job.getPromptVersion()
-                )
+                ),
+                SynthesisPromptContext.FINAL_MERGE,
+                null
         );
     }
 
     private SynthesisAiOutput invoke(
             AiUsageStartCommand usage,
-            StructuredAiProviderRequest<SynthesisAiOutput> request
+            StructuredAiProviderRequest<SynthesisAiOutput> request,
+            String stage,
+            Integer chunkIndex
     ) {
         return invocationService.invokeStructured(
                 usage,
-                request,
+                request.withExecutionContext(
+                        new StructuredOutputExecutionContext(stage, chunkIndex)),
                 response -> new AiProcessedResult<>(response.result(), null)
         ).value();
     }

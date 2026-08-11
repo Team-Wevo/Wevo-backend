@@ -2,6 +2,7 @@ package com.wevo.backend.ai.service;
 
 import com.wevo.backend.ai.client.StructuredOutputValidationContext;
 import com.wevo.backend.ai.client.StructuredOutputSemanticException;
+import com.wevo.backend.ai.client.StructuredOutputSemanticFailureReason;
 import com.wevo.backend.ai.client.StructuredOutputValidator;
 import com.wevo.backend.ai.dto.model.IssueDetectionOutput;
 import java.util.HashSet;
@@ -30,9 +31,9 @@ public class SynthesisOutputValidator implements StructuredOutputValidator<Synth
     @Override
     public void validate(SynthesisAiOutput output, StructuredOutputValidationContext context) {
         if (output == null || context == null) {
-            throw reject();
+            throw reject(StructuredOutputSemanticFailureReason.OUTPUT_REQUIRED, "output");
         }
-        requireText(output.consensusSummary(), MAX_CONSENSUS_LENGTH);
+        requireText(output.consensusSummary(), MAX_CONSENSUS_LENGTH, "consensusSummary");
         validateConsensusEvidence(output.consensusEvidenceOpinionIds(), context);
         validateExactCoverage(output.coveredOpinionIds(), context);
         issueValidator.validate(new IssueDetectionOutput(output.issues()), context);
@@ -42,17 +43,29 @@ public class SynthesisOutputValidator implements StructuredOutputValidator<Synth
             List<Long> evidenceOpinionIds,
             StructuredOutputValidationContext context
     ) {
-        if (evidenceOpinionIds == null
-                || evidenceOpinionIds.isEmpty()
-                || evidenceOpinionIds.size() > MAX_CONSENSUS_EVIDENCE) {
-            throw reject();
+        if (evidenceOpinionIds == null) {
+            throw reject(StructuredOutputSemanticFailureReason.COLLECTION_REQUIRED,
+                    "consensusEvidenceOpinionIds");
+        }
+        if (evidenceOpinionIds.isEmpty()) {
+            throw reject(StructuredOutputSemanticFailureReason.COLLECTION_EMPTY,
+                    "consensusEvidenceOpinionIds", null, 1, 0);
+        }
+        if (evidenceOpinionIds.size() > MAX_CONSENSUS_EVIDENCE) {
+            throw reject(StructuredOutputSemanticFailureReason.COLLECTION_LIMIT_EXCEEDED,
+                    "consensusEvidenceOpinionIds", null,
+                    MAX_CONSENSUS_EVIDENCE, evidenceOpinionIds.size());
         }
         Set<Long> unique = new HashSet<>();
         for (Long opinionId : evidenceOpinionIds) {
             if (!unique.add(opinionId)) {
-                throw reject();
+                throw reject(StructuredOutputSemanticFailureReason.REFERENCE_DUPLICATED,
+                        "consensusEvidenceOpinionIds", opinionId);
             }
-            context.requireAllowedResourceId(opinionId);
+            if (opinionId == null || !context.allowedResourceIds().contains(opinionId)) {
+                throw reject(StructuredOutputSemanticFailureReason.REFERENCE_NOT_ALLOWED,
+                        "consensusEvidenceOpinionIds", opinionId);
+            }
         }
     }
 
@@ -61,22 +74,62 @@ public class SynthesisOutputValidator implements StructuredOutputValidator<Synth
             StructuredOutputValidationContext context
     ) {
         if (coveredOpinionIds == null) {
-            throw reject();
+            throw reject(StructuredOutputSemanticFailureReason.COLLECTION_REQUIRED,
+                    "coveredOpinionIds");
         }
-        Set<Long> covered = new HashSet<>(coveredOpinionIds);
-        if (covered.size() != coveredOpinionIds.size()
-                || !covered.equals(context.allowedResourceIds())) {
-            throw reject();
+        Set<Long> covered = new HashSet<>();
+        for (Long opinionId : coveredOpinionIds) {
+            if (!covered.add(opinionId)) {
+                throw reject(StructuredOutputSemanticFailureReason.COVERAGE_REFERENCE_DUPLICATED,
+                        "coveredOpinionIds", opinionId);
+            }
+            if (opinionId == null || !context.allowedResourceIds().contains(opinionId)) {
+                throw reject(StructuredOutputSemanticFailureReason.COVERAGE_REFERENCE_UNEXPECTED,
+                        "coveredOpinionIds", opinionId,
+                        context.allowedResourceIds().size(), coveredOpinionIds.size());
+            }
+        }
+        if (!covered.equals(context.allowedResourceIds())) {
+            Long missingId = context.allowedResourceIds().stream()
+                    .filter(id -> !covered.contains(id))
+                    .sorted()
+                    .findFirst()
+                    .orElse(null);
+            throw reject(StructuredOutputSemanticFailureReason.COVERAGE_REFERENCE_MISSING,
+                    "coveredOpinionIds", missingId,
+                    context.allowedResourceIds().size(), coveredOpinionIds.size());
         }
     }
 
-    private void requireText(String value, int maxLength) {
+    private void requireText(String value, int maxLength, String field) {
         if (value == null || value.isBlank() || value.length() > maxLength) {
-            throw reject();
+            throw reject(StructuredOutputSemanticFailureReason.TEXT_INVALID, field);
         }
     }
 
-    private StructuredOutputSemanticException reject() {
-        return new StructuredOutputSemanticException();
+    private StructuredOutputSemanticException reject(
+            StructuredOutputSemanticFailureReason reason,
+            String field
+    ) {
+        return new StructuredOutputSemanticException(reason, field);
+    }
+
+    private StructuredOutputSemanticException reject(
+            StructuredOutputSemanticFailureReason reason,
+            String field,
+            Long resourceId
+    ) {
+        return new StructuredOutputSemanticException(reason, field, resourceId);
+    }
+
+    private StructuredOutputSemanticException reject(
+            StructuredOutputSemanticFailureReason reason,
+            String field,
+            Long resourceId,
+            Integer expectedCount,
+            Integer actualCount
+    ) {
+        return new StructuredOutputSemanticException(
+                reason, field, resourceId, expectedCount, actualCount);
     }
 }

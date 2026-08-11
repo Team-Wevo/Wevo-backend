@@ -11,6 +11,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.wevo.backend.ai.client.StructuredAiProviderRequest;
+import com.wevo.backend.ai.client.StructuredOutputExecutionContext;
 import com.wevo.backend.ai.context.AiOpinionContext;
 import com.wevo.backend.ai.context.ContextChunk;
 import com.wevo.backend.ai.context.ContextChunkPlan;
@@ -70,6 +71,7 @@ class SynthesisGeneratorTest {
         @SuppressWarnings("unchecked")
         StructuredAiProviderRequest<SynthesisAiOutput> request =
                 mock(StructuredAiProviderRequest.class);
+        given(request.withExecutionContext(any())).willReturn(request);
         given(promptFactory.providerRequest(any(), any(), any())).willReturn(request);
 
         SynthesisAiOutput first = output("부분 1", List.of(1L));
@@ -99,6 +101,16 @@ class SynthesisGeneratorTest {
         assertThat(contexts.getAllValues().get(2).partials())
                 .extracting(SynthesisPromptContext.PartialSynthesis::coveredOpinionIds)
                 .containsExactly(List.of(1L), List.of(2L));
+        ArgumentCaptor<StructuredOutputExecutionContext> executionContexts =
+                ArgumentCaptor.forClass(StructuredOutputExecutionContext.class);
+        verify(request, org.mockito.Mockito.times(3))
+                .withExecutionContext(executionContexts.capture());
+        assertThat(executionContexts.getAllValues())
+                .containsExactly(
+                        new StructuredOutputExecutionContext(SynthesisPromptContext.PARTIAL, 1),
+                        new StructuredOutputExecutionContext(SynthesisPromptContext.PARTIAL, 2),
+                        new StructuredOutputExecutionContext(SynthesisPromptContext.FINAL_MERGE, null)
+                );
     }
 
     @Test
@@ -109,6 +121,7 @@ class SynthesisGeneratorTest {
         @SuppressWarnings("unchecked")
         StructuredAiProviderRequest<SynthesisAiOutput> request =
                 mock(StructuredAiProviderRequest.class);
+        given(request.withExecutionContext(any())).willReturn(request);
         given(promptFactory.providerRequest(any(), any(), any())).willReturn(request);
         given(invocationService.invokeStructured(any(), eq(request), any()))
                 .willReturn(new AiInvocationResult<>(
@@ -130,6 +143,7 @@ class SynthesisGeneratorTest {
         @SuppressWarnings("unchecked")
         StructuredAiProviderRequest<SynthesisAiOutput> request =
                 mock(StructuredAiProviderRequest.class);
+        given(request.withExecutionContext(any())).willReturn(request);
         given(promptFactory.providerRequest(any(), any(), any())).willReturn(request);
         given(invocationService.invokeStructured(any(), eq(request), any()))
                 .willReturn(

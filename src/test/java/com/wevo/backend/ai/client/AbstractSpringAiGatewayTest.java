@@ -317,6 +317,30 @@ class AbstractSpringAiGatewayTest {
         assertThat(semanticCalls).hasValue(1);
     }
 
+    @Test
+    void semanticFailureKeepsSafeDiagnosticsAndExecutionContext() {
+        AbstractSpringAiGateway gateway = gateway(
+                prompt -> response("{\"resourceId\":7,\"signal\":\"CLEAR\"}"),
+                Duration.ofSeconds(1), 0, 0
+        );
+        StructuredAiProviderRequest<TestOutput> request = structuredRequest(Set.of(8L))
+                .withExecutionContext(new StructuredOutputExecutionContext("PARTIAL", 2));
+
+        assertThatThrownBy(() -> gateway.generateStructured(request))
+                .isInstanceOf(AiProviderException.class)
+                .satisfies(throwable -> {
+                    AiProviderException providerException = (AiProviderException) throwable;
+                    assertThat(providerException.getErrorCode())
+                            .isEqualTo(ErrorCode.AI_STRUCTURED_OUTPUT_SEMANTIC_VALIDATION_FAILED);
+                    assertThat(providerException.getCause())
+                            .isInstanceOf(StructuredOutputSemanticException.class);
+                    StructuredOutputSemanticException semanticException =
+                            (StructuredOutputSemanticException) providerException.getCause();
+                    assertThat(semanticException.getExecutionContext())
+                            .isEqualTo(new StructuredOutputExecutionContext("PARTIAL", 2));
+                });
+    }
+
     private void assertError(AbstractSpringAiGateway gateway, ErrorCode errorCode) {
         assertThatThrownBy(() -> gateway.generate(
                 new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", "user")

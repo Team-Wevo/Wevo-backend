@@ -281,7 +281,7 @@ public abstract class AbstractSpringAiGateway implements AiProviderGateway {
         } catch (StructuredOutputSemanticException exception) {
             throw new AiProviderException(
                     ErrorCode.AI_STRUCTURED_OUTPUT_SEMANTIC_VALIDATION_FAILED,
-                    exception,
+                    exception.withExecutionContext(request.executionContext()),
                     usage,
                     attempts
             );
