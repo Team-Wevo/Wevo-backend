@@ -165,6 +165,32 @@ class SectionDriftServiceTest {
     }
 
     @Test
+    void draftingSourceWithConfirmedHistoryKeepsStateAndPropagatesToDependents() {
+        SectionTemplate sourceTemplate = template(10L, "source", 1);
+        SectionTemplate dependentTemplate = template(11L, "dependent", 2);
+        ProjectSection source = section(100L, sourceTemplate, 1, ProjectSectionStatus.DRAFTING);
+        ProjectSection dependent = section(
+                101L, dependentTemplate, 2, ProjectSectionStatus.DRAFTING);
+        source.recordConfirmedVersion(1);
+        given(templateDependencyRepository.findDirectDependents(
+                10L, OutputType.PRESENTATION, TemplateDependencyType.REQUIRES))
+                .willReturn(List.of(dependency(dependentTemplate, sourceTemplate)));
+        given(projectSectionRepository.findDependentsForUpdate(PROJECT_ID, List.of(11L)))
+                .willReturn(List.of(dependent));
+
+        List<DriftedSection> result =
+                service.propagateConfirmedContentChange(source, ACTOR_ID, 2);
+
+        assertThat(source.getStatus()).isEqualTo(ProjectSectionStatus.DRAFTING);
+        assertThat(dependent.getDriftStatus()).isEqualTo(DriftStatus.REVIEW_REQUIRED);
+        assertThat(result).extracting(DriftedSection::sectionId).containsExactly(101L);
+        verify(sectionStatusService, never()).markReviewingAfterConfirmedContentChange(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
     void missingDependentSectionFailsInsteadOfPartiallyAcceptingGraph() {
         SectionTemplate sourceTemplate = template(10L, "source", 1);
         SectionTemplate dependentTemplate = template(11L, "dependent", 2);

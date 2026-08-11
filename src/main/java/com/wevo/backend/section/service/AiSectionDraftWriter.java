@@ -44,6 +44,7 @@ public class AiSectionDraftWriter {
     private final ReviewLinkService reviewLinkService;
     private final TeamReviewService teamReviewService;
     private final SectionStatusService sectionStatusService;
+    private final SectionDriftService sectionDriftService;
     private final UserService userService;
 
     public AiSectionDraftWriter(
@@ -57,6 +58,7 @@ public class AiSectionDraftWriter {
             ReviewLinkService reviewLinkService,
             TeamReviewService teamReviewService,
             SectionStatusService sectionStatusService,
+            SectionDriftService sectionDriftService,
             UserService userService
     ) {
         this.projectSectionRepository = projectSectionRepository;
@@ -69,6 +71,7 @@ public class AiSectionDraftWriter {
         this.reviewLinkService = reviewLinkService;
         this.teamReviewService = teamReviewService;
         this.sectionStatusService = sectionStatusService;
+        this.sectionDriftService = sectionDriftService;
         this.userService = userService;
     }
 
@@ -128,6 +131,10 @@ public class AiSectionDraftWriter {
                 command.actorUserId(),
                 draft.getVersion()
         );
+        if (section.getConfirmedVersion() > 0) {
+            sectionDriftService.propagateConfirmedContentChange(
+                    section, command.actorUserId(), draft.getVersion());
+        }
         return draft.getId();
     }
 
