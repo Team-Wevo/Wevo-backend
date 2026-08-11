@@ -80,6 +80,21 @@ class UserServiceTest {
     }
 
     @Test
+    @DisplayName("탈퇴한 계정은 프로필을 수정할 수 없다 — 마스킹된 이름 되돌리기 차단")
+    void updateMyProfile_withdrawnUser_throws() {
+        // 탈퇴 직후 30분간 살아 있는 Access Token 으로 "탈퇴한 사용자" 를 실명으로 되돌리는 경로.
+        User user = user("이전이름", "user@wevo.com");
+        user.withdraw();
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> userService.updateMyProfile(USER_ID, new ProfileUpdateRequest("복원한이름")));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.USER_NOT_FOUND);
+        assertThat(user.getName()).isEqualTo(User.WITHDRAWN_NAME);
+    }
+
+    @Test
     @DisplayName("존재하지 않는 사용자면 USER_NOT_FOUND 예외를 던진다")
     void getMyProfile_userNotFound_throws() {
         given(userRepository.findById(USER_ID)).willReturn(Optional.empty());

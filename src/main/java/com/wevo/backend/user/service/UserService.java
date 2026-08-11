@@ -39,10 +39,18 @@ public class UserService {
 
     /**
      * 내 표시 이름을 수정한다. (이메일·프로필 사진은 수정 대상이 아님)
+     *
+     * <p><b>탈퇴한 계정은 수정할 수 없다.</b> 탈퇴 직후에도 Access Token 이 30분간 살아 있는데,
+     * 막지 않으면 탈퇴 시 {@code "탈퇴한 사용자"} 로 덮은 표시 이름을 되돌리거나 임의 값으로 바꿔
+     * §3.3.3 의 개인정보 삭제를 무효화할 수 있다. 멤버 목록(§3.2.8)은 탈퇴자도 이름 그대로 노출하므로
+     * 실명이 팀원 화면에 다시 보인다. 프로젝트 생성이 같은 창을 {@code U001} 로 막는 것과 같은 방어다.
      */
     @Transactional
     public MyProfileResponse updateMyProfile(Long userId, ProfileUpdateRequest request) {
         User user = findUser(userId);
+        if (user.isWithdrawn()) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
         user.updateName(request.name());
         return MyProfileResponse.from(user);
     }
