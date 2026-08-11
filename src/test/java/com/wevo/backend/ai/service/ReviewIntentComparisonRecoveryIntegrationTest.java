@@ -107,7 +107,9 @@ class ReviewIntentComparisonRecoveryIntegrationTest {
                     assertThat(comparison.getStatus())
                             .isEqualTo(ReviewIntentComparisonStatus.FAILED);
                     assertThat(comparison.getFailureCode()).isEqualTo("AI999");
+                    assertThat(comparison.getSourceAiJobId()).isEqualTo(fixture.sourceAiJobId());
                 });
+        assertThat(comparisonRepository.findBySourceAiJobId(fixture.sourceAiJobId())).isPresent();
     }
 
     private Fixture fixture(boolean withRunningJob) {
@@ -153,6 +155,7 @@ class ReviewIntentComparisonRecoveryIntegrationTest {
                 "model");
 
         UUID requestId = null;
+        Long sourceAiJobId = null;
         if (withRunningJob) {
             LocalDateTime staleAt = LocalDateTime.now(KST).minusMinutes(10);
             AiJob job = AiJob.queue(
@@ -171,13 +174,14 @@ class ReviewIntentComparisonRecoveryIntegrationTest {
                     staleAt);
             job.start(staleAt);
             aiJobRepository.saveAndFlush(job);
-            comparison.bindSourceJob(job);
+            comparison.bindSourceJobId(job.getId());
             requestId = job.getRequestId();
+            sourceAiJobId = job.getId();
         }
         comparisonRepository.saveAndFlush(comparison);
-        return new Fixture(comparison.getId(), requestId);
+        return new Fixture(comparison.getId(), requestId, sourceAiJobId);
     }
 
-    private record Fixture(Long comparisonId, UUID requestId) {
+    private record Fixture(Long comparisonId, UUID requestId, Long sourceAiJobId) {
     }
 }

@@ -1,6 +1,5 @@
 package com.wevo.backend.review.domain;
 
-import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.global.common.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -50,9 +49,8 @@ public class ReviewIntentComparison extends BaseTimeEntity {
     @Column(name = "evidence_excerpt", length = 300)
     private String evidenceExcerpt;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "source_ai_job_id", unique = true)
-    private AiJob sourceAiJob;
+    @Column(name = "source_ai_job_id", unique = true)
+    private Long sourceAiJobId;
 
     @Column(name = "intent_snapshot_hash", length = 64)
     private String intentSnapshotHash;
@@ -100,11 +98,14 @@ public class ReviewIntentComparison extends BaseTimeEntity {
         return comparison;
     }
 
-    public void bindSourceJob(AiJob sourceJob) {
+    public void bindSourceJobId(Long sourceAiJobId) {
         if (status != ReviewIntentComparisonStatus.PENDING) {
             throw new IllegalStateException("대기 중인 비교에만 AI 작업을 연결할 수 있습니다.");
         }
-        this.sourceAiJob = Objects.requireNonNull(sourceJob, "sourceJob은 필수입니다.");
+        if (sourceAiJobId == null || sourceAiJobId <= 0) {
+            throw new IllegalArgumentException("sourceAiJobId는 양수여야 합니다.");
+        }
+        this.sourceAiJobId = sourceAiJobId;
     }
 
     public void succeed(

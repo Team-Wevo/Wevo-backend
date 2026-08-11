@@ -1,6 +1,5 @@
 package com.wevo.backend.review.service;
 
-import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.review.domain.ReviewIntentAlignment;
@@ -66,16 +65,16 @@ public class ReviewIntentComparisonStateService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void bindJob(Long submissionId, AiJob job) {
+    public void bindJob(Long submissionId, Long sourceAiJobId) {
         ReviewIntentComparison comparison = repository
                 .findByReviewSubmissionIdForUpdate(submissionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.AI_JOB_INPUT_CHANGED));
         if (comparison.getStatus() != ReviewIntentComparisonStatus.PENDING) {
             return;
         }
-        if (comparison.getSourceAiJob() == null) {
-            comparison.bindSourceJob(job);
-        } else if (!Objects.equals(comparison.getSourceAiJob().getId(), job.getId())) {
+        if (comparison.getSourceAiJobId() == null) {
+            comparison.bindSourceJobId(sourceAiJobId);
+        } else if (!Objects.equals(comparison.getSourceAiJobId(), sourceAiJobId)) {
             throw new BusinessException(ErrorCode.CONFLICT);
         }
     }
@@ -83,7 +82,7 @@ public class ReviewIntentComparisonStateService {
     @Transactional(propagation = Propagation.MANDATORY)
     public Long succeed(
             Long submissionId,
-            AiJob job,
+            Long sourceAiJobId,
             ReviewIntentAlignment alignment,
             String differenceSummary,
             String evidenceExcerpt
@@ -91,8 +90,8 @@ public class ReviewIntentComparisonStateService {
         ReviewIntentComparison comparison = repository
                 .findByReviewSubmissionIdForUpdate(submissionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.AI_JOB_INPUT_CHANGED));
-        if (comparison.getSourceAiJob() == null) {
-            comparison.bindSourceJob(job);
+        if (comparison.getSourceAiJobId() == null) {
+            comparison.bindSourceJobId(sourceAiJobId);
         }
         comparison.succeed(alignment, differenceSummary, evidenceExcerpt);
         return comparison.getId();
@@ -117,9 +116,7 @@ public class ReviewIntentComparisonStateService {
                 .stream()
                 .map(comparison -> new ReviewIntentComparisonRecoveryCandidate(
                         comparison.getReviewSubmission().getId(),
-                        comparison.getSourceAiJob() == null
-                                ? null
-                                : comparison.getSourceAiJob().getId()))
+                        comparison.getSourceAiJobId()))
                 .toList();
     }
 
@@ -134,7 +131,7 @@ public class ReviewIntentComparisonStateService {
                 .orElse(null);
         if (comparison == null
                 || comparison.getStatus() != ReviewIntentComparisonStatus.PENDING
-                || comparison.getSourceAiJob() != null
+                || comparison.getSourceAiJobId() != null
                 || !comparison.getCreatedAt().isBefore(threshold)) {
             return false;
         }
@@ -153,8 +150,8 @@ public class ReviewIntentComparisonStateService {
                 .orElse(null);
         if (comparison == null
                 || comparison.getStatus() != ReviewIntentComparisonStatus.PENDING
-                || comparison.getSourceAiJob() == null
-                || !Objects.equals(comparison.getSourceAiJob().getId(), sourceAiJobId)) {
+                || comparison.getSourceAiJobId() == null
+                || !Objects.equals(comparison.getSourceAiJobId(), sourceAiJobId)) {
             return false;
         }
         comparison.fail(failureCode);

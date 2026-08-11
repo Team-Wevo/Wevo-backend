@@ -81,7 +81,7 @@ public class ReviewIntentComparisonRequestService {
         }
         AiJob job = jobRepository.findByRequestId(result.requestId())
                 .orElseThrow(() -> new IllegalStateException("생성된 비교 AI 작업을 찾을 수 없습니다."));
-        stateService.bindJob(submissionId, job);
+        stateService.bindJob(submissionId, job.getId());
     }
 
     private ReviewIntentComparisonContext context(ReviewIntentComparisonInput input) {

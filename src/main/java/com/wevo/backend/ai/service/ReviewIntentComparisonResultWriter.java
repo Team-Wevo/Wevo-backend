@@ -42,7 +42,7 @@ public class ReviewIntentComparisonResultWriter {
                         Set.of(context.authorIntent(), context.reviewerSummary())));
         return stateService.succeed(
                 context.submissionId(),
-                job,
+                job.getId(),
                 output.alignment(),
                 output.differenceSummary(),
                 output.evidenceExcerpt());
