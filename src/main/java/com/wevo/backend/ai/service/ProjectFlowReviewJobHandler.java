@@ -1,6 +1,5 @@
 package com.wevo.backend.ai.service;
 
-import com.wevo.backend.ai.config.AiJobDispatchProperties;
 import com.wevo.backend.ai.context.AssembledAiContext;
 import com.wevo.backend.ai.context.ProjectFlowReviewContext;
 import com.wevo.backend.ai.context.ProjectFlowReviewContextAssembler;
@@ -13,9 +12,6 @@ import com.wevo.backend.project.service.ProjectAccessGuard;
 import com.wevo.backend.project.service.VerifiedProjectAccess;
 import com.wevo.backend.section.service.SectionConfirmationQueryService;
 import java.util.UUID;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -33,8 +29,7 @@ public class ProjectFlowReviewJobHandler implements AiJobHandler {
     private final ObjectProvider<ProjectFlowReviewer> reviewerProvider;
     private final ProjectFlowReviewResultWriter resultWriter;
     private final AiUsageResultLinkService usageLinkService;
-    private final ScheduledExecutorService scheduler;
-    private final long heartbeatMillis;
+    private final AiJobHeartbeatService heartbeatService;
 
     public ProjectFlowReviewJobHandler(AiJobService jobService, AiJobRepository jobRepository,
                                        ProjectAccessGuard accessGuard,
@@ -43,13 +38,11 @@ public class ProjectFlowReviewJobHandler implements AiJobHandler {
                                        ObjectProvider<ProjectFlowReviewer> reviewerProvider,
                                        ProjectFlowReviewResultWriter resultWriter,
                                        AiUsageResultLinkService usageLinkService,
-                                       ScheduledExecutorService aiHeartbeatScheduler,
-                                       AiJobDispatchProperties properties) {
+                                       AiJobHeartbeatService heartbeatService) {
         this.jobService = jobService; this.jobRepository = jobRepository; this.accessGuard = accessGuard;
         this.confirmationQueryService = confirmationQueryService; this.assembler = assembler;
         this.reviewerProvider = reviewerProvider; this.resultWriter = resultWriter;
-        this.usageLinkService = usageLinkService; this.scheduler = aiHeartbeatScheduler;
-        this.heartbeatMillis = Math.max(1, properties.heartbeatInterval().toMillis());
+        this.usageLinkService = usageLinkService; this.heartbeatService = heartbeatService;
     }
 
     @Override public AiFeature feature() { return AiFeature.PROJECT_FLOW_REVIEW; }
@@ -58,15 +51,11 @@ public class ProjectFlowReviewJobHandler implements AiJobHandler {
     public void run(UUID requestId) {
         AiJob job = load(requestId);
         if (job == null || !claim(job)) return;
-        ScheduledFuture<?> beat = null;
-        try {
-            beat = scheduler.scheduleAtFixedRate(() -> heartbeat(requestId), heartbeatMillis,
-                    heartbeatMillis, TimeUnit.MILLISECONDS);
+        try (AiJobHeartbeatService.HeartbeatLease ignored =
+                     heartbeatService.start(requestId, feature())) {
             execute(job);
         } catch (Exception exception) {
             safeFail(requestId, exception);
-        } finally {
-            if (beat != null) beat.cancel(false);
         }
     }
 
@@ -122,9 +111,5 @@ public class ProjectFlowReviewJobHandler implements AiJobHandler {
     private void safeFail(UUID id, Exception e) {
         try { jobService.fail(id, e); }
         catch (Exception failure) { log.warn("전체 흐름 AI 작업 실패 처리 불가 requestId={}, exceptionType={}", id, failure.getClass().getSimpleName()); }
-    }
-    private void heartbeat(UUID id) {
-        try { jobService.heartbeat(id); }
-        catch (Exception e) { log.debug("전체 흐름 AI 작업 heartbeat 실패 requestId={}", id); }
     }
 }

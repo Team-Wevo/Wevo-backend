@@ -1,5 +1,6 @@
 package com.wevo.backend.ai.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -8,6 +9,9 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.wevo.backend.ai.config.AiJobDispatchProperties;
 import com.wevo.backend.ai.domain.AiFeature;
 import java.time.Clock;
@@ -25,6 +29,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.slf4j.LoggerFactory;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -90,5 +95,31 @@ class AiJobDispatchSchedulerTest {
         scheduler.recoverStalledRunning();
 
         verify(aiJobService).recoverIfHeartbeatStale(eq(stalled), any());
+    }
+
+    @Test
+    @DisplayName("heartbeat timeout 회수 성공 시 requestId와 판단 기준을 기록한다")
+    void recoverStalledRunning_logsSuccessfulRecovery() {
+        UUID stalled = UUID.randomUUID();
+        given(aiJobService.findHeartbeatTimedOutRequestIds(any())).willReturn(List.of(stalled));
+        given(aiJobService.recoverIfHeartbeatStale(eq(stalled), any())).willReturn(true);
+        Logger logger = (Logger) LoggerFactory.getLogger(AiJobDispatchScheduler.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            scheduler.recoverStalledRunning();
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+
+        assertThat(appender.list)
+                .extracting(ILoggingEvent::getFormattedMessage)
+                .anySatisfy(message -> assertThat(message)
+                        .contains("heartbeat timeout 회수")
+                        .contains(stalled.toString())
+                        .contains("heartbeatTimeoutMs=60000"));
     }
 }

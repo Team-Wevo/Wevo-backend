@@ -101,10 +101,10 @@ class DraftGenerationJobHandlerTest {
                 draftWriter,
                 usageResultLinkService,
                 sectionStateService,
-                scheduler,
-                new AiJobDispatchProperties(
-                        true, Duration.ofSeconds(2), 20, 8,
-                        Duration.ofSeconds(10), Duration.ofSeconds(60), Duration.ofSeconds(60))
+                new AiJobHeartbeatService(aiJobService, scheduler,
+                        new AiJobDispatchProperties(
+                                true, Duration.ofSeconds(2), 20, 8,
+                                Duration.ofSeconds(10), Duration.ofSeconds(60), Duration.ofSeconds(60)))
         );
         context = context();
         given(aiJobRepository.findByRequestIdWithExecutionContext(REQUEST_ID))

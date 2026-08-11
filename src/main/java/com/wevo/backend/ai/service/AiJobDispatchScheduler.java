@@ -79,7 +79,12 @@ public class AiJobDispatchScheduler {
         LocalDateTime threshold = LocalDateTime.now(clock).minus(properties.heartbeatTimeout());
         for (UUID requestId : aiJobService.findHeartbeatTimedOutRequestIds(threshold)) {
             try {
-                aiJobService.recoverIfHeartbeatStale(requestId, threshold);
+                boolean recovered = aiJobService.recoverIfHeartbeatStale(requestId, threshold);
+                if (recovered) {
+                    log.warn("RUNNING AI 작업 heartbeat timeout 회수 requestId={} "
+                                    + "threshold={} heartbeatTimeoutMs={}",
+                            requestId, threshold, properties.heartbeatTimeout().toMillis());
+                }
             } catch (RuntimeException exception) {
                 log.warn("RUNNING AI 작업 회수 실패·건너뜀. requestId={}, exceptionType={}",
                         requestId, exception.getClass().getSimpleName());

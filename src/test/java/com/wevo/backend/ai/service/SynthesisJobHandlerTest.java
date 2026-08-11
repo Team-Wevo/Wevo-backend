@@ -82,8 +82,7 @@ class SynthesisJobHandlerTest {
         handler = new SynthesisJobHandler(aiJobService, aiJobRepository, snapshotAssembler, inputHasher,
                 synthesisGeneratorProvider, synthesisResultWriteService, usageResultLinkService,
                 sectionSynthesisStateService,
-                heartbeatScheduler, new AiJobDispatchProperties(true, Duration.ofSeconds(2), 20, 8,
-                        Duration.ofSeconds(15), Duration.ofSeconds(60), Duration.ofSeconds(60)));
+                heartbeatService(heartbeatScheduler, Duration.ofSeconds(15)));
 
         given(aiJobRepository.findByRequestId(REQUEST_ID)).willReturn(Optional.of(job));
         given(job.getRequestId()).willReturn(REQUEST_ID);
@@ -310,7 +309,15 @@ class SynthesisJobHandlerTest {
         return new SynthesisJobHandler(aiJobService, aiJobRepository, snapshotAssembler, inputHasher,
                 synthesisGeneratorProvider, synthesisResultWriteService, usageResultLinkService,
                 sectionSynthesisStateService,
-                scheduler, new AiJobDispatchProperties(true, Duration.ofSeconds(2), 20, 8,
+                heartbeatService(scheduler, heartbeatInterval));
+    }
+
+    private AiJobHeartbeatService heartbeatService(
+            ScheduledExecutorService scheduler,
+            Duration heartbeatInterval
+    ) {
+        return new AiJobHeartbeatService(aiJobService, scheduler,
+                new AiJobDispatchProperties(true, Duration.ofSeconds(2), 20, 8,
                         heartbeatInterval, Duration.ofSeconds(60), Duration.ofSeconds(60)));
     }
 }

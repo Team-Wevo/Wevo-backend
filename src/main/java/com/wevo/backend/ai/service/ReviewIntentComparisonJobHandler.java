@@ -1,6 +1,5 @@
 package com.wevo.backend.ai.service;
 
-import com.wevo.backend.ai.config.AiJobDispatchProperties;
 import com.wevo.backend.ai.config.AiProperties;
 import com.wevo.backend.ai.context.AiInputSnapshotHasher;
 import com.wevo.backend.ai.context.ReviewIntentComparisonContext;
@@ -14,9 +13,6 @@ import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.review.service.ReviewIntentComparisonInput;
 import com.wevo.backend.review.service.ReviewIntentComparisonStateService;
 import java.util.UUID;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -37,8 +33,7 @@ public class ReviewIntentComparisonJobHandler implements AiJobHandler {
     private final AiInputSnapshotHasher snapshotHasher;
     private final AiProperties properties;
     private final AiErrorClassifier errorClassifier;
-    private final ScheduledExecutorService heartbeatScheduler;
-    private final long heartbeatMillis;
+    private final AiJobHeartbeatService heartbeatService;
 
     public ReviewIntentComparisonJobHandler(
             AiJobService aiJobService,
@@ -50,8 +45,7 @@ public class ReviewIntentComparisonJobHandler implements AiJobHandler {
             AiInputSnapshotHasher snapshotHasher,
             AiProperties properties,
             AiErrorClassifier errorClassifier,
-            ScheduledExecutorService aiHeartbeatScheduler,
-            AiJobDispatchProperties dispatchProperties
+            AiJobHeartbeatService heartbeatService
     ) {
         this.aiJobService = aiJobService;
         this.jobRepository = jobRepository;
@@ -62,8 +56,7 @@ public class ReviewIntentComparisonJobHandler implements AiJobHandler {
         this.snapshotHasher = snapshotHasher;
         this.properties = properties;
         this.errorClassifier = errorClassifier;
-        this.heartbeatScheduler = aiHeartbeatScheduler;
-        this.heartbeatMillis = Math.max(1, dispatchProperties.heartbeatInterval().toMillis());
+        this.heartbeatService = heartbeatService;
     }
 
     @Override
@@ -85,14 +78,11 @@ public class ReviewIntentComparisonJobHandler implements AiJobHandler {
             }
             return;
         }
-        ScheduledFuture<?> beat = heartbeatScheduler.scheduleAtFixedRate(
-                () -> heartbeat(requestId), heartbeatMillis, heartbeatMillis, TimeUnit.MILLISECONDS);
-        try {
+        try (AiJobHeartbeatService.HeartbeatLease ignored =
+                     heartbeatService.start(requestId, feature())) {
             execute(job, submissionId);
         } catch (Exception exception) {
             safeFail(job, submissionId, exception);
-        } finally {
-            beat.cancel(false);
         }
     }
 
@@ -160,11 +150,4 @@ public class ReviewIntentComparisonJobHandler implements AiJobHandler {
         }
     }
 
-    private void heartbeat(UUID requestId) {
-        try {
-            aiJobService.heartbeat(requestId);
-        } catch (Exception exception) {
-            log.debug("검토 의도 비교 작업 heartbeat 갱신 실패 requestId={}", requestId);
-        }
-    }
 }
