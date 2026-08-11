@@ -210,7 +210,7 @@ public class OpinionService {
                 new BusinessException(
                         ErrorCode.OPINION_NOT_FOUND,
                         List.of(new FieldError(
-                                "projectSectionId",
+                                "sectionId",
                                 "no draft opinion to submit"
                         ))
                 ));

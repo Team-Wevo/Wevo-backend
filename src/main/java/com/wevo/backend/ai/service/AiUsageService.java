@@ -1,6 +1,7 @@
 package com.wevo.backend.ai.service;
 
 import com.wevo.backend.ai.client.AiUsageMetadata;
+import com.wevo.backend.ai.client.StructuredOutputSemanticException;
 import com.wevo.backend.ai.config.AiProperties;
 import com.wevo.backend.ai.domain.AiCostSnapshot;
 import com.wevo.backend.ai.domain.AiErrorType;
@@ -94,7 +95,7 @@ public class AiUsageService {
             );
             recordUsageWithRetry(handle.aiJob(), handle.requestId(), cost);
             recordSuccessMetric(handle, usage, cost, attemptCount, completedAt);
-            logCompletion(handle, usage, attemptCount, "SUCCEEDED", null, completedAt);
+            logCompletion(handle, usage, attemptCount, "SUCCEEDED", null, null, completedAt);
         } catch (RuntimeException exception) {
             throw persistenceFailure(handle.requestId(), exception);
         }
@@ -115,7 +116,7 @@ public class AiUsageService {
                 errorType, safeMessage, completedAt
         );
         recordFailureMetric(handle, usage, cost, attemptCount, errorType, completedAt);
-        logCompletion(handle, usage, attemptCount, "FAILED", errorType, completedAt);
+        logCompletion(handle, usage, attemptCount, "FAILED", errorType, throwable, completedAt);
     }
 
     public void markOrphaned(UUID requestId, LocalDateTime completedAt) {
@@ -228,8 +229,10 @@ public class AiUsageService {
             Integer attempts,
             String status,
             AiErrorType errorType,
+            Throwable throwable,
             LocalDateTime completedAt
     ) {
+        StructuredOutputSemanticException semanticFailure = findSemanticFailure(throwable);
         log.atInfo()
                 .addKeyValue("requestId", handle.requestId())
                 .addKeyValue("aiJobRequestId", handle.aiJob() == null ? null : handle.aiJob().getRequestId())
@@ -242,7 +245,34 @@ public class AiUsageService {
                 .addKeyValue("schemaVersion", handle.schemaVersion())
                 .addKeyValue("latencyMs", duration(handle, completedAt).toMillis())
                 .addKeyValue("attempt", attempts)
+                .addKeyValue("semanticFailureReason",
+                        semanticFailure == null ? null : semanticFailure.getReason())
+                .addKeyValue("semanticFailureField",
+                        semanticFailure == null ? null : semanticFailure.getField())
+                .addKeyValue("offendingResourceId",
+                        semanticFailure == null ? null : semanticFailure.getOffendingResourceId())
+                .addKeyValue("expectedCount",
+                        semanticFailure == null ? null : semanticFailure.getExpectedCount())
+                .addKeyValue("actualCount",
+                        semanticFailure == null ? null : semanticFailure.getActualCount())
+                .addKeyValue("structuredStage",
+                        semanticFailure == null ? null
+                                : semanticFailure.getExecutionContext().stage())
+                .addKeyValue("chunkIndex",
+                        semanticFailure == null ? null
+                                : semanticFailure.getExecutionContext().chunkIndex())
                 .log("AI invocation completed");
+    }
+
+    private StructuredOutputSemanticException findSemanticFailure(Throwable throwable) {
+        Throwable current = throwable;
+        for (int depth = 0; current != null && depth < 10; depth++) {
+            if (current instanceof StructuredOutputSemanticException semanticException) {
+                return semanticException;
+            }
+            current = current.getCause();
+        }
+        return null;
     }
 
     private String provider(AiUsageHandle handle, AiUsageMetadata usage) {

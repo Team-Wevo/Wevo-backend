@@ -18,7 +18,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class SynthesisPromptFactory {
 
-    public static final PromptTemplateId PROMPT_ID = new PromptTemplateId("opinion-synthesis", 2);
+    /** 평가 대상 최신 prompt. production 기본 계약은 승인 전까지 SynthesisContract의 v2를 유지한다. */
+    public static final PromptTemplateId PROMPT_ID = new PromptTemplateId("opinion-synthesis", 3);
 
     private final PromptRegistry promptRegistry;
     private final PromptRenderer promptRenderer;

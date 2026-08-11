@@ -159,6 +159,23 @@ class AiOpenApiWebMvcTest {
         );
     }
 
+    @Test
+    void projectSectionEndpointsUseSectionIdAsTheOpenApiPathParameter() throws Exception {
+        String content = mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode paths = objectMapper.readTree(content).path("paths");
+
+        assertPathParameter(paths,
+                "/api/project-sections/{sectionId}/opinion-clusters", "get", "sectionId");
+        assertPathParameter(paths,
+                "/api/project-sections/{sectionId}/my-opinion/draft", "patch", "sectionId");
+        assertThat(paths.has("/api/project-sections/{projectSectionId}/my-opinion/draft"))
+                .isFalse();
+    }
+
     private void assertResponse(
             JsonNode paths,
             String path,
@@ -168,6 +185,19 @@ class AiOpenApiWebMvcTest {
         assertThat(paths.path(path).path(method).path("responses").has(responseCode))
                 .as("%s %s 응답 %s가 OpenAPI에 있어야 한다", method, path, responseCode)
                 .isTrue();
+    }
+
+    private void assertPathParameter(
+            JsonNode paths,
+            String path,
+            String method,
+            String parameterName
+    ) {
+        assertThat(paths.path(path).path(method).path("parameters").values().stream()
+                .filter(parameter -> "path".equals(parameter.path("in").stringValue()))
+                .map(parameter -> parameter.path("name").stringValue())
+                .toList())
+                .containsExactly(parameterName);
     }
 
     private void assertSchemaReference(

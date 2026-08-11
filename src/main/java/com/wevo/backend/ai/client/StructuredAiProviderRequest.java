@@ -8,7 +8,8 @@ public record StructuredAiProviderRequest<T>(
         RenderedPrompt prompt,
         StructuredOutputDefinition<T> outputDefinition,
         StructuredOutputValidationContext validationContext,
-        AiProviderExecutionPolicy executionPolicy
+        AiProviderExecutionPolicy executionPolicy,
+        StructuredOutputExecutionContext executionContext
 ) {
 
     public StructuredAiProviderRequest(
@@ -17,7 +18,19 @@ public record StructuredAiProviderRequest<T>(
             StructuredOutputDefinition<T> outputDefinition,
             StructuredOutputValidationContext validationContext
     ) {
-        this(feature, prompt, outputDefinition, validationContext, null);
+        this(feature, prompt, outputDefinition, validationContext, null,
+                StructuredOutputExecutionContext.unspecified());
+    }
+
+    public StructuredAiProviderRequest(
+            AiFeature feature,
+            RenderedPrompt prompt,
+            StructuredOutputDefinition<T> outputDefinition,
+            StructuredOutputValidationContext validationContext,
+            AiProviderExecutionPolicy executionPolicy
+    ) {
+        this(feature, prompt, outputDefinition, validationContext, executionPolicy,
+                StructuredOutputExecutionContext.unspecified());
     }
 
     public StructuredAiProviderRequest {
@@ -27,10 +40,20 @@ public record StructuredAiProviderRequest<T>(
         validationContext = validationContext == null
                 ? StructuredOutputValidationContext.empty()
                 : validationContext;
+        executionContext = executionContext == null
+                ? StructuredOutputExecutionContext.unspecified()
+                : executionContext;
     }
 
     public StructuredAiProviderRequest<T> withExecutionPolicy(AiProviderExecutionPolicy policy) {
         return new StructuredAiProviderRequest<>(
-                feature, prompt, outputDefinition, validationContext, policy);
+                feature, prompt, outputDefinition, validationContext, policy, executionContext);
+    }
+
+    public StructuredAiProviderRequest<T> withExecutionContext(
+            StructuredOutputExecutionContext context
+    ) {
+        return new StructuredAiProviderRequest<>(
+                feature, prompt, outputDefinition, validationContext, executionPolicy, context);
     }
 }
