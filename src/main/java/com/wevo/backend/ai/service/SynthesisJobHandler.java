@@ -1,6 +1,5 @@
 package com.wevo.backend.ai.service;
 
-import com.wevo.backend.ai.config.AiJobDispatchProperties;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.dto.model.IssueDetectionIssueOutput;
@@ -17,9 +16,6 @@ import com.wevo.backend.section.service.SectionSynthesisStateService;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -55,8 +51,7 @@ public class SynthesisJobHandler implements AiJobHandler {
     private final SynthesisResultWriteService synthesisResultWriteService;
     private final AiUsageResultLinkService usageResultLinkService;
     private final SectionSynthesisStateService sectionSynthesisStateService;
-    private final ScheduledExecutorService heartbeatScheduler;
-    private final long heartbeatMillis;
+    private final AiJobHeartbeatService heartbeatService;
 
     public SynthesisJobHandler(AiJobService aiJobService,
                                AiJobRepository aiJobRepository,
@@ -66,8 +61,7 @@ public class SynthesisJobHandler implements AiJobHandler {
                                SynthesisResultWriteService synthesisResultWriteService,
                                AiUsageResultLinkService usageResultLinkService,
                                SectionSynthesisStateService sectionSynthesisStateService,
-                               ScheduledExecutorService aiHeartbeatScheduler,
-                               AiJobDispatchProperties properties) {
+                               AiJobHeartbeatService heartbeatService) {
         this.aiJobService = aiJobService;
         this.aiJobRepository = aiJobRepository;
         this.snapshotAssembler = snapshotAssembler;
@@ -76,10 +70,7 @@ public class SynthesisJobHandler implements AiJobHandler {
         this.synthesisResultWriteService = synthesisResultWriteService;
         this.usageResultLinkService = usageResultLinkService;
         this.sectionSynthesisStateService = sectionSynthesisStateService;
-        this.heartbeatScheduler = aiHeartbeatScheduler;
-        // 설정 유효성(0 < interval < timeout)은 AiJobDispatchProperties가 시작 시 검증한다.
-        // 여기서는 스케줄링 API가 요구하는 최소 주기(>0ms)만 보장한다.
-        this.heartbeatMillis = Math.max(1, properties.heartbeatInterval().toMillis());
+        this.heartbeatService = heartbeatService;
     }
 
     @Override
@@ -97,17 +88,11 @@ public class SynthesisJobHandler implements AiJobHandler {
         // claim 직후부터 종료까지 RUNNING 전체를 heartbeat로 감싼다. heartbeat 등록 실패(애플리케이션
         // 종료 중 executor rejection 등)도 예외 경계 안에 두어, 작업이 RUNNING으로 고립되지 않고 FAILED로
         // 종료되게 한다.
-        ScheduledFuture<?> beat = null;
-        try {
-            beat = heartbeatScheduler.scheduleAtFixedRate(
-                    () -> beat(requestId), heartbeatMillis, heartbeatMillis, TimeUnit.MILLISECONDS);
+        try (AiJobHeartbeatService.HeartbeatLease ignored =
+                     heartbeatService.start(requestId, feature())) {
             execute(requestId, job);
         } catch (Exception exception) {
             safeFail(requestId, exception);
-        } finally {
-            if (beat != null) {
-                beat.cancel(false);
-            }
         }
     }
 
@@ -170,15 +155,6 @@ public class SynthesisJobHandler implements AiJobHandler {
             // 이미 회수(FAILED/STALE)된 경우 등 전이 불가 — 성공 저장은 일어나지 않았으므로 상태는 안전하다.
             log.warn("AI 작업 실패 처리 불가(이미 종료 상태) requestId={}, exceptionType={}",
                     requestId, failException.getClass().getSimpleName());
-        }
-    }
-
-    private void beat(UUID requestId) {
-        try {
-            aiJobService.heartbeat(requestId);
-        } catch (Exception exception) {
-            // 이미 종료 전이됐거나 일시 오류 — 다음 tick·회수 로직에 맡긴다.
-            log.debug("heartbeat 갱신 실패 requestId={}", requestId);
         }
     }
 

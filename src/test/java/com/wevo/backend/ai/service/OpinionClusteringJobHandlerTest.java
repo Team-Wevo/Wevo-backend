@@ -68,9 +68,10 @@ class OpinionClusteringJobHandlerTest {
         handler = new OpinionClusteringJobHandler(
                 aiJobService, jobRepository, sectionAccessGuard, projectAccessGuard,
                 contextAssembler, clustererProvider, resultWriter, usageResultLinkService,
-                scheduler, new AiJobDispatchProperties(
-                        true, Duration.ofSeconds(2), 20, 8,
-                        Duration.ofSeconds(15), Duration.ofSeconds(60), Duration.ofSeconds(60)));
+                new AiJobHeartbeatService(aiJobService, scheduler,
+                        new AiJobDispatchProperties(
+                                true, Duration.ofSeconds(2), 20, 8,
+                                Duration.ofSeconds(15), Duration.ofSeconds(60), Duration.ofSeconds(60))));
         given(jobRepository.findByRequestIdWithExecutionContext(REQUEST_ID))
                 .willReturn(Optional.of(job));
         given(job.getRequestId()).willReturn(REQUEST_ID);

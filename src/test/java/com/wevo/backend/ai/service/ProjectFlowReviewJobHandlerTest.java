@@ -59,9 +59,10 @@ class ProjectFlowReviewJobHandlerTest {
     void setUp() {
         scheduler = Executors.newSingleThreadScheduledExecutor();
         handler = new ProjectFlowReviewJobHandler(jobService, jobRepository, accessGuard,
-                confirmationQuery, assembler, reviewerProvider, writer, usageLink, scheduler,
-                new AiJobDispatchProperties(true, Duration.ofSeconds(2), 20, 8,
-                        Duration.ofSeconds(15), Duration.ofSeconds(60), Duration.ofSeconds(60)));
+                confirmationQuery, assembler, reviewerProvider, writer, usageLink,
+                new AiJobHeartbeatService(jobService, scheduler,
+                        new AiJobDispatchProperties(true, Duration.ofSeconds(2), 20, 8,
+                                Duration.ofSeconds(15), Duration.ofSeconds(60), Duration.ofSeconds(60))));
         given(jobRepository.findByRequestIdWithExecutionContext(ID)).willReturn(Optional.of(job));
         given(job.getRequestId()).willReturn(ID); given(job.getInputSnapshotHash()).willReturn(HASH);
         given(job.getProject()).willReturn(project); given(project.getId()).willReturn(1L);

@@ -1,6 +1,5 @@
 package com.wevo.backend.ai.service;
 
-import com.wevo.backend.ai.config.AiJobDispatchProperties;
 import com.wevo.backend.ai.context.AiContextAssembler;
 import com.wevo.backend.ai.context.AssembledAiContext;
 import com.wevo.backend.ai.context.DraftGenerationContext;
@@ -23,9 +22,6 @@ import com.wevo.backend.section.service.SectionSynthesisStateService;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -47,8 +43,7 @@ public class DraftGenerationJobHandler implements AiJobHandler {
     private final AiSectionDraftWriter draftWriter;
     private final AiUsageResultLinkService usageResultLinkService;
     private final SectionSynthesisStateService sectionStateService;
-    private final ScheduledExecutorService heartbeatScheduler;
-    private final long heartbeatMillis;
+    private final AiJobHeartbeatService heartbeatService;
 
     public DraftGenerationJobHandler(
             AiJobService aiJobService,
@@ -61,8 +56,7 @@ public class DraftGenerationJobHandler implements AiJobHandler {
             AiSectionDraftWriter draftWriter,
             AiUsageResultLinkService usageResultLinkService,
             SectionSynthesisStateService sectionStateService,
-            ScheduledExecutorService aiHeartbeatScheduler,
-            AiJobDispatchProperties properties
+            AiJobHeartbeatService heartbeatService
     ) {
         this.aiJobService = aiJobService;
         this.aiJobRepository = aiJobRepository;
@@ -74,8 +68,7 @@ public class DraftGenerationJobHandler implements AiJobHandler {
         this.draftWriter = draftWriter;
         this.usageResultLinkService = usageResultLinkService;
         this.sectionStateService = sectionStateService;
-        this.heartbeatScheduler = aiHeartbeatScheduler;
-        this.heartbeatMillis = Math.max(1, properties.heartbeatInterval().toMillis());
+        this.heartbeatService = heartbeatService;
     }
 
     @Override
@@ -89,21 +82,11 @@ public class DraftGenerationJobHandler implements AiJobHandler {
         if (job == null || !claim(requestId, job)) {
             return;
         }
-        ScheduledFuture<?> beat = null;
-        try {
-            beat = heartbeatScheduler.scheduleAtFixedRate(
-                    () -> heartbeat(requestId),
-                    heartbeatMillis,
-                    heartbeatMillis,
-                    TimeUnit.MILLISECONDS
-            );
+        try (AiJobHeartbeatService.HeartbeatLease ignored =
+                     heartbeatService.start(requestId, feature())) {
             execute(job);
         } catch (Exception exception) {
             safeFail(requestId, exception);
-        } finally {
-            if (beat != null) {
-                beat.cancel(false);
-            }
         }
     }
 
@@ -257,11 +240,4 @@ public class DraftGenerationJobHandler implements AiJobHandler {
         }
     }
 
-    private void heartbeat(UUID requestId) {
-        try {
-            aiJobService.heartbeat(requestId);
-        } catch (Exception exception) {
-            log.debug("AI 초안 작업 heartbeat 갱신 실패 requestId={}", requestId);
-        }
-    }
 }

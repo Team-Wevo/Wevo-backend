@@ -14,6 +14,8 @@ import java.time.ZoneId;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Configuration(proxyBeanMethods = false)
 @EnableScheduling
@@ -55,15 +57,28 @@ public class AiConfig {
     /**
      * 실행 중인 AI 작업의 heartbeat(생존 신호)를 주기적으로 갱신하는 실행기. 실행 worker가 살아
      * 있는 동안 {@code lastHeartbeatAt}을 갱신해, 재시도로 오래 걸리는 정상 작업이 회수(FAILED)되지
-     * 않게 한다. heartbeat는 짧은 DB update이므로 소수 스레드로 충분하다.
+     * 않게 한다. 모든 동시 실행 작업이 독립적으로 heartbeat를 보낼 수 있도록 worker 동시성만큼
+     * 스레드를 확보한다.
      */
     @Bean(destroyMethod = "shutdown")
-    public ScheduledExecutorService aiHeartbeatScheduler() {
-        return Executors.newScheduledThreadPool(2, runnable -> {
-            Thread thread = new Thread(runnable, "ai-heartbeat");
-            thread.setDaemon(true);
-            return thread;
-        });
+    public ScheduledExecutorService aiHeartbeatScheduler(AiJobDispatchProperties properties) {
+        AtomicInteger threadSequence = new AtomicInteger();
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(
+                properties.maxConcurrentJobs(),
+                runnable -> {
+                    Thread thread = new Thread(
+                            runnable,
+                            "ai-heartbeat-" + threadSequence.incrementAndGet()
+                    );
+                    thread.setDaemon(true);
+                    return thread;
+                });
+        // 완료된 job의 취소 task가 다음 실행 시각까지 queue에 쌓이지 않게 한다.
+        executor.setRemoveOnCancelPolicy(true);
+        // shutdown 이후 heartbeat가 다시 실행돼 종료 중인 작업 상태를 건드리지 않게 한다.
+        executor.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
+        executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        return executor;
     }
 
     @Bean
