@@ -5,7 +5,9 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -52,6 +54,31 @@ class PromptRendererTest {
                 .isInstanceOf(PromptException.class)
                 .extracting(exception -> ((PromptException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.AI_INPUT_BUDGET_EXCEEDED);
+    }
+
+    @Test
+    void replacesPlaceholdersOnceRegardlessOfVariableIterationOrder() {
+        PromptDefinition definition = new PromptDefinition(
+                new PromptTemplateId("single-pass", 1),
+                "System: {{firstValue}} / {{secondValue}}",
+                "User: {{secondValue}} / {{firstValue}}",
+                Set.of("firstValue", "secondValue")
+        );
+        Map<String, String> firstOrder = new LinkedHashMap<>();
+        firstOrder.put("firstValue", "literal $5 \\ {{secondValue}}");
+        firstOrder.put("secondValue", "actual value");
+        Map<String, String> secondOrder = new LinkedHashMap<>();
+        secondOrder.put("secondValue", "actual value");
+        secondOrder.put("firstValue", "literal $5 \\ {{secondValue}}");
+
+        RenderedPrompt firstRendered = renderer.render(definition, firstOrder);
+        RenderedPrompt secondRendered = renderer.render(definition, secondOrder);
+
+        assertThat(firstRendered).isEqualTo(secondRendered);
+        assertThat(firstRendered.systemPrompt())
+                .isEqualTo("System: literal $5 \\ {{secondValue}} / actual value");
+        assertThat(firstRendered.userPrompt())
+                .isEqualTo("User: actual value / literal $5 \\ {{secondValue}}");
     }
 
     private String resource(String fileName) throws IOException {

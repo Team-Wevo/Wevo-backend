@@ -6,11 +6,14 @@ import org.springframework.stereotype.Component;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class PromptRenderer {
 
     static final int MAX_VARIABLE_LENGTH = 100_000;
+    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{\\{([a-z][A-Za-z0-9]*)}}");
 
     public RenderedPrompt render(PromptDefinition definition, Map<String, String> variables) {
         if (definition == null) {
@@ -47,11 +50,14 @@ public class PromptRenderer {
     }
 
     private String renderTemplate(String template, Map<String, String> values) {
-        String rendered = template;
-        for (Map.Entry<String, String> entry : values.entrySet()) {
-            rendered = rendered.replace("{{" + entry.getKey() + "}}", escapeXml(entry.getValue()));
+        Matcher matcher = PLACEHOLDER_PATTERN.matcher(template);
+        StringBuilder rendered = new StringBuilder(template.length());
+        while (matcher.find()) {
+            String replacement = escapeXml(values.get(matcher.group(1)));
+            matcher.appendReplacement(rendered, Matcher.quoteReplacement(replacement));
         }
-        return rendered;
+        matcher.appendTail(rendered);
+        return rendered.toString();
     }
 
     private String escapeXml(String value) {
