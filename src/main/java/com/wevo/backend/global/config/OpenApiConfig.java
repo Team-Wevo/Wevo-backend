@@ -94,6 +94,15 @@ public class OpenApiConfig {
                               "message": "섹션을 찾을 수 없습니다.",
                               "timestamp": "2026-08-06T18:10:00"
                             }"""),
+            "sectionDraftNotFound", failureExample(
+                    "초안 없음 (S003) — 아직 저장된 초안이 없거나, 요청한 버전이 그 섹션에 없다",
+                    """
+                            {
+                              "success": false,
+                              "code": "S003",
+                              "message": "초안이 없습니다.",
+                              "timestamp": "2026-08-06T18:10:00"
+                            }"""),
             "conflict", failureExample(
                     "상태·버전 충돌 (C003)",
                     """

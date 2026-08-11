@@ -13,6 +13,9 @@ import com.wevo.backend.section.dto.response.SectionDraftEvidenceResponse;
 import com.wevo.backend.section.dto.response.SectionDraftReadResponse;
 import com.wevo.backend.section.dto.response.SectionDraftReadResponse.ActiveEditor;
 import com.wevo.backend.section.dto.response.SectionDraftSaveResponse;
+import com.wevo.backend.global.response.PageResponse;
+import com.wevo.backend.section.dto.response.SectionDraftVersionDetailResponse;
+import com.wevo.backend.section.dto.response.SectionDraftVersionSummaryResponse;
 import com.wevo.backend.section.repository.SectionDraftRepository;
 import com.wevo.backend.user.service.UserService;
 import java.time.LocalDateTime;
@@ -21,6 +24,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -96,6 +101,60 @@ public class SectionDraftService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_DRAFT_NOT_FOUND));
 
         return SectionDraftReadResponse.of(draft, findActiveEditor(sectionId));
+    }
+
+    /**
+     * 섹션 초안의 버전 이력을 조회한다. (본문 제외 — API_SPEC §3.7.8, 프로젝트 참여자 전용)
+     *
+     * <p>초안 저장이 본문 전체를 덮어쓰는 구조라, 실수로 지운 내용은 최신 본문만 보이는 화면에서
+     * 되찾을 수 없다. 지난 버전을 <b>고를 수 있게</b> 메타데이터만 내리고, 본문은
+     * {@link #getDraftVersion} 으로 한 건씩 받는다. <b>되돌리기(롤백)는 제공하지 않는다</b> —
+     * 사용자가 필요한 대목을 직접 복사해 붙이는 것이 복구 경로다.
+     *
+     * <p><b>버전이 하나도 없어도 오류가 아니다</b> — 빈 목록으로 응답한다. 초안 미존재를
+     * {@code S003} 으로 막는 최신 초안 조회(§3.7.1)와 다른데, 그쪽은 "편집할 본문"을 요구하는
+     * 진입점이라 없으면 화면이 성립하지 않지만, 이력은 "아직 저장된 적 없음"이 정상 상태이기
+     * 때문이다.
+     *
+     * <p><b>페이지 단위로 끊어 읽는다</b> (§1.5) — 버전 수는 그 섹션을 저장한 횟수라 상한이 없고,
+     * 오래 쓴 프로젝트일수록 길어진다. 전부 읽으면 화면에 쓰지도 않을 이력이 통째로 메모리에
+     * 올라오므로 기본 20건, 최대 100건으로 제한한다. 크기 초과 요청은 오류가 아니라
+     * <b>상한으로 조정</b>한다 (CLAUDE.md §5.5 — "초과 요청은 서버가 100으로 제한").
+     *
+     * <p>정렬은 <b>버전 내림차순 고정</b>이라 정렬 파라미터를 받지 않는다 — 직전 상태를 가장 자주
+     * 찾고, 임의 필드 정렬을 열면 허용 목록 관리(§1.5)가 따라붙는다.
+     *
+     * @throws BusinessException 섹션 없음/미참여(존재 숨김, {@code S001})
+     */
+    public PageResponse<SectionDraftVersionSummaryResponse> getDraftVersions(
+            Long sectionId, Long userId, int page, int size) {
+        sectionAccessGuard.requireParticipantSection(sectionId, userId);
+
+        Pageable pageable = PageRequest.of(
+                PageResponse.normalizePage(page), PageResponse.normalizeSize(size));
+        return PageResponse.of(
+                sectionDraftRepository.findVersionSummaries(sectionId, pageable),
+                SectionDraftVersionSummaryResponse::from);
+    }
+
+    /**
+     * 섹션 초안의 특정 버전 본문을 조회한다. (API_SPEC §3.7.9, 프로젝트 참여자 전용)
+     *
+     * <p>이력 목록(§3.7.8)에서 고른 버전을 열어보는 용도다. 읽기 전용이라 편집권을 요구하지도,
+     * 발급하지도 않는다 — 지난 본문을 읽는 것은 다른 사람의 편집을 방해하지 않는다.
+     *
+     * <p>없는 버전 요청은 초안 미존재와 같은 {@code S003} 으로 응답한다. 클라이언트가 두 경우를
+     * 나눠 행동할 일이 없어(둘 다 "그 본문은 없다") 전용 코드를 만들지 않는다. (CLAUDE.md §5.8)
+     *
+     * @throws BusinessException 섹션 없음/미참여(존재 숨김, {@code S001}),
+     *                           해당 버전 없음({@code S003})
+     */
+    public SectionDraftVersionDetailResponse getDraftVersion(Long sectionId, Long userId, Integer version) {
+        sectionAccessGuard.requireParticipantSection(sectionId, userId);
+
+        return sectionDraftRepository.findVersionContent(sectionId, version)
+                .map(SectionDraftVersionDetailResponse::from)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SECTION_DRAFT_NOT_FOUND));
     }
 
     /**
