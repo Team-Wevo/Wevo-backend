@@ -47,6 +47,7 @@ class AiJobServiceGuardrailTest {
                 mock(AiErrorMessageSanitizer.class),
                 mock(AiExecutionAvailabilityGuard.class),
                 guardrailService,
+                mock(AiGuardrailLifecycleService.class),
                 Clock.fixed(Instant.parse("2026-08-02T03:00:00Z"), ZoneOffset.UTC));
     }
 

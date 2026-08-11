@@ -116,7 +116,7 @@ class AiGuardrailServiceTest {
 
     private AiGuardrailReservationCommand command() {
         return new AiGuardrailReservationCommand(
-                "a".repeat(64), 1, 1L, 2L,
+                UUID.randomUUID(), "a".repeat(64), 1, 1L, 2L,
                 AiFeature.DRAFT_GENERATION, "test-model", 10);
     }
 }

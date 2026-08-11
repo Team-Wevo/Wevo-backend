@@ -29,6 +29,7 @@ class AiJobServiceTest {
     @Mock private AiErrorMessageSanitizer sanitizer;
     @Mock private AiExecutionAvailabilityGuard availabilityGuard;
     @Mock private AiGuardrailService guardrailService;
+    @Mock private AiGuardrailLifecycleService guardrailLifecycleService;
     @Mock private AiJobCreateCommand command;
     @Mock private AiJob requestedJob;
     @Mock private User requestedBy;
@@ -45,6 +46,7 @@ class AiJobServiceTest {
                 sanitizer,
                 availabilityGuard,
                 guardrailService,
+                guardrailLifecycleService,
                 Clock.systemUTC()
         );
     }
@@ -79,6 +81,7 @@ class AiJobServiceTest {
                 .isEqualTo(ErrorCode.AI_PROVIDER_UNAVAILABLE);
 
         verify(persistenceService, never()).retry(
+                org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),

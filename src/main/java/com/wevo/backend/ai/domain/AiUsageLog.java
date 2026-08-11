@@ -262,6 +262,18 @@ public class AiUsageLog extends BaseTimeEntity {
                 + (cacheWriteInputTokens == null ? 0L : cacheWriteInputTokens);
     }
 
+    /** Redis ledger 재생에 사용하는 DB 비용 snapshot. 원문 prompt/completion은 포함하지 않는다. */
+    public AiCostSnapshot costSnapshot() {
+        return new AiCostSnapshot(
+                pricingVersion,
+                inputPricePerMillionTokens,
+                outputPricePerMillionTokens,
+                cacheReadPricePerMillionTokens,
+                cacheWritePricePerMillionTokens,
+                estimatedCost
+        );
+    }
+
     private void applyUsageAndCost(AiUsageMetadata usage, AiCostSnapshot cost) {
         if (usage != null) {
             if (usage.providerId() != null) {

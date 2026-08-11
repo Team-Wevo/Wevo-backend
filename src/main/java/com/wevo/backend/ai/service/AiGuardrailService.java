@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -83,8 +84,12 @@ public class AiGuardrailService {
             redis.call('PEXPIRE', KEYS[9], tonumber(ARGV[20]))
             redis.call('HSET', KEYS[1],
               'state', 'RESERVED', 'reserved', estimated, 'actual', 0, 'actual_count', 0,
-              'provider_started', 0, 'unmeasured', 0, 'day_key', KEYS[8], 'month_key', KEYS[9])
+              'provider_started', 0, 'unmeasured', 0, 'request_id', ARGV[22],
+              'reserved_at', ARGV[23], 'day_key', KEYS[8], 'month_key', KEYS[9],
+              'quota_1_key', KEYS[2], 'quota_2_key', KEYS[3], 'quota_3_key', KEYS[4],
+              'quota_4_key', KEYS[5], 'quota_5_key', KEYS[6], 'quota_6_key', KEYS[7])
             redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[21]))
+            redis.call('ZADD', KEYS[10], tonumber(ARGV[23]), KEYS[1])
             return {10, daily + estimated}
             """);
 
@@ -105,6 +110,49 @@ public class AiGuardrailService {
             end
             redis.call('HSET', KEYS[1], 'state', 'ROLLED_BACK')
             redis.call('PEXPIRE', KEYS[1], 3600000)
+            redis.call('ZREM', KEYS[10], KEYS[1])
+            return 1
+            """);
+
+    private static final DefaultRedisScript<Long> CONFIRM_JOB_SCRIPT = scriptLong("""
+            if redis.call('EXISTS', KEYS[1]) == 0 then return -1 end
+            if redis.call('HGET', KEYS[1], 'request_id') ~= ARGV[1] then return -2 end
+            if redis.call('HGET', KEYS[1], 'state') ~= 'RESERVED' then return 0 end
+            redis.call('HSET', KEYS[1], 'job_created', 1)
+            redis.call('ZREM', KEYS[2], KEYS[1])
+            return 1
+            """);
+
+    private static final DefaultRedisScript<Long> ORPHAN_ROLLBACK_SCRIPT = scriptLong("""
+            if redis.call('EXISTS', KEYS[1]) == 0 then
+              redis.call('ZREM', KEYS[2], KEYS[1])
+              return 0
+            end
+            if redis.call('HGET', KEYS[1], 'request_id') ~= ARGV[1] then return -2 end
+            if redis.call('HGET', KEYS[1], 'state') ~= 'RESERVED' then
+              redis.call('ZREM', KEYS[2], KEYS[1])
+              return 0
+            end
+            if redis.call('HGET', KEYS[1], 'job_created') == '1'
+                or redis.call('HGET', KEYS[1], 'provider_started') == '1' then return -3 end
+            for i = 1, 6 do
+              local key = redis.call('HGET', KEYS[1], 'quota_' .. i .. '_key')
+              if key and redis.call('EXISTS', key) == 1 then
+                local value = tonumber(redis.call('DECR', key) or '0')
+                if value < 0 then redis.call('SET', key, 0) end
+              end
+            end
+            local reserved = tonumber(redis.call('HGET', KEYS[1], 'reserved') or '0')
+            for _, field in ipairs({'day_key', 'month_key'}) do
+              local key = redis.call('HGET', KEYS[1], field)
+              if key and redis.call('EXISTS', key) == 1 then
+                local value = tonumber(redis.call('INCRBY', key, -reserved) or '0')
+                if value < 0 then redis.call('SET', key, 0) end
+              end
+            end
+            redis.call('HSET', KEYS[1], 'state', 'ROLLED_BACK')
+            redis.call('PEXPIRE', KEYS[1], 3600000)
+            redis.call('ZREM', KEYS[2], KEYS[1])
             return 1
             """);
 
@@ -118,9 +166,10 @@ public class AiGuardrailService {
 
     private static final DefaultRedisScript<Long> RECORD_USAGE_SCRIPT = scriptLong("""
             if redis.call('EXISTS', KEYS[1]) == 0 then return -1 end
+            if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 1 then return 2 end
             local state = redis.call('HGET', KEYS[1], 'state')
             if state ~= 'RESERVED' then return 0 end
-            if redis.call('HSETNX', KEYS[1], ARGV[1], ARGV[2]) == 0 then return 2 end
+            redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
             if ARGV[2] == 'UNMEASURED' then
               redis.call('HSET', KEYS[1], 'unmeasured', 1)
             else
@@ -133,6 +182,8 @@ public class AiGuardrailService {
     private static final DefaultRedisScript<Long> SETTLE_SCRIPT = scriptLong("""
             if redis.call('EXISTS', KEYS[1]) == 0 then return -1 end
             local state = redis.call('HGET', KEYS[1], 'state')
+            if state == 'SETTLED' or state == 'RELEASED' or state == 'UNMEASURED'
+                or state == 'ROLLED_BACK' then return 3 end
             if state ~= 'RESERVED' then return 0 end
             local reserved = tonumber(redis.call('HGET', KEYS[1], 'reserved') or '0')
             if redis.call('HGET', KEYS[1], 'provider_started') ~= '1' then
@@ -143,11 +194,13 @@ public class AiGuardrailService {
                 end
               end
               redis.call('HSET', KEYS[1], 'state', 'RELEASED')
+              redis.call('ZREM', KEYS[4], KEYS[1])
               return 1
             end
             if redis.call('HGET', KEYS[1], 'unmeasured') == '1'
                 or tonumber(redis.call('HGET', KEYS[1], 'actual_count') or '0') == 0 then
               redis.call('HSET', KEYS[1], 'state', 'UNMEASURED')
+              redis.call('ZREM', KEYS[4], KEYS[1])
               return 2
             end
             local actual = tonumber(redis.call('HGET', KEYS[1], 'actual') or '0')
@@ -155,6 +208,7 @@ public class AiGuardrailService {
             if redis.call('EXISTS', KEYS[2]) == 1 then redis.call('INCRBY', KEYS[2], delta) end
             if redis.call('EXISTS', KEYS[3]) == 1 then redis.call('INCRBY', KEYS[3], delta) end
             redis.call('HSET', KEYS[1], 'state', 'SETTLED')
+            redis.call('ZREM', KEYS[4], KEYS[1])
             return 1
             """);
 
@@ -226,7 +280,9 @@ public class AiGuardrailService {
                 Long.toString(window.secondsUntilMonth()),
                 Long.toString(window.dayTtlMs()),
                 Long.toString(window.monthTtlMs()),
-                Long.toString(window.ledgerTtlMs())
+                Long.toString(window.ledgerTtlMs()),
+                command.requestId().toString(),
+                Long.toString(Instant.now(clock).toEpochMilli())
         );
 
         List<?> result = execute(RESERVE_SCRIPT, keys, args);
@@ -255,7 +311,8 @@ public class AiGuardrailService {
                     ((Number) result.get(1)).doubleValue()
                             / Math.max(1.0d, toMicros(properties.cost().dailyBudgetUsd())));
         }
-        return new AiGuardrailReservation(true, keys.getFirst(), keys.subList(1, keys.size()));
+        return new AiGuardrailReservation(
+                true, keys.getFirst(), keys.subList(1, 9), keys.get(9));
     }
 
     public boolean isEnabled() {
@@ -269,7 +326,98 @@ public class AiGuardrailService {
         List<String> keys = new ArrayList<>();
         keys.add(reservation.ledgerKey());
         keys.addAll(reservation.counterKeys());
+        keys.add(reservation.pendingIndexKey());
         execute(ROLLBACK_SCRIPT, keys, List.of());
+    }
+
+    public void confirmJobCreated(AiJob job) {
+        if (!properties.isEnabled() || job == null) {
+            return;
+        }
+        confirmJobCreated(ledgerKey(job), job.getRequestId());
+    }
+
+    public void confirmJobCreated(AiGuardrailPendingReservation reservation) {
+        if (!properties.isEnabled() || reservation == null) {
+            return;
+        }
+        confirmJobCreated(reservation.ledgerKey(), reservation.requestId());
+    }
+
+    private void confirmJobCreated(String ledgerKey, UUID requestId) {
+        Long result = execute(
+                CONFIRM_JOB_SCRIPT,
+                List.of(ledgerKey, pendingReservationIndexKey()),
+                List.of(requestId.toString())
+        );
+        if (result == null || result < 0 || result > 1) {
+            throw unavailable();
+        }
+    }
+
+    public List<AiGuardrailPendingReservation> findPendingReservations(
+            Instant reservedBefore,
+            int limit
+    ) {
+        if (!properties.isEnabled()) {
+            return List.of();
+        }
+        if (reservedBefore == null || limit <= 0) {
+            throw new IllegalArgumentException("reservedBefore와 양수 limit은 필수입니다.");
+        }
+        Set<String> ledgerKeys;
+        try {
+            ledgerKeys = redisTemplate.opsForZSet().rangeByScore(
+                    pendingReservationIndexKey(), 0, reservedBefore.toEpochMilli(), 0, limit);
+        } catch (RuntimeException exception) {
+            throw unavailable();
+        }
+        if (ledgerKeys == null || ledgerKeys.isEmpty()) {
+            return List.of();
+        }
+        List<AiGuardrailPendingReservation> reservations = new ArrayList<>();
+        for (String ledgerKey : ledgerKeys) {
+            Object requestId;
+            try {
+                requestId = redisTemplate.opsForHash().get(ledgerKey, "request_id");
+            } catch (RuntimeException exception) {
+                throw unavailable();
+            }
+            if (requestId != null) {
+                try {
+                    reservations.add(new AiGuardrailPendingReservation(
+                            ledgerKey, UUID.fromString(requestId.toString())));
+                } catch (IllegalArgumentException exception) {
+                    removePendingIndexMember(ledgerKey);
+                    throw unavailable();
+                }
+            } else {
+                removePendingIndexMember(ledgerKey);
+            }
+        }
+        return List.copyOf(reservations);
+    }
+
+    private void removePendingIndexMember(String ledgerKey) {
+        try {
+            redisTemplate.opsForZSet().remove(pendingReservationIndexKey(), ledgerKey);
+        } catch (RuntimeException exception) {
+            throw unavailable();
+        }
+    }
+
+    public void rollbackOrphan(AiGuardrailPendingReservation reservation) {
+        if (!properties.isEnabled() || reservation == null) {
+            return;
+        }
+        Long result = execute(
+                ORPHAN_ROLLBACK_SCRIPT,
+                List.of(reservation.ledgerKey(), pendingReservationIndexKey()),
+                List.of(reservation.requestId().toString())
+        );
+        if (result == null || result < 0 || result > 1) {
+            throw unavailable();
+        }
     }
 
     public void markProviderStarted(AiJob job) {
@@ -281,6 +429,9 @@ public class AiGuardrailService {
             throw unavailable();
         }
         recordLifecycleStateMismatch(job, "provider_start", result);
+        if (result == 0) {
+            throw unavailable();
+        }
     }
 
     public void recordUsage(AiJob job, UUID usageRequestId, AiCostSnapshot cost) {
@@ -308,6 +459,9 @@ public class AiGuardrailService {
             throw unavailable();
         }
         recordLifecycleStateMismatch(job, "usage_record", result);
+        if (result == 0) {
+            throw unavailable();
+        }
     }
 
     /** 성공·실패·stale 모두 동일하게 실제 누적 비용으로 멱등 정산한다. */
@@ -333,13 +487,20 @@ public class AiGuardrailService {
         }
         Long result = execute(
                 SETTLE_SCRIPT,
-                List.of(ledgerKey, budgetKeys.get(0).toString(), budgetKeys.get(1).toString()),
+                List.of(
+                        ledgerKey,
+                        budgetKeys.get(0).toString(),
+                        budgetKeys.get(1).toString(),
+                        pendingReservationIndexKey()),
                 List.of()
         );
-        if (result == null || result < 0 || result > 2) {
+        if (result == null || result < 0 || result > 3) {
             throw unavailable();
         }
         recordLifecycleStateMismatch(job, "settlement", result);
+        if (result == 0) {
+            throw unavailable();
+        }
     }
 
     private long estimateMicros(AiGuardrailReservationCommand command) {
@@ -381,7 +542,8 @@ public class AiGuardrailService {
                 prefix + "quota:feature:" + feature + ":minute:" + window.minuteId(),
                 prefix + "quota:feature:" + feature + ":day:" + window.dayId(),
                 prefix + "cost:project:" + project + ":day:" + window.dayId(),
-                prefix + "cost:project:" + project + ":month:" + window.monthId()
+                prefix + "cost:project:" + project + ":month:" + window.monthId(),
+                pendingReservationIndexKey()
         );
     }
 
@@ -392,6 +554,11 @@ public class AiGuardrailService {
     private String ledgerKey(String idempotencyKey, int executionSequence) {
         return "wevo:ai:guardrail:" + hash(properties.policyVersion())
                 + ":reservation:" + hash(idempotencyKey + ":" + executionSequence);
+    }
+
+    private String pendingReservationIndexKey() {
+        return "wevo:ai:guardrail:" + hash(properties.policyVersion())
+                + ":pending-reservations";
     }
 
     private Window window() {

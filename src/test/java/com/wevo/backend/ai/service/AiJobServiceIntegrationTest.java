@@ -25,6 +25,7 @@ import com.wevo.backend.user.repository.UserRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -40,9 +41,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 
 @SpringBootTest(properties = {
         "spring.flyway.enabled=true",
@@ -81,6 +85,12 @@ class AiJobServiceIntegrationTest {
     @Autowired
     private UserRepository userRepository;
 
+    @MockitoBean
+    private AiGuardrailService guardrailService;
+
+    private final List<AiGuardrailReservationCommand> reservations =
+            Collections.synchronizedList(new ArrayList<>());
+
     private User user;
     private Project project;
     private ProjectSection section;
@@ -96,6 +106,11 @@ class AiJobServiceIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        reservations.clear();
+        given(guardrailService.reserve(any())).willAnswer(invocation -> {
+            reservations.add(invocation.getArgument(0));
+            return AiGuardrailReservation.disabled();
+        });
         usageLogRepository.deleteAll();
         jobRepository.deleteAll();
         sectionRepository.deleteAll();
@@ -207,17 +222,27 @@ class AiJobServiceIntegrationTest {
         UUID first = jobService.createOrGet(command()).requestId();
         jobService.start(first, SNAPSHOT);
         jobService.fail(first, new IllegalStateException("first failed"));
+        reservations.clear();
 
         List<AiJobCreateResult> concurrentRetries = runConcurrently(2, () -> jobService.retry(first, user));
         assertThat(concurrentRetries).extracting(AiJobCreateResult::requestId)
                 .containsOnly(concurrentRetries.getFirst().requestId());
         assertThat(jobRepository.count()).isEqualTo(2);
+        assertThat(reservations).singleElement().satisfies(reservation -> {
+            assertThat(reservation.executionSequence()).isEqualTo(2);
+            assertThat(reservation.requestId()).isEqualTo(concurrentRetries.getFirst().requestId());
+        });
 
         UUID second = concurrentRetries.getFirst().requestId();
         jobService.start(second, SNAPSHOT);
         jobService.fail(second, new IllegalStateException("second failed"));
+        reservations.clear();
         AiJobCreateResult third = jobService.retry(second, user);
         assertThat(third.executionSequence()).isEqualTo(3);
+        assertThat(reservations).singleElement().satisfies(reservation -> {
+            assertThat(reservation.executionSequence()).isEqualTo(3);
+            assertThat(reservation.requestId()).isEqualTo(third.requestId());
+        });
         jobService.start(third.requestId(), SNAPSHOT);
         jobService.fail(third.requestId(), new IllegalStateException("third failed"));
 

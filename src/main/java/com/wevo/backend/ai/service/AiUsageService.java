@@ -70,15 +70,17 @@ public class AiUsageService {
         );
         try {
             AiUsageHandle persisted = persistenceService.start(usageLog);
-            AiUsageHandle handle = new AiUsageHandle(
+            return new AiUsageHandle(
                     persisted.logId(), persisted.requestId(), command.aiJob(), command.feature(),
                     aiProperties.provider(), modelId, command.promptVersion(),
                     command.aiJob() == null ? "none" : command.aiJob().getSchemaVersion(), startedAt);
-            guardrailService.markProviderStarted(command.aiJob());
-            return handle;
         } catch (RuntimeException exception) {
             throw persistenceFailure(null, exception);
         }
+    }
+
+    public void markProviderStarted(AiJob aiJob) {
+        guardrailService.markProviderStarted(aiJob);
     }
 
     public void completeSuccess(
@@ -93,12 +95,12 @@ public class AiUsageService {
             persistenceService.completeSuccess(
                     handle.requestId(), usage, cost, attemptCount, resultId, completedAt
             );
-            recordUsageWithRetry(handle.aiJob(), handle.requestId(), cost);
-            recordSuccessMetric(handle, usage, cost, attemptCount, completedAt);
-            logCompletion(handle, usage, attemptCount, "SUCCEEDED", null, null, completedAt);
         } catch (RuntimeException exception) {
             throw persistenceFailure(handle.requestId(), exception);
         }
+        recordUsageBestEffort(handle.aiJob(), handle.requestId(), cost);
+        recordSuccessMetric(handle, usage, cost, attemptCount, completedAt);
+        logCompletion(handle, usage, attemptCount, "SUCCEEDED", null, null, completedAt);
     }
 
     public void completeFailure(
@@ -150,10 +152,10 @@ public class AiUsageService {
             persistenceService.completeFailure(
                     requestId, usage, cost, attemptCount, errorType, errorMessage, completedAt
             );
-            recordUsageWithRetry(aiJob, requestId, cost);
         } catch (RuntimeException exception) {
             throw persistenceFailure(requestId, exception);
         }
+        recordUsageBestEffort(aiJob, requestId, cost);
     }
 
     private AiAuditPersistenceException persistenceFailure(UUID requestId, RuntimeException cause) {
@@ -168,21 +170,19 @@ public class AiUsageService {
         return new AiAuditPersistenceException(cause);
     }
 
-    private void recordUsageWithRetry(
+    private void recordUsageBestEffort(
             AiJob aiJob,
             UUID usageRequestId,
             AiCostSnapshot cost
     ) {
-        RuntimeException lastFailure = null;
-        for (int attempt = 0; attempt < 3; attempt++) {
-            try {
-                guardrailService.recordUsage(aiJob, usageRequestId, cost);
-                return;
-            } catch (RuntimeException exception) {
-                lastFailure = exception;
-            }
+        try {
+            guardrailService.recordUsage(aiJob, usageRequestId, cost);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "AI usage ledger 기록을 terminal job 복구 작업으로 이관합니다. "
+                            + "requestId={}, exceptionType={}",
+                    usageRequestId, exception.getClass().getSimpleName());
         }
-        throw lastFailure;
     }
 
     @Autowired(required = false)

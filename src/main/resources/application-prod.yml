@@ -40,6 +40,11 @@ wevo:
     guardrails:
       enabled: ${AI_GUARDRAIL_ENABLED:false}
       policy-version: ${AI_GUARDRAIL_POLICY_VERSION:ai-guardrail-2026-08-02-v1}
+      recovery:
+        enabled: ${AI_GUARDRAIL_RECOVERY_ENABLED:true}
+        interval: ${AI_GUARDRAIL_RECOVERY_INTERVAL:60s}
+        orphan-grace: ${AI_GUARDRAIL_ORPHAN_GRACE:5m}
+        batch-size: ${AI_GUARDRAIL_RECOVERY_BATCH_SIZE:100}
       user:
         per-minute: ${AI_QUOTA_USER_PER_MINUTE:6}
         per-day: ${AI_QUOTA_USER_PER_DAY:100}

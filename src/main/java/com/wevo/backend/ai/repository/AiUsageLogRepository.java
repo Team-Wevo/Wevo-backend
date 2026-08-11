@@ -19,6 +19,8 @@ public interface AiUsageLogRepository extends JpaRepository<AiUsageLog, Long> {
 
     Optional<AiUsageLog> findByRequestId(UUID requestId);
 
+    List<AiUsageLog> findAllByAiJob_IdOrderByIdAsc(Long aiJobId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select log from AiUsageLog log where log.requestId = :requestId")
     Optional<AiUsageLog> findByRequestIdForUpdate(@Param("requestId") UUID requestId);
