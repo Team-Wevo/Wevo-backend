@@ -74,8 +74,8 @@ dependencies {
 }
 
 tasks.named('test') {
-	maxHeapSize = '1g'
-	forkEvery = 50
+	maxHeapSize = '1536m'
+	forkEvery = 25
 
 	useJUnitPlatform {
 		excludeTags 'openai-integration', 'openai-evaluation', 'postgres-schema', 'redis-integration'
