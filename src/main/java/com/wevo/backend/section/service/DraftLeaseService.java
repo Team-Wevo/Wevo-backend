@@ -223,6 +223,24 @@ public class DraftLeaseService {
     }
 
     /**
+     * 한 사용자가 보유한 <b>모든</b> 활성 lease를 즉시 해제한다. (회원 탈퇴 정리용)
+     *
+     * <p>탈퇴 직후에도 Access Token 이 30분간 살아 있어, 탈퇴자가 renew 를 계속 돌리면 그 시간 동안
+     * 팀원 전원의 편집이 {@code S004} 로 막힌다. 탈퇴 시점에 lease 를 비워 두면 다른 멤버가 즉시
+     * 획득할 수 있고, 탈퇴자의 renew 는 보유 lease 가 없어 {@code S005} 로 자연히 실패한다.
+     *
+     * <p>{@code holderUserId} 로 여러 섹션의 lease 를 배타 잠금으로 조회해 acquire·renew 와
+     * 직렬화한다. 정리 사이에 탈퇴자가 새 lease 를 잡는 경합은 탈퇴가 소셜 연결·토큰까지 함께 끊어
+     * 곧 닫히므로, 여기서는 지금 쥔 것만 해제한다.
+     */
+    @Transactional
+    public void releaseAllHeldBy(Long userId) {
+        LocalDateTime now = LocalDateTime.now(KST);
+        draftLeaseRepository.findActiveByHolderForUpdate(userId, now)
+                .forEach(lease -> lease.release(now));
+    }
+
+    /**
      * 참여자 권한을 확인한 뒤, 호출자가 보유한 활성 lease를 배타 잠금으로 반환한다.
      * renew와 release가 동일한 검증 순서와 오류 계약을 사용하도록 한 곳에서 관리한다.
      */
