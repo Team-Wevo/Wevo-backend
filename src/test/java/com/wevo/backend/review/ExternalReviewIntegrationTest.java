@@ -60,7 +60,9 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @SpringBootTest(properties = {
         "spring.flyway.enabled=true",
-        "spring.jpa.hibernate.ddl-auto=validate"
+        "spring.jpa.hibernate.ddl-auto=validate",
+        "app.review.abuse.rate-limit.per-link-per-minute=100",
+        "app.review.abuse.rate-limit.per-link-per-hour=100"
 })
 @Import(PostgresTestContainerConfig.class)
 @AutoConfigureMockMvc
