@@ -2,6 +2,7 @@ package com.wevo.backend.auth.repository;
 
 import com.wevo.backend.auth.domain.AuthAccount;
 import com.wevo.backend.auth.domain.AuthProvider;
+import com.wevo.backend.global.config.JpaAuditingConfig;
 import com.wevo.backend.global.persistence.PostgresTestContainerConfig;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.domain.UserStatus;
@@ -21,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "spring.jpa.hibernate.ddl-auto=validate"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(PostgresTestContainerConfig.class)
+@Import({JpaAuditingConfig.class, PostgresTestContainerConfig.class})
 class AuthAccountRepositoryIntegrationTest {
 
     @Autowired
