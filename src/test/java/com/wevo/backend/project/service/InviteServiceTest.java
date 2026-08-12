@@ -76,6 +76,7 @@ class InviteServiceTest {
         User owner = user(OWNER_ID, "팀장");
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
                 .willReturn(Optional.of(member(project, owner, ProjectMemberRole.OWNER)));
+        given(projectRepository.findByIdForUpdate(PROJECT_ID)).willReturn(Optional.of(project));
         given(inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(PROJECT_ID)).willReturn(Optional.empty());
         given(inviteLinkRepository.save(any(InviteLink.class)))
                 .willAnswer(i -> i.getArgument(0));
@@ -97,6 +98,7 @@ class InviteServiceTest {
         User owner = user(OWNER_ID, "팀장");
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
                 .willReturn(Optional.of(member(project, owner, ProjectMemberRole.OWNER)));
+        given(projectRepository.findByIdForUpdate(PROJECT_ID)).willReturn(Optional.of(project));
         given(inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(PROJECT_ID))
                 .willReturn(Optional.of(InviteLink.issue(project, owner, tokenHasher.hash(TOKEN))));
 
@@ -113,6 +115,7 @@ class InviteServiceTest {
         User owner = user(OWNER_ID, "팀장");
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
                 .willReturn(Optional.of(member(project, owner, ProjectMemberRole.OWNER)));
+        given(projectRepository.findByIdForUpdate(PROJECT_ID)).willReturn(Optional.of(project));
         given(inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(PROJECT_ID))
                 .willReturn(Optional.of(InviteLink.issue(project, owner, tokenHasher.hash(TOKEN))));
 
@@ -134,6 +137,7 @@ class InviteServiceTest {
         InviteLink stale = InviteLink.issue(project, owner, "예전-비밀키로-만든-해시");
         given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
                 .willReturn(Optional.of(member(project, owner, ProjectMemberRole.OWNER)));
+        given(projectRepository.findByIdForUpdate(PROJECT_ID)).willReturn(Optional.of(project));
         given(inviteLinkRepository.findFirstByProjectIdAndIsActiveTrue(PROJECT_ID))
                 .willReturn(Optional.of(stale));
 
