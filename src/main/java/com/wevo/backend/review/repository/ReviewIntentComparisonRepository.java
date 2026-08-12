@@ -20,11 +20,10 @@ public interface ReviewIntentComparisonRepository extends JpaRepository<ReviewIn
     Optional<ReviewIntentComparison> findByReviewSubmissionIdForUpdate(
             @Param("submissionId") Long submissionId);
 
-    Optional<ReviewIntentComparison> findBySourceAiJob_Id(Long sourceAiJobId);
+    Optional<ReviewIntentComparison> findBySourceAiJobId(Long sourceAiJobId);
 
     @Query("select c from ReviewIntentComparison c "
             + "join fetch c.reviewSubmission "
-            + "left join fetch c.sourceAiJob "
             + "where c.status = :status and c.createdAt < :threshold "
             + "order by c.createdAt asc, c.id asc")
     List<ReviewIntentComparison> findPendingRecoveryCandidates(
@@ -32,7 +31,7 @@ public interface ReviewIntentComparisonRepository extends JpaRepository<ReviewIn
             @Param("threshold") LocalDateTime threshold);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select c from ReviewIntentComparison c where c.sourceAiJob.id = :jobId")
+    @Query("select c from ReviewIntentComparison c where c.sourceAiJobId = :jobId")
     Optional<ReviewIntentComparison> findBySourceAiJobIdForUpdate(@Param("jobId") Long jobId);
 
     @Query("select c from ReviewIntentComparison c "
