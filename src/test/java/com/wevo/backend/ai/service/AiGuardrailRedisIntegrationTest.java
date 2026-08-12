@@ -221,6 +221,59 @@ class AiGuardrailRedisIntegrationTest {
     }
 
     @Test
+    void terminalJobBeforeProviderCallReleasesAllCostButKeepsRequestQuota() {
+        AiGuardrailService service = service(Clock.fixed(
+                Instant.parse("2026-08-02T03:00:00Z"), ZoneOffset.UTC), 10);
+        UUID identity = UUID.randomUUID();
+        AiGuardrailReservation reservation = service.reserve(command(identity, 1L, 7L));
+
+        service.settle(job(identity));
+        service.settle(job(identity));
+
+        assertThat(redisTemplate.opsForHash().get(reservation.ledgerKey(), "state"))
+                .isEqualTo("RELEASED");
+        assertThat(redisTemplate.opsForValue().get(reservation.counterKeys().getFirst()))
+                .isEqualTo("1");
+        assertThat(redisTemplate.opsForValue().get(reservation.counterKeys().get(6)))
+                .isEqualTo("0");
+    }
+
+    @Test
+    void orphanReservationIndexRecoversMissingJobOnceAcrossDuplicateRuns() {
+        AiGuardrailService service = service(Clock.fixed(
+                Instant.parse("2026-08-02T03:00:00Z"), ZoneOffset.UTC), 10);
+        UUID identity = UUID.randomUUID();
+        AiGuardrailReservation reservation = service.reserve(command(identity, 1L, 7L));
+        AiGuardrailPendingReservation pending = service.findPendingReservations(
+                Instant.parse("2026-08-02T03:01:00Z"), 10).getFirst();
+
+        service.rollbackOrphan(pending);
+        service.rollbackOrphan(pending);
+
+        assertThat(redisTemplate.opsForHash().get(reservation.ledgerKey(), "state"))
+                .isEqualTo("ROLLED_BACK");
+        assertThat(redisTemplate.opsForValue().get(reservation.counterKeys().getFirst()))
+                .isEqualTo("0");
+        assertThat(redisTemplate.opsForValue().get(reservation.counterKeys().get(6)))
+                .isEqualTo("0");
+        assertThat(service.findPendingReservations(
+                Instant.parse("2026-08-02T03:01:00Z"), 10)).isEmpty();
+    }
+
+    @Test
+    void confirmedJobIsRemovedFromOrphanReservationIndex() {
+        AiGuardrailService service = service(Clock.fixed(
+                Instant.parse("2026-08-02T03:00:00Z"), ZoneOffset.UTC), 10);
+        UUID identity = UUID.randomUUID();
+        service.reserve(command(identity, 1L, 7L));
+
+        service.confirmJobCreated(job(identity));
+
+        assertThat(service.findPendingReservations(
+                Instant.parse("2026-08-02T03:01:00Z"), 10)).isEmpty();
+    }
+
+    @Test
     void immediateRetryAfterRollbackReservesQuotaAndCostAgain() {
         AiGuardrailService service = service(Clock.fixed(
                 Instant.parse("2026-08-02T03:00:00Z"), ZoneOffset.UTC), 10);
@@ -255,7 +308,7 @@ class AiGuardrailRedisIntegrationTest {
     }
 
     @Test
-    void lifecycleStateMismatchesAreRecordedWithoutChangingRolledBackLedger() {
+    void lifecycleStateMismatchesFailClosedBeforeProviderCall() {
         AiGuardrailService service = service(Clock.fixed(
                 Instant.parse("2026-08-02T03:00:00Z"), ZoneOffset.UTC), 10);
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
@@ -263,18 +316,21 @@ class AiGuardrailRedisIntegrationTest {
         UUID identity = UUID.randomUUID();
         AiGuardrailReservation reservation = service.reserve(command(identity, 1L, 7L));
         AiJob job = job(identity);
-        service.rollback(reservation);
+        redisTemplate.opsForHash().put(reservation.ledgerKey(), "state", "INVALID");
 
-        service.markProviderStarted(job);
-        service.recordUsage(job, UUID.randomUUID(), cost("0.000010"));
-        service.settle(job);
+        assertThatThrownBy(() -> service.markProviderStarted(job))
+                .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service.recordUsage(job, UUID.randomUUID(), cost("0.000010")))
+                .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service.settle(job))
+                .isInstanceOf(BusinessException.class);
 
         assertThat(registry.get(AiOperationalMetrics.GUARDRAIL_LIFECYCLE_STATE_MISMATCHES)
                 .counters())
                 .extracting(counter -> counter.getId().getTag("event"))
                 .containsExactlyInAnyOrder("provider_start", "usage_record", "settlement");
         assertThat(redisTemplate.opsForHash().get(reservation.ledgerKey(), "state"))
-                .isEqualTo("ROLLED_BACK");
+                .isEqualTo("INVALID");
     }
 
     private AiGuardrailService service(Clock clock, int userPerMinute) {
@@ -322,7 +378,7 @@ class AiGuardrailRedisIntegrationTest {
 
     private AiGuardrailReservationCommand command(UUID requestId, Long projectId, Long userId) {
         return new AiGuardrailReservationCommand(
-                hashSeed(requestId), 1, projectId, userId,
+                requestId, hashSeed(requestId), 1, projectId, userId,
                 AiFeature.DRAFT_GENERATION, "test-model", 10);
     }
 

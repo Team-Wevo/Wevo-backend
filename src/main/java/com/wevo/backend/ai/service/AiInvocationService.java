@@ -50,6 +50,7 @@ public class AiInvocationService {
 
         try {
             beforeProviderCall(startCommand);
+            usageService.markProviderStarted(startCommand.aiJob());
             providerStarted = System.nanoTime();
             response = providerGateway.generate(request);
             recordProviderLatency(startCommand, response.usageMetadata(), providerStarted);
@@ -111,6 +112,7 @@ public class AiInvocationService {
 
         try {
             beforeProviderCall(startCommand);
+            usageService.markProviderStarted(startCommand.aiJob());
             providerStarted = System.nanoTime();
             response = providerGateway.generateStructured(request);
             recordProviderLatency(startCommand, response.usageMetadata(), providerStarted);

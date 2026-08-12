@@ -27,16 +27,19 @@ import com.wevo.backend.review.domain.TeamReview;
 import com.wevo.backend.review.domain.TeamReviewStatus;
 import com.wevo.backend.review.repository.ReviewLinkRepository;
 import com.wevo.backend.review.repository.TeamReviewRepository;
+import com.wevo.backend.section.domain.DriftStatus;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.domain.SectionDraft;
 import com.wevo.backend.section.domain.SectionDraftEvidence;
 import com.wevo.backend.section.domain.SectionDraftSource;
+import com.wevo.backend.section.domain.SectionTemplate;
 import com.wevo.backend.section.repository.SectionDraftEvidenceDecisionRepository;
 import com.wevo.backend.section.repository.SectionDraftEvidenceGapAnswerRepository;
 import com.wevo.backend.section.repository.SectionDraftEvidenceOpinionRepository;
 import com.wevo.backend.section.repository.SectionDraftEvidenceRepository;
 import com.wevo.backend.section.repository.SectionDraftRepository;
+import com.wevo.backend.section.repository.SectionTemplateRepository;
 import com.wevo.backend.section.service.AiSectionDraftCreateCommand;
 import com.wevo.backend.section.service.AiSectionDraftCreateCommand.DecisionEvidence;
 import com.wevo.backend.section.service.AiSectionDraftCreateCommand.GapAnswerEvidence;
@@ -78,6 +81,7 @@ class AiSectionDraftWriterIntegrationTest {
     @Autowired private SectionDraftEvidenceGapAnswerRepository gapAnswerEvidenceRepository;
     @Autowired private TeamReviewRepository teamReviewRepository;
     @Autowired private ReviewLinkRepository reviewLinkRepository;
+    @Autowired private SectionTemplateRepository sectionTemplateRepository;
     @PersistenceContext private EntityManager em;
 
     @Test
@@ -146,6 +150,34 @@ class AiSectionDraftWriterIntegrationTest {
                 .isEqualTo(ReviewLinkStatus.OUTDATED);
     }
 
+    @Test
+    void regeneratedDraftFromConfirmedHistoryPropagatesDriftAfterDraftingTransition() {
+        Fixture fixture = fixture(true);
+        ProjectSection source = fixture.section();
+        source.recordConfirmedVersion(1);
+        SectionTemplate dependentTemplate = template("problem-necessity");
+        ProjectSection dependent = ProjectSection.builder()
+                .project(source.getProject())
+                .template(dependentTemplate)
+                .title(dependentTemplate.getTitle())
+                .sectionOrder(dependentTemplate.getOrderNo())
+                .status(ProjectSectionStatus.CONFIRMED)
+                .build();
+        dependent.recordConfirmedVersion(1);
+        em.persist(dependent);
+        em.flush();
+
+        writer.createAiDraft(command(fixture, 1, "재확정 AI 초안"));
+        em.flush();
+        em.clear();
+
+        assertThat(em.find(ProjectSection.class, source.getId()).getStatus())
+                .isEqualTo(ProjectSectionStatus.DRAFTING);
+        ProjectSection savedDependent = em.find(ProjectSection.class, dependent.getId());
+        assertThat(savedDependent.getStatus()).isEqualTo(ProjectSectionStatus.REVIEWING);
+        assertThat(savedDependent.getDriftStatus()).isEqualTo(DriftStatus.REVIEW_REQUIRED);
+    }
+
     private AiSectionDraftCreateCommand command(
             Fixture fixture,
             int baseVersion,
@@ -201,8 +233,10 @@ class AiSectionDraftWriterIntegrationTest {
                 .role(ProjectMemberRole.OWNER)
                 .joinedAt(LocalDateTime.now(KST))
                 .build());
+        SectionTemplate sourceTemplate = template("proposal-background");
         ProjectSection section = ProjectSection.builder()
                 .project(project)
+                .template(sourceTemplate)
                 .title("문제 정의")
                 .sectionOrder(1)
                 .status(ProjectSectionStatus.SYNTHESIZING)
@@ -306,6 +340,14 @@ class AiSectionDraftWriterIntegrationTest {
         return new Fixture(
                 owner, section, set, opinion, conflict, decision, gap, answer,
                 generationRequestId, teamReviewId, reviewLinkId);
+    }
+
+    private SectionTemplate template(String sectionKey) {
+        return sectionTemplateRepository.findByResultTypeOrderByOrderNo(OutputType.PROPOSAL)
+                .stream()
+                .filter(template -> template.getSectionKey().equals(sectionKey))
+                .findFirst()
+                .orElseThrow();
     }
 
     private AiJob job(

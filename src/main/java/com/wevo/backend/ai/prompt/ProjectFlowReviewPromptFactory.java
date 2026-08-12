@@ -54,8 +54,7 @@ public class ProjectFlowReviewPromptFactory {
     public AiTokenBudgetInput tokenBudgetInput(
             ProjectFlowReviewPromptContext context, String promptVersion) {
         var request = providerRequest(context, promptVersion);
-        return AiTokenBudgetInput.of(request.prompt().systemPrompt(),
-                StructuredPromptFormatter.initialUserPrompt(request));
+        return StructuredPromptFormatter.tokenBudgetInput(request, true);
     }
 
     private String serialize(ProjectFlowReviewPromptContext context) {

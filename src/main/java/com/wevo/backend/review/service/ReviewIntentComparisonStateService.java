@@ -8,6 +8,8 @@ import com.wevo.backend.review.domain.ReviewIntentComparison;
 import com.wevo.backend.review.domain.ReviewIntentComparisonStatus;
 import com.wevo.backend.review.domain.ReviewSubmission;
 import com.wevo.backend.review.repository.ReviewIntentComparisonRepository;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -100,6 +102,63 @@ public class ReviewIntentComparisonStateService {
     public void fail(Long submissionId, String failureCode) {
         repository.findByReviewSubmissionIdForUpdate(submissionId)
                 .ifPresent(comparison -> comparison.fail(failureCode));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ReviewIntentComparisonRecoveryCandidate> findPendingRecoveryCandidates(
+            LocalDateTime threshold
+    ) {
+        if (threshold == null) {
+            throw new IllegalArgumentException("비교 회수 조회 조건이 유효하지 않습니다.");
+        }
+        return repository.findPendingRecoveryCandidates(
+                        ReviewIntentComparisonStatus.PENDING,
+                        threshold)
+                .stream()
+                .map(comparison -> new ReviewIntentComparisonRecoveryCandidate(
+                        comparison.getReviewSubmission().getId(),
+                        comparison.getSourceAiJob() == null
+                                ? null
+                                : comparison.getSourceAiJob().getId()))
+                .toList();
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean failIfPendingWithoutSourceJob(
+            Long submissionId,
+            LocalDateTime threshold,
+            String failureCode
+    ) {
+        ReviewIntentComparison comparison = repository
+                .findByReviewSubmissionIdForUpdate(submissionId)
+                .orElse(null);
+        if (comparison == null
+                || comparison.getStatus() != ReviewIntentComparisonStatus.PENDING
+                || comparison.getSourceAiJob() != null
+                || !comparison.getCreatedAt().isBefore(threshold)) {
+            return false;
+        }
+        comparison.fail(failureCode);
+        return true;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean failIfPendingForTerminalJob(
+            Long submissionId,
+            Long sourceAiJobId,
+            String failureCode
+    ) {
+        ReviewIntentComparison comparison = repository
+                .findByReviewSubmissionIdForUpdate(submissionId)
+                .orElse(null);
+        if (comparison == null
+                || comparison.getStatus() != ReviewIntentComparisonStatus.PENDING
+                || comparison.getSourceAiJob() == null
+                || !Objects.equals(comparison.getSourceAiJob().getId(), sourceAiJobId)) {
+            return false;
+        }
+        comparison.fail(failureCode);
+        return true;
     }
 
     private ReviewIntentComparison findBySubmission(Long submissionId) {

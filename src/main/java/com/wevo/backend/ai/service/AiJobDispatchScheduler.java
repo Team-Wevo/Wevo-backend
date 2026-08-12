@@ -37,15 +37,18 @@ public class AiJobDispatchScheduler {
 
     private final AiJobService aiJobService;
     private final AiJobExecutor aiJobExecutor;
+    private final ReviewIntentComparisonRecoveryService comparisonRecoveryService;
     private final AiJobDispatchProperties properties;
     private final Clock clock;
 
     public AiJobDispatchScheduler(AiJobService aiJobService,
                                   AiJobExecutor aiJobExecutor,
+                                  ReviewIntentComparisonRecoveryService comparisonRecoveryService,
                                   AiJobDispatchProperties properties,
                                   Clock aiClock) {
         this.aiJobService = aiJobService;
         this.aiJobExecutor = aiJobExecutor;
+        this.comparisonRecoveryService = comparisonRecoveryService;
         this.properties = properties;
         this.clock = aiClock;
     }
@@ -89,6 +92,13 @@ public class AiJobDispatchScheduler {
                 log.warn("RUNNING AI 작업 회수 실패·건너뜀. requestId={}, exceptionType={}",
                         requestId, exception.getClass().getSimpleName());
             }
+        }
+        try {
+            comparisonRecoveryService.recoverPendingComparisons(
+                    threshold, properties.dispatchBatchSize());
+        } catch (RuntimeException exception) {
+            log.warn("검토 의도 비교 PENDING 회수 조회 실패·건너뜀 exceptionType={}",
+                    exception.getClass().getSimpleName());
         }
     }
 }

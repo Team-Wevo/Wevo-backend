@@ -43,7 +43,7 @@ class IssueDetectionPromptFactoryTest {
                 .doesNotContain("email");
         assertThat(request.validationContext().allowedResourceIds()).containsExactly(1L);
         assertThat(factory.tokenBudgetInput(context()).segments())
-                .hasSize(2)
+                .hasSize(3)
                 .allMatch(segment -> !segment.isBlank());
     }
 

@@ -1,5 +1,9 @@
 package com.wevo.backend.ai.client;
 
+import com.wevo.backend.ai.context.AiTokenBudgetInput;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+
 /**
  * 구조화 출력 Provider에 전달되는 user prompt의 단일 렌더링 규칙.
  *
@@ -14,6 +18,25 @@ public final class StructuredPromptFormatter {
         return userPrompt(request, null);
     }
 
+    /** 최초 호출 전에 교정 재시도의 최대 prompt 증가분까지 함께 검사할 입력을 만든다. */
+    public static AiTokenBudgetInput tokenBudgetInput(
+            StructuredAiProviderRequest<?> request,
+            boolean correctionPossible
+    ) {
+        if (request == null) {
+            throw new IllegalArgumentException("구조화 출력 요청은 필수입니다.");
+        }
+        if (!correctionPossible) {
+            return AiTokenBudgetInput.of(
+                    request.prompt().systemPrompt(),
+                    initialUserPrompt(request));
+        }
+        return AiTokenBudgetInput.of(
+                request.prompt().systemPrompt(),
+                initialUserPrompt(request),
+                correctionReserve());
+    }
+
     static String userPrompt(
             StructuredAiProviderRequest<?> request,
             StructuredConversionFailure previousFailure
@@ -24,16 +47,29 @@ public final class StructuredPromptFormatter {
                 .append(request.outputDefinition().jsonSchema())
                 .append("\n</output_contract>");
         if (previousFailure != null) {
-            String reason = switch (previousFailure) {
-                case JSON_PARSE -> "The previous output was not valid JSON.";
-                case SCHEMA_VALIDATION -> "The previous output did not match the required JSON schema.";
-                case TYPE_CONVERSION -> "The previous output could not be converted to the required result type.";
-            };
-            prompt.append("\n\n<output_correction>\n")
-                    .append(reason)
-                    .append(" Return a corrected JSON object only.")
-                    .append("\n</output_correction>");
+            prompt.append(correctionBlock(previousFailure));
         }
         return prompt.toString();
+    }
+
+    private static String correctionReserve() {
+        return Arrays.stream(StructuredConversionFailure.values())
+                .map(StructuredPromptFormatter::correctionBlock)
+                .max(java.util.Comparator.comparingInt(
+                        value -> value.getBytes(StandardCharsets.UTF_8).length))
+                .orElseThrow();
+    }
+
+    private static String correctionBlock(StructuredConversionFailure failure) {
+        String reason = switch (failure) {
+            case JSON_PARSE -> "The previous output was not valid JSON.";
+            case SCHEMA_VALIDATION -> "The previous output did not match the required JSON schema.";
+            case TYPE_CONVERSION ->
+                    "The previous output could not be converted to the required result type.";
+        };
+        return "\n\n<output_correction>\n"
+                + reason
+                + " Return a corrected JSON object only."
+                + "\n</output_correction>";
     }
 }

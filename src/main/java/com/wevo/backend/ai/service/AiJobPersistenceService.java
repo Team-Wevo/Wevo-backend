@@ -10,6 +10,7 @@ import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.user.domain.User;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.function.Consumer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,7 +32,13 @@ public class AiJobPersistenceService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public RetryResult retry(UUID requestId, User requestedBy, UUID newRequestId, LocalDateTime queuedAt) {
+    public RetryResult retry(
+            UUID requestId,
+            User requestedBy,
+            UUID newRequestId,
+            LocalDateTime queuedAt,
+            Consumer<AiJob> beforeCreate
+    ) {
         AiJob requestedJob = findForUpdate(requestId);
         AiJob latest = repository.findLatestByIdempotencyKeyForUpdate(requestedJob.getIdempotencyKey())
                 .orElseThrow(() -> new BusinessException(ErrorCode.AI_JOB_NOT_FOUND));
@@ -46,8 +53,14 @@ public class AiJobPersistenceService {
             throw new BusinessException(ErrorCode.AI_JOB_RETRY_LIMIT_EXCEEDED);
         }
 
+        beforeCreate.accept(latest);
         AiJob retry = AiJob.retry(newRequestId, latest, requestedBy, queuedAt);
         return new RetryResult(repository.saveAndFlush(retry), true);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markGuardrailSettled(UUID requestId, LocalDateTime settledAt) {
+        findForUpdate(requestId).markGuardrailSettled(settledAt);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

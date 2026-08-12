@@ -68,10 +68,7 @@ public class IssueDetectionPromptFactory {
 
     public AiTokenBudgetInput tokenBudgetInput(IssueDetectionContext context, String promptVersion) {
         StructuredAiProviderRequest<IssueDetectionOutput> request = providerRequest(context, promptVersion);
-        return AiTokenBudgetInput.of(
-                request.prompt().systemPrompt(),
-                StructuredPromptFormatter.initialUserPrompt(request)
-        );
+        return StructuredPromptFormatter.tokenBudgetInput(request, true);
     }
 
     private Set<Long> allowedOpinionIds(IssueDetectionContext context) {

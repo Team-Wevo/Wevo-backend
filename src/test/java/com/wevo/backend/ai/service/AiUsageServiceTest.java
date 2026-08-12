@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
@@ -29,6 +31,52 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
 class AiUsageServiceTest {
+
+    @Test
+    void usageLedgerFailureDoesNotTurnPersistedSuccessIntoAuditFailure() {
+        AiUsagePersistenceService persistenceService = mock(AiUsagePersistenceService.class);
+        AiCostCalculator costCalculator = mock(AiCostCalculator.class);
+        AiGuardrailService guardrailService = mock(AiGuardrailService.class);
+        AiProperties properties = mock(AiProperties.class);
+        AiUsageService service = new AiUsageService(
+                persistenceService,
+                properties,
+                costCalculator,
+                mock(AiErrorClassifier.class),
+                mock(AiErrorMessageSanitizer.class),
+                guardrailService,
+                Clock.fixed(Instant.parse("2026-08-11T12:00:00Z"), ZoneId.of("Asia/Seoul"))
+        );
+        AiJob job = mock(AiJob.class);
+        UUID usageRequestId = UUID.randomUUID();
+        AiUsageHandle handle = new AiUsageHandle(
+                1L,
+                usageRequestId,
+                job,
+                AiFeature.DRAFT_GENERATION,
+                "openai",
+                "gpt-5.6-luna",
+                "draft:v1",
+                "draft-output:v1",
+                LocalDateTime.of(2026, 8, 11, 20, 59)
+        );
+        AiCostSnapshot cost = AiCostSnapshot.unpriced("test-v1");
+        given(costCalculator.calculate(null, "gpt-5.6-luna")).willReturn(cost);
+        doThrow(new IllegalStateException("redis unavailable"))
+                .when(guardrailService).recordUsage(job, usageRequestId, cost);
+
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                () -> service.completeSuccess(handle, null, 1, 91L));
+
+        verify(persistenceService).completeSuccess(
+                org.mockito.ArgumentMatchers.eq(usageRequestId),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(cost),
+                org.mockito.ArgumentMatchers.eq(1),
+                org.mockito.ArgumentMatchers.eq(91L),
+                org.mockito.ArgumentMatchers.any());
+        verify(guardrailService).recordUsage(job, usageRequestId, cost);
+    }
 
     @Test
     void semanticFailureLogsOnlySafeStructuredDiagnostics() {

@@ -66,8 +66,10 @@ public class SectionDriftService {
         if (changedSection.getStatus() == ProjectSectionStatus.CONFIRMED) {
             sectionStatusService.markReviewingAfterConfirmedContentChange(
                     changedSection, actor, contentVersion);
-        } else if (changedSection.getStatus() != ProjectSectionStatus.REVIEWING) {
-            throw new IllegalStateException("확정 이력이 있는 수정 섹션은 CONFIRMED 또는 REVIEWING이어야 합니다.");
+        } else if (changedSection.getStatus() != ProjectSectionStatus.REVIEWING
+                && changedSection.getStatus() != ProjectSectionStatus.DRAFTING) {
+            throw new IllegalStateException(
+                    "확정 이력이 있는 수정 섹션은 CONFIRMED, REVIEWING 또는 DRAFTING이어야 합니다.");
         }
 
         List<TemplateDependency> dependencies =

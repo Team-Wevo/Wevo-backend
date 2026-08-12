@@ -91,6 +91,9 @@ public abstract class AbstractSpringAiGateway implements AiProviderGateway {
         AttemptCounter attemptCounter = new AttemptCounter();
         StructuredConversionFailure previousFailure = null;
         int maxCorrectionRetries = properties.structuredOutput().maxCorrectionRetries();
+        tokenBudgetEstimator.requireWithinBudget(
+                request.feature(),
+                StructuredPromptFormatter.tokenBudgetInput(request, maxCorrectionRetries > 0));
 
         for (int correctionAttempt = 0; correctionAttempt <= maxCorrectionRetries; correctionAttempt++) {
             String userPrompt = StructuredPromptFormatter.userPrompt(request, previousFailure);
@@ -191,10 +194,6 @@ public abstract class AbstractSpringAiGateway implements AiProviderGateway {
             String userPrompt,
             AiProperties.ModelOptions options
     ) {
-        tokenBudgetEstimator.requireWithinBudget(
-                request.feature(),
-                AiTokenBudgetInput.of(request.prompt().systemPrompt(), userPrompt)
-        );
         Future<ResponseEntity<ChatResponse, StructuredConversionResult<T>>> future = providerRequestExecutor.submit(
                 () -> callProviderStructured(request, userPrompt, options)
         );

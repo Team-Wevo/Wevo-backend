@@ -23,6 +23,8 @@ public interface AiJobRepository extends JpaRepository<AiJob, Long> {
 
     Optional<AiJob> findByRequestId(UUID requestId);
 
+    boolean existsByRequestId(UUID requestId);
+
     @Query("""
             select job from AiJob job
             join fetch job.project
@@ -128,5 +130,17 @@ public interface AiJobRepository extends JpaRepository<AiJob, Long> {
     List<UUID> findRequestIdsByStatusAndLastHeartbeatAtBefore(
             @Param("status") AiJobStatus status,
             @Param("threshold") LocalDateTime threshold
+    );
+
+    @Query("""
+            select job.requestId
+            from AiJob job
+            where job.guardrailSettledAt is null
+              and job.status in :statuses
+            order by job.completedAt asc, job.id asc
+            """)
+    List<UUID> findGuardrailUnsettledTerminalRequestIds(
+            @Param("statuses") Collection<AiJobStatus> statuses,
+            Pageable pageable
     );
 }

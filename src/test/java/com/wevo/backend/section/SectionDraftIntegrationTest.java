@@ -503,9 +503,43 @@ class SectionDraftIntegrationTest {
     }
 
     @Test
+    @DisplayName("확정 이력이 있는 DRAFTING 섹션도 저장에 성공하고 직접 하위에 drift를 전파한다")
+    void reconfirmationDraftingSavePropagatesDriftWithoutChangingOwnStatus() throws Exception {
+        User owner = persistUser("owner-d20@wevo.com");
+        Project project = persistProject(owner);
+        persistMember(project, owner, ProjectMemberRole.OWNER);
+
+        ProjectSection source = persistSection(
+                project, template("target-user"), ProjectSectionStatus.DRAFTING);
+        ProjectSection dependent = persistSection(
+                project, template("solution-direction"), ProjectSectionStatus.DRAFTING);
+        source.recordConfirmedVersion(1);
+        persistDraft(source, "재오픈 전 확정 본문", 1, owner);
+        persistActiveLease(source, owner);
+        em.flush();
+
+        save(source.getId(), owner, "재오픈 뒤 수정 본문", 1)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contentVersion").value(2))
+                .andExpect(jsonPath("$.data.sectionStatus").value("DRAFTING"))
+                .andExpect(jsonPath("$.data.driftedSections.length()").value(1))
+                .andExpect(jsonPath("$.data.driftedSections[0].sectionId")
+                        .value(dependent.getId()))
+                .andExpect(jsonPath("$.data.driftedSections[0].driftStatus")
+                        .value("REVIEW_REQUIRED"));
+
+        em.flush();
+        em.clear();
+        assertThat(em.find(ProjectSection.class, source.getId()).getStatus())
+                .isEqualTo(ProjectSectionStatus.DRAFTING);
+        assertThat(em.find(ProjectSection.class, dependent.getId()).getDriftStatus())
+                .isEqualTo(DriftStatus.REVIEW_REQUIRED);
+    }
+
+    @Test
     @DisplayName("확정 섹션의 동일 본문 저장은 상태·버전·드리프트 부수효과가 없는 멱등 성공이다")
     void identicalConfirmedContentIsNoOp() throws Exception {
-        User owner = persistUser("owner-d20@wevo.com");
+        User owner = persistUser("owner-d21@wevo.com");
         Project project = persistProject(owner);
         persistMember(project, owner, ProjectMemberRole.OWNER);
         ProjectSection source = persistSection(

@@ -3,6 +3,7 @@ package com.wevo.backend.ai.service;
 import com.wevo.backend.ai.domain.AiFeature;
 
 public record AiGuardrailReservationCommand(
+        java.util.UUID requestId,
         String idempotencyKey,
         Integer executionSequence,
         Long projectId,
@@ -13,7 +14,8 @@ public record AiGuardrailReservationCommand(
 ) {
 
     public AiGuardrailReservationCommand {
-        if (idempotencyKey == null || !idempotencyKey.matches("[0-9a-f]{64}")
+        if (requestId == null
+                || idempotencyKey == null || !idempotencyKey.matches("[0-9a-f]{64}")
                 || executionSequence == null || executionSequence <= 0
                 || projectId == null || projectId <= 0 || userId == null || userId <= 0
                 || feature == null || modelId == null || modelId.isBlank()

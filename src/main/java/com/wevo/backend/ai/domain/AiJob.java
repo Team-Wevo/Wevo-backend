@@ -155,6 +155,9 @@ public class AiJob extends BaseTimeEntity {
     @Column(name = "last_heartbeat_at")
     private LocalDateTime lastHeartbeatAt;
 
+    @Column(name = "guardrail_settled_at")
+    private LocalDateTime guardrailSettledAt;
+
     private AiJob(
             UUID requestId,
             Project project,
@@ -332,6 +335,22 @@ public class AiJob extends BaseTimeEntity {
         return status == AiJobStatus.FAILED
                 || status == AiJobStatus.CANCELLED
                 || status == AiJobStatus.STALE;
+    }
+
+    public boolean isTerminal() {
+        return status == AiJobStatus.SUCCEEDED
+                || status == AiJobStatus.FAILED
+                || status == AiJobStatus.CANCELLED
+                || status == AiJobStatus.STALE;
+    }
+
+    public void markGuardrailSettled(LocalDateTime settledAt) {
+        if (!isTerminal()) {
+            throw new BusinessException(ErrorCode.AI_JOB_INVALID_STATE_TRANSITION);
+        }
+        if (guardrailSettledAt == null) {
+            guardrailSettledAt = Objects.requireNonNull(settledAt, "settledAt는 필수입니다.");
+        }
     }
 
     private void finish(AiJobStatus targetStatus, LocalDateTime completedAt) {
