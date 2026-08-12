@@ -92,6 +92,8 @@ public class ReviewIntentComparisonStateService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.AI_JOB_INPUT_CHANGED));
         if (comparison.getSourceAiJobId() == null) {
             comparison.bindSourceJobId(sourceAiJobId);
+        } else if (!Objects.equals(comparison.getSourceAiJobId(), sourceAiJobId)) {
+            throw new BusinessException(ErrorCode.CONFLICT);
         }
         comparison.succeed(alignment, differenceSummary, evidenceExcerpt);
         return comparison.getId();
