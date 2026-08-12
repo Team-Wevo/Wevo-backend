@@ -39,6 +39,8 @@ public class AiOperationalMetrics {
     public static final String SCHEMA_RESULTS = "wevo.ai.schema.results";
     public static final String JOB_EVENTS = "wevo.ai.job.events";
     public static final String GUARDRAIL_REJECTIONS = "wevo.ai.guardrail.rejections";
+    public static final String GUARDRAIL_LIFECYCLE_STATE_MISMATCHES =
+            "wevo.ai.guardrail.lifecycle.state.mismatches";
     public static final String BUDGET_UTILIZATION = "wevo.ai.guardrail.budget.utilization";
 
     public static final Set<String> ALLOWED_TAG_KEYS = Set.of(
@@ -152,6 +154,13 @@ public class AiOperationalMetrics {
         Counter.builder(GUARDRAIL_REJECTIONS)
                 .tag("feature", feature == null ? "unknown" : feature.configKey())
                 .tag("reason", normalizeValue(reason))
+                .register(registry).increment();
+    }
+
+    public void recordGuardrailLifecycleStateMismatch(AiFeature feature, String operation) {
+        Counter.builder(GUARDRAIL_LIFECYCLE_STATE_MISMATCHES)
+                .tag("feature", feature == null ? "unknown" : feature.configKey())
+                .tag("event", normalizeValue(operation))
                 .register(registry).increment();
     }
 
