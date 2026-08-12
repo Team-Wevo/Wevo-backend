@@ -72,6 +72,14 @@ public class InviteService {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
 
+        // 프로젝트 행을 배타 잠금으로 잡아 생성 경로를 직렬화한다. 잠그지 않으면 아직 링크가 없는
+        // 프로젝트에서 동시 생성 요청이 둘 다 "활성 링크 없음"을 보고 각자 save 를 시도해, 늦은 쪽이
+        // token_hash 유니크 제약(uk_invite_links_token_hash)에서 터진다 — 토큰이 projectId 파생이라
+        // 결정적이므로 두 행의 해시가 같다. 멱등이어야 할 생성이 409 로 실패하는 것을 막는다.
+        // (참여 경로 joinByToken 도 같은 행을 잠그므로 정원 판정과도 직렬화된다.)
+        projectRepository.findByIdForUpdate(projectId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PROJECT_NOT_FOUND));
+
         // 토큰은 저장값이 아니라 프로젝트 ID 에서 파생한다 — 해시만 저장하므로 기존 링크를 그대로
         // 돌려주려면 원문을 매번 다시 계산해야 한다. (InviteTokenFactory 참고)
         String rawToken = inviteTokenFactory.tokenFor(projectId);
