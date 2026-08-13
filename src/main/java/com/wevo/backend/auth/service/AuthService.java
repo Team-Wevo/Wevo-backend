@@ -23,6 +23,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * 소셜 로그인, 토큰 재발급, 로그아웃을 담당하는 서비스.
@@ -134,14 +135,18 @@ public class AuthService {
         Long userId = jwtProvider.parseUserId(refreshToken, TokenType.REFRESH);
         requireActiveUser(userId);
 
+        // 새 토큰은 제시된 토큰과 같은 계보를 잇는다 — 회전은 계보를 유지해야 "밀려난 옛 토큰"과
+        // "같은 계보의 재사용(탈취)"이 구분된다. (#290)
+        String familyId = jwtProvider.parseRefreshFamily(refreshToken);
         String accessToken = jwtProvider.createAccessToken(userId);
-        String newRefreshToken = jwtProvider.createRefreshToken(userId);
+        String newRefreshToken = jwtProvider.createRefreshToken(userId, familyId);
         RefreshTokenService.RotationResult result = refreshTokenService.rotate(
-                userId, refreshToken, newRefreshToken, jwtProvider.getRefreshTokenValidityMs());
+                userId, familyId, refreshToken, newRefreshToken, jwtProvider.getRefreshTokenValidityMs());
 
         if (result == RefreshTokenService.RotationResult.REUSE_DETECTED) {
-            // 이미 회전된 토큰이 다시 왔다 = 유출 정황. 스크립트가 세션을 폐기했으므로 정상 사용자도
-            // 재로그인해야 한다. 토큰 원문은 남기지 않는다(§7).
+            // 같은 계보에서 이미 회전된 토큰이 다시 왔다 = 유출 정황. 스크립트가 세션을 폐기했으므로
+            // 정상 사용자도 재로그인해야 한다. 다른 로그인에 밀려난 경우(SUPERSEDED)는 폐기 없이 재로그인만
+            // 요구하므로 이 경보는 실제 탈취만 가리킨다. 토큰 원문은 남기지 않는다(§7).
             log.warn("Refresh Token 재사용이 감지되어 세션을 폐기했습니다. userId={}", userId);
         }
         if (result != RefreshTokenService.RotationResult.ROTATED) {
@@ -255,9 +260,12 @@ public class AuthService {
     }
 
     private TokenResponse issueTokens(Long userId) {
+        // 로그인마다 새 세션 계보를 발급한다. 이 계보의 토큰만 회전으로 이어지고, 다른 기기에서
+        // 다시 로그인하면 새 계보가 이 값을 밀어낸다(SUPERSEDED — 현재 세션은 폐기하지 않음). (#290)
+        String familyId = UUID.randomUUID().toString();
         String accessToken = jwtProvider.createAccessToken(userId);
-        String refreshToken = jwtProvider.createRefreshToken(userId);
-        refreshTokenService.save(userId, refreshToken, jwtProvider.getRefreshTokenValidityMs());
+        String refreshToken = jwtProvider.createRefreshToken(userId, familyId);
+        refreshTokenService.save(userId, familyId, refreshToken, jwtProvider.getRefreshTokenValidityMs());
         return new TokenResponse(accessToken, refreshToken);
     }
 }

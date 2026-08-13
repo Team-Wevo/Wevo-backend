@@ -17,6 +17,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -42,7 +44,7 @@ class DevLoginServiceTest {
 
         given(userRepository.findByEmail("dev@wevo.com")).willReturn(Optional.of(user));
         given(jwtProvider.createAccessToken(5L)).willReturn("access");
-        given(jwtProvider.createRefreshToken(5L)).willReturn("refresh");
+        given(jwtProvider.createRefreshToken(eq(5L), anyString())).willReturn("refresh");
         given(jwtProvider.getRefreshTokenValidityMs()).willReturn(1_000L);
 
         TokenResponse response = devLoginService.devLogin("dev@wevo.com", "개발자");
@@ -50,7 +52,7 @@ class DevLoginServiceTest {
         assertThat(response.accessToken()).isEqualTo("access");
         assertThat(response.refreshToken()).isEqualTo("refresh");
         verify(userRepository, never()).save(any());
-        verify(refreshTokenService).save(5L, "refresh", 1_000L);
+        verify(refreshTokenService).save(eq(5L), anyString(), eq("refresh"), eq(1_000L));
     }
 
     @Test
@@ -63,13 +65,13 @@ class DevLoginServiceTest {
             return saved;
         });
         given(jwtProvider.createAccessToken(8L)).willReturn("access");
-        given(jwtProvider.createRefreshToken(8L)).willReturn("refresh");
+        given(jwtProvider.createRefreshToken(eq(8L), anyString())).willReturn("refresh");
         given(jwtProvider.getRefreshTokenValidityMs()).willReturn(2_000L);
 
         TokenResponse response = devLoginService.devLogin("new@wevo.com", "새 사용자");
 
         assertThat(response.accessToken()).isEqualTo("access");
         verify(userRepository).save(any(User.class));
-        verify(refreshTokenService).save(8L, "refresh", 2_000L);
+        verify(refreshTokenService).save(eq(8L), anyString(), eq("refresh"), eq(2_000L));
     }
 }

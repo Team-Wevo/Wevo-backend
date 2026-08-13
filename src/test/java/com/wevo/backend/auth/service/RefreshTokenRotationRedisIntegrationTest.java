@@ -68,14 +68,14 @@ class RefreshTokenRotationRedisIntegrationTest {
     @Test
     @DisplayName("같은 Refresh Token 으로 동시에 재발급하면 정확히 1건만 회전에 성공한다")
     void concurrentRotationSucceedsExactlyOnce() throws Exception {
-        refreshTokenService.save(1L, "current", TTL_MS);
+        refreshTokenService.save(1L, "fam1", "current", TTL_MS);
 
         int attempts = 20;
         List<RefreshTokenService.RotationResult> results;
         try (var executor = Executors.newFixedThreadPool(attempts)) {
             var tasks = IntStream.range(0, attempts)
                     .<Callable<RefreshTokenService.RotationResult>>mapToObj(index ->
-                            () -> refreshTokenService.rotate(1L, "current", "next-" + index, TTL_MS))
+                            () -> refreshTokenService.rotate(1L, "fam1", "current", "next-" + index, TTL_MS))
                     .toList();
             results = executor.invokeAll(tasks).stream()
                     .map(future -> {
@@ -105,34 +105,34 @@ class RefreshTokenRotationRedisIntegrationTest {
     @Test
     @DisplayName("회전에 성공하면 새 토큰으로 교체되고 옛 토큰은 더 이상 통하지 않는다")
     void rotationReplacesStoredToken() {
-        refreshTokenService.save(2L, "current", TTL_MS);
+        refreshTokenService.save(2L, "fam2", "current", TTL_MS);
 
-        assertThat(refreshTokenService.rotate(2L, "current", "next", TTL_MS))
+        assertThat(refreshTokenService.rotate(2L, "fam2", "current", "next", TTL_MS))
                 .isEqualTo(RefreshTokenService.RotationResult.ROTATED);
-        assertThat(refreshTokenService.rotate(2L, "next", "third", TTL_MS))
+        assertThat(refreshTokenService.rotate(2L, "fam2", "next", "third", TTL_MS))
                 .isEqualTo(RefreshTokenService.RotationResult.ROTATED);
     }
 
     @Test
     @DisplayName("이미 회전된 옛 토큰을 다시 쓰면 재사용으로 보고 세션 전체를 폐기한다")
     void reusedTokenKillsSession() {
-        refreshTokenService.save(3L, "current", TTL_MS);
-        refreshTokenService.rotate(3L, "current", "next", TTL_MS);
+        refreshTokenService.save(3L, "fam3", "current", TTL_MS);
+        refreshTokenService.rotate(3L, "fam3", "current", "next", TTL_MS);
 
-        // 탈취자가 먼저 회전시킨 뒤 정상 사용자가 옛 토큰을 내미는 상황.
-        assertThat(refreshTokenService.rotate(3L, "current", "another", TTL_MS))
+        // 탈취자가 먼저 회전시킨 뒤 정상 사용자가 같은 계보의 옛 토큰을 내미는 상황.
+        assertThat(refreshTokenService.rotate(3L, "fam3", "current", "another", TTL_MS))
                 .isEqualTo(RefreshTokenService.RotationResult.REUSE_DETECTED);
 
         // 거부만 하면 탈취자의 새 토큰이 계속 살아 있다. 세션을 끊어 양쪽 다 재로그인시킨다.
         assertThat(redisTemplate.hasKey("refresh_token:3")).isFalse();
-        assertThat(refreshTokenService.rotate(3L, "next", "yet-another", TTL_MS))
+        assertThat(refreshTokenService.rotate(3L, "fam3", "next", "yet-another", TTL_MS))
                 .isEqualTo(RefreshTokenService.RotationResult.NOT_FOUND);
     }
 
     @Test
     @DisplayName("저장된 토큰이 없으면 NOT_FOUND 를 돌려주고 키를 만들지 않는다")
     void missingTokenIsNotFound() {
-        assertThat(refreshTokenService.rotate(4L, "current", "next", TTL_MS))
+        assertThat(refreshTokenService.rotate(4L, "fam4", "current", "next", TTL_MS))
                 .isEqualTo(RefreshTokenService.RotationResult.NOT_FOUND);
         assertThat(redisTemplate.hasKey("refresh_token:4")).isFalse();
     }
@@ -140,10 +140,29 @@ class RefreshTokenRotationRedisIntegrationTest {
     @Test
     @DisplayName("회전 시 새 토큰의 유효 기간이 다시 설정된다")
     void rotationRefreshesTtl() {
-        refreshTokenService.save(5L, "current", TTL_MS);
-        refreshTokenService.rotate(5L, "current", "next", TTL_MS);
+        refreshTokenService.save(5L, "fam5", "current", TTL_MS);
+        refreshTokenService.rotate(5L, "fam5", "current", "next", TTL_MS);
 
         Long ttl = redisTemplate.getExpire("refresh_token:5", java.util.concurrent.TimeUnit.MILLISECONDS);
         assertThat(ttl).isNotNull().isPositive().isLessThanOrEqualTo(TTL_MS);
+    }
+
+    @Test
+    @DisplayName("다른 기기 로그인이 계보를 밀어내도 현재 세션은 살아 있고, 밀려난 토큰만 재로그인을 요구한다 (#290)")
+    void supersededByNewLoginDoesNotKillSession() {
+        // 기기 A 로그인 → 기기 B 로그인(같은 사용자, 새 계보로 덮어씀).
+        refreshTokenService.save(6L, "famA", "tokenA", TTL_MS);
+        refreshTokenService.save(6L, "famB", "tokenB", TTL_MS);
+
+        // 기기 A 가 옛 계보 토큰으로 재발급 시도 → 밀려남(SUPERSEDED). 세션은 폐기하지 않는다.
+        assertThat(refreshTokenService.rotate(6L, "famA", "tokenA", "tokenA2", TTL_MS))
+                .isEqualTo(RefreshTokenService.RotationResult.SUPERSEDED);
+        assertThat(redisTemplate.hasKey("refresh_token:6"))
+                .as("밀려난 토큰은 현재(기기 B) 세션을 폐기하지 않는다")
+                .isTrue();
+
+        // 현재 세션(기기 B)은 정상 회전된다 — 다중 기기 로그인이 현재 세션을 강제 로그아웃시키지 않는다.
+        assertThat(refreshTokenService.rotate(6L, "famB", "tokenB", "tokenB2", TTL_MS))
+                .isEqualTo(RefreshTokenService.RotationResult.ROTATED);
     }
 }
