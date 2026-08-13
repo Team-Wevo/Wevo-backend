@@ -9,7 +9,12 @@ import com.wevo.backend.review.service.ReviewIntentComparisonStateService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
-/** 제출 트랜잭션에는 상태만 저장하고 실제 AI job 생성은 커밋 이후 이벤트로 넘긴다. */
+/**
+ * 비교 준비 트랜잭션에는 상태만 저장하고 실제 AI job 생성은 그 커밋 이후 이벤트로 넘긴다.
+ *
+ * <p>이 트랜잭션은 제출 트랜잭션이 아니라 <b>제출 커밋 이후</b>에 열리는 별도 트랜잭션이므로
+ * ({@code ReviewIntentComparisonPreparer}), 여기서 나는 실패는 저장된 제출을 되돌리지 않는다.
+ */
 @Component
 public class AiReviewIntentComparisonCoordinator
         implements ReviewIntentComparisonCoordinator {
