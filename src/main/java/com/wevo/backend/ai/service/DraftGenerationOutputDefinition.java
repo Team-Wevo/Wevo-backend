@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 public class DraftGenerationOutputDefinition {
 
     public static final OutputSchemaId SCHEMA_ID =
-            new OutputSchemaId("draft-generation-output", 2);
+            new OutputSchemaId("draft-generation-output", 3);
 
     private static final String ID_ARRAY = """
             {

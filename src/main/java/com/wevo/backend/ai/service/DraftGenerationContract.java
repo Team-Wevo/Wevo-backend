@@ -4,7 +4,8 @@ package com.wevo.backend.ai.service;
 public final class DraftGenerationContract {
 
     public static final String PROMPT_VERSION = "draft-generation:v2";
-    public static final String SCHEMA_VERSION = "draft-generation-output:v2";
+    public static final String SCHEMA_VERSION =
+            DraftGenerationOutputDefinition.SCHEMA_ID.trackingValue();
 
     private DraftGenerationContract() {
     }
