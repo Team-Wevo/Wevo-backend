@@ -25,11 +25,11 @@ public class DraftGenerationOutputValidator
                 || output.content().length() > SectionDraftSaveRequest.MAX_CONTENT_LENGTH) {
             throw reject();
         }
-        requireExact(output.evidenceOpinionIds(), context.allowedResourceIds(),
+        requireAllowed(output.evidenceOpinionIds(),
                 context::requireAllowedResourceId);
-        requireExact(output.evidenceIssueIds(), context.allowedIssueIds(),
+        requireAllowed(output.evidenceIssueIds(),
                 context::requireAllowedIssueId);
-        requireExact(output.evidenceAnswerIds(), context.allowedAnswerIds(),
+        requireAllowed(output.evidenceAnswerIds(),
                 context::requireAllowedAnswerId);
         requireExact(output.unresolvedGapIssueIds(), context.requiredUnresolvedIssueIds(),
                 context::requireAllowedIssueId);
@@ -37,6 +37,22 @@ public class DraftGenerationOutputValidator
             if (!output.content().contains(DraftGenerationContract.unresolvedGapMarker(issueId))) {
                 throw reject();
             }
+        }
+    }
+
+    private void requireAllowed(
+            List<Long> values,
+            java.util.function.Consumer<Long> allowlistCheck
+    ) {
+        if (values == null) {
+            throw reject();
+        }
+        Set<Long> unique = new HashSet<>();
+        for (Long value : values) {
+            if (!unique.add(value)) {
+                throw reject();
+            }
+            allowlistCheck.accept(value);
         }
     }
 
