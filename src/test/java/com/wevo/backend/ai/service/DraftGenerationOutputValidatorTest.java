@@ -36,30 +36,19 @@ class DraftGenerationOutputValidatorTest {
     }
 
     @Test
-    void acceptsMissingOptionalEvidenceBecausePersistenceUsesTheTrustedContext() {
+    void acceptsUntrustedReferenceEchoesBecausePersistenceUsesTheTrustedContext() {
         assertThatCode(() -> validator.validate(
-                output(List.of(1L), List.of(11L), List.of(), List.of(12L)),
+                output(List.of(99L, 99L), List.of(98L, 98L), List.of(97L, 97L), List.of(96L)),
                 context
         )).doesNotThrowAnyException();
     }
 
     @Test
-    void rejectsUnknownOptionalEvidence() {
-        assertRejected(output(List.of(1L, 99L), List.of(11L, 12L), List.of(21L), List.of(12L)));
-        assertRejected(output(List.of(1L, 2L), List.of(11L, 99L), List.of(21L), List.of(12L)));
-        assertRejected(output(List.of(1L, 2L), List.of(11L, 12L), List.of(21L, 99L), List.of(12L)));
-    }
-
-    @Test
-    void rejectsDuplicateOptionalEvidence() {
-        assertRejected(output(List.of(1L, 1L), List.of(11L, 12L), List.of(21L), List.of(12L)));
-        assertRejected(output(List.of(1L, 2L), List.of(11L, 11L), List.of(21L), List.of(12L)));
-        assertRejected(output(List.of(1L, 2L), List.of(11L, 12L), List.of(21L, 21L), List.of(12L)));
-    }
-
-    @Test
-    void rejectsMissingUnresolvedGap() {
-        assertRejected(output(List.of(1L, 2L), List.of(11L, 12L), List.of(21L), List.of()));
+    void acceptsMissingReferenceEchoesWhenTrustedContextIsAvailable() {
+        assertThatCode(() -> validator.validate(
+                output(List.of(), List.of(), List.of(), List.of()),
+                context
+        )).doesNotThrowAnyException();
     }
 
     @Test

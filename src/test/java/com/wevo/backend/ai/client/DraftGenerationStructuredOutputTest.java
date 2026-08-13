@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.wevo.backend.ai.service.DraftGenerationOutput;
 import com.wevo.backend.ai.service.DraftGenerationOutputDefinition;
 import com.wevo.backend.ai.service.DraftGenerationOutputValidator;
+import com.wevo.backend.ai.service.DraftGenerationContract;
 import org.junit.jupiter.api.Test;
 
 class DraftGenerationStructuredOutputTest {
@@ -13,6 +14,13 @@ class DraftGenerationStructuredOutputTest {
             new DraftGenerationOutputDefinition(new DraftGenerationOutputValidator()).get();
     private final StrictStructuredOutputConverter<DraftGenerationOutput> converter =
             new StrictStructuredOutputConverter<>(definition);
+
+    @Test
+    void usesVersionThreeAsTheSingleSchemaContract() {
+        assertThat(definition.schemaId().trackingValue())
+                .isEqualTo("draft-generation-output:v3")
+                .isEqualTo(DraftGenerationContract.SCHEMA_VERSION);
+    }
 
     @Test
     void excludesUnsupportedUniqueItemsFromProviderSchema() {
