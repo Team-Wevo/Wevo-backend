@@ -19,60 +19,43 @@ class IssueDetectionResultMergerTest {
             new IssueDetectionResultMerger(new IssueDetectionOutputValidator());
 
     @Test
-    void mergesOnlyExactCandidatesAndKeepsEvidenceInEligibleOrder() {
+    void validatesFinalAiMergeAndKeepsPlanCoverage() {
         ContextChunkPlan plan = plan();
-        IssueDetectionIssueOutput first = conflict("같은 충돌", List.of(2L));
-        IssueDetectionIssueOutput same = conflict("같은 충돌", List.of(3L));
-        IssueDetectionIssueOutput different = conflict("다른 충돌", List.of(3L));
+        IssueDetectionIssueOutput crossChunk = conflict("chunk 간 충돌", List.of(2L, 3L));
 
         IssueDetectionResult result = merger.merge(
                 plan,
-                List.of(
-                        new IssueDetectionOutput(List.of(first)),
-                        new IssueDetectionOutput(List.of(same, different))
-                )
+                new IssueDetectionOutput(List.of(crossChunk))
         );
 
-        assertThat(result.issues()).hasSize(2);
-        assertThat(result.issues().getFirst().evidenceOpinionIds()).containsExactly(2L, 3L);
-        assertThat(result.issues().get(1).description()).isEqualTo("다른 충돌");
+        assertThat(result.issues()).containsExactly(crossChunk);
         assertThat(result.eligibleOpinionIds()).containsExactly(1L, 2L, 3L);
         assertThat(result.coveredOpinionIds()).containsExactly(1L, 2L, 3L);
     }
 
     @Test
-    void rejectsChunkEvidenceOutsideItsInputAndGlobalLimitAfterMerge() {
+    void rejectsFinalEvidenceOutsideGlobalInputAndGlobalIssueLimit() {
         ContextChunkPlan plan = plan();
         assertThatThrownBy(() -> merger.merge(
                 plan,
-                List.of(
-                        new IssueDetectionOutput(List.of(conflict("환각", List.of(3L)))),
-                        new IssueDetectionOutput(List.of())
-                )
+                new IssueDetectionOutput(List.of(conflict("환각", List.of(4L))))
         )).isInstanceOf(StructuredOutputSemanticException.class);
 
         assertThatThrownBy(() -> merger.merge(
                 plan,
-                List.of(
-                        new IssueDetectionOutput(List.of(
-                                conflict("충돌 1", List.of(1L)),
-                                conflict("충돌 2", List.of(2L))
-                        )),
-                        new IssueDetectionOutput(List.of(
-                                conflict("충돌 3", List.of(3L)),
-                                gap("공백 1", List.of(3L)),
-                                gap("공백 2", List.of(3L))
-                        ))
-                )
+                new IssueDetectionOutput(List.of(
+                        conflict("충돌 1", List.of(1L)),
+                        conflict("충돌 2", List.of(2L)),
+                        conflict("충돌 3", List.of(3L)),
+                        gap("공백 1", List.of(3L)),
+                        gap("공백 2", List.of(3L))))
         )).isInstanceOf(StructuredOutputSemanticException.class);
     }
 
     @Test
-    void requiresOneOutputForEveryPlannedChunk() {
-        assertThatThrownBy(() -> merger.merge(
-                plan(),
-                List.of(new IssueDetectionOutput(List.of()))
-        )).isInstanceOf(IllegalArgumentException.class);
+    void requiresPlanAndFinalOutput() {
+        assertThatThrownBy(() -> merger.merge(plan(), null))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     private ContextChunkPlan plan() {
