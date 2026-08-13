@@ -77,8 +77,16 @@ public class InviteService {
         // token_hash 유니크 제약(uk_invite_links_token_hash)에서 터진다 — 토큰이 projectId 파생이라
         // 결정적이므로 두 행의 해시가 같다. 멱등이어야 할 생성이 409 로 실패하는 것을 막는다.
         // (참여 경로 joinByToken 도 같은 행을 잠그므로 정원 판정과도 직렬화된다.)
-        projectRepository.findByIdForUpdate(projectId)
+        Project project = projectRepository.findByIdForUpdate(projectId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PROJECT_NOT_FOUND));
+
+        // 보관(삭제)된 프로젝트에는 링크를 재발급하지 않는다. 보관 후에도 OWNER 멤버십은 남으므로
+        // 상태 검사가 없으면 삭제한 프로젝트에 링크가 부활해 합류가 재개된다. archive 가 링크 비활성화라는
+        // 부수 효과 하나에만 기대지 않고, 보관 상태를 신뢰의 단일 소스로 삼는다. 삭제된 프로젝트는
+        // 존재를 숨긴다(§5.6 — 404). (#280)
+        if (project.isArchived()) {
+            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND);
+        }
 
         // 토큰은 저장값이 아니라 프로젝트 ID 에서 파생한다 — 해시만 저장하므로 기존 링크를 그대로
         // 돌려주려면 원문을 매번 다시 계산해야 한다. (InviteTokenFactory 참고)
@@ -127,6 +135,13 @@ public class InviteService {
         // 인원 체크~저장을 직렬화하기 위해 프로젝트 행을 잠금 조회한다.
         Project project = projectRepository.findByIdForUpdate(link.getProject().getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.PROJECT_NOT_FOUND));
+
+        // 잠근 뒤 보관 여부를 재확인한다. 링크를 활성으로 읽은 직후 archive 가 커밋되는 TOCTOU 를 막는다.
+        // archive 는 프로젝트 행을 배타 잠금으로 잡지 않으므로, 여기서 잠금 후 재검증해야 이미 보관된
+        // 프로젝트에 멤버가 추가되는 것을 차단할 수 있다. 링크가 죽은 것으로 취급한다(§5.6 — 404). (#280)
+        if (project.isArchived()) {
+            throw new BusinessException(ErrorCode.INVITE_LINK_NOT_FOUND);
+        }
 
         // 이미 멤버면 기존 권한 유지 (멱등 — 재참여로 취급하지 않음)
         ProjectMember existing = projectMemberRepository
