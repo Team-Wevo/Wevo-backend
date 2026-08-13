@@ -62,6 +62,49 @@ class AiExecutionControlTest {
         featureOff.requireSubmissionAllowed(AiFeature.DRAFT_REVIEW);
     }
 
+    @Test
+    void nonCircuitFailureReleasesHalfOpenSubmissionProbeSlot() {
+        MutableClock clock = new MutableClock(Instant.parse("2026-08-02T00:00:00Z"));
+        AiExecutionControl control = new AiExecutionControl(properties(true, Map.of()), clock);
+        openCircuit(control);
+        clock.advance(Duration.ofSeconds(31));
+
+        control.requireSubmissionAllowed(AiFeature.DRAFT_GENERATION);
+        control.beforeProviderCall(AiFeature.DRAFT_GENERATION);
+        control.recordFailure(new AiProviderException(
+                ErrorCode.AI_STRUCTURED_OUTPUT_SEMANTIC_VALIDATION_FAILED,
+                new IllegalStateException("synthetic semantic failure")));
+
+        assertThat(control.state()).isEqualTo(AiCircuitState.HALF_OPEN);
+        control.requireSubmissionAllowed(AiFeature.DRAFT_GENERATION);
+        assertThatThrownBy(() -> control.requireSubmissionAllowed(AiFeature.DRAFT_GENERATION))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void countedHalfOpenFailureReopensAndClearsProbeSlots() {
+        MutableClock clock = new MutableClock(Instant.parse("2026-08-02T00:00:00Z"));
+        AiExecutionControl control = new AiExecutionControl(properties(true, Map.of()), clock);
+        openCircuit(control);
+        clock.advance(Duration.ofSeconds(31));
+
+        control.requireSubmissionAllowed(AiFeature.DRAFT_GENERATION);
+        control.beforeProviderCall(AiFeature.DRAFT_GENERATION);
+        control.recordFailure(providerFailure());
+
+        assertThat(control.state()).isEqualTo(AiCircuitState.OPEN);
+        clock.advance(Duration.ofSeconds(31));
+        control.requireSubmissionAllowed(AiFeature.DRAFT_GENERATION);
+    }
+
+    private void openCircuit(AiExecutionControl control) {
+        control.beforeProviderCall(AiFeature.DRAFT_GENERATION);
+        control.recordFailure(providerFailure());
+        control.beforeProviderCall(AiFeature.DRAFT_GENERATION);
+        control.recordFailure(providerFailure());
+        assertThat(control.state()).isEqualTo(AiCircuitState.OPEN);
+    }
+
     private AiOperationsProperties properties(boolean enabled, Map<String, Boolean> features) {
         return new AiOperationsProperties(enabled, features,
                 new AiOperationsProperties.CircuitBreaker(2, Duration.ofSeconds(30), 1));

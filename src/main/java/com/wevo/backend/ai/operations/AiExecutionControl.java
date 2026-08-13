@@ -80,6 +80,7 @@ public class AiExecutionControl {
     public synchronized void recordFailure(Throwable throwable) {
         if (state == AiCircuitState.HALF_OPEN) {
             halfOpenCalls.updateAndGet(value -> Math.max(0, value - 1));
+            halfOpenSubmissions.updateAndGet(value -> Math.max(0, value - 1));
         }
         if (!countsForCircuit(throwable)) {
             return;
