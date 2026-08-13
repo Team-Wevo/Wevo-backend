@@ -330,7 +330,7 @@ class AbstractSpringAiGatewayTest {
     }
 
     @Test
-    void classifiesFinalStructuredFailuresAndDoesNotRetrySemanticFailure() {
+    void classifiesFinalStructuredFailuresAfterCorrectionRetries() {
         AbstractSpringAiGateway malformedGateway = gateway(
                 prompt -> response("not-json"), Duration.ofSeconds(1), 0, 0
         );
@@ -359,7 +359,31 @@ class AbstractSpringAiGatewayTest {
                 structuredRequest(Set.of(8L)),
                 ErrorCode.AI_STRUCTURED_OUTPUT_SEMANTIC_VALIDATION_FAILED
         );
-        assertThat(semanticCalls).hasValue(1);
+        assertThat(semanticCalls).hasValue(3);
+    }
+
+    @Test
+    void semanticFailureUsesSafeReasonForCorrectionAndCanRecover() {
+        AtomicInteger calls = new AtomicInteger();
+        AtomicReference<Prompt> correctionPrompt = new AtomicReference<>();
+        AbstractSpringAiGateway gateway = gateway(prompt -> {
+            if (calls.incrementAndGet() == 1) {
+                return response("{\"resourceId\":7,\"signal\":\"CLEAR\"}");
+            }
+            correctionPrompt.set(prompt);
+            return response("{\"resourceId\":8,\"signal\":\"CLEAR\"}");
+        }, Duration.ofSeconds(1), 0, 2);
+        StructuredAiProviderRequest<TestOutput> request = semanticReasonRequest(
+                Set.of(8L), 7L);
+
+        StructuredAiProviderResponse<TestOutput> response = gateway.generateStructured(request);
+
+        assertThat(calls).hasValue(2);
+        assertThat(response.result()).isEqualTo(new TestOutput(8L, TestSignal.CLEAR));
+        assertThat(response.correctionRetryCount()).isEqualTo(1);
+        assertThat(correctionPrompt.get().getInstructions().get(1).getText())
+                .contains("REFERENCE_NOT_ALLOWED")
+                .doesNotContain("resourceId=7", "offendingResourceId", "field=resourceId");
     }
 
     @Test
@@ -534,6 +558,35 @@ class AbstractSpringAiGatewayTest {
         StructuredOutputValidator<TestOutput> validator = (value, context) -> {
             if (!context.allowedResourceIds().contains(value.resourceId())) {
                 throw new StructuredOutputSemanticException();
+            }
+        };
+        return new StructuredAiProviderRequest<>(
+                AiFeature.DRAFT_REVIEW,
+                new RenderedPrompt(
+                        new PromptTemplateId("contract-summary", 1),
+                        "system",
+                        "user"
+                ),
+                StructuredOutputDefinition.of(
+                        new OutputSchemaId("test-output", 1),
+                        TestOutput.class,
+                        validator
+                ),
+                new StructuredOutputValidationContext(allowedResourceIds)
+        );
+    }
+
+    private StructuredAiProviderRequest<TestOutput> semanticReasonRequest(
+            Set<Long> allowedResourceIds,
+            long offendingResourceId
+    ) {
+        StructuredOutputValidator<TestOutput> validator = (value, context) -> {
+            if (!context.allowedResourceIds().contains(value.resourceId())) {
+                throw new StructuredOutputSemanticException(
+                        StructuredOutputSemanticFailureReason.REFERENCE_NOT_ALLOWED,
+                        "resourceId",
+                        offendingResourceId
+                );
             }
         };
         return new StructuredAiProviderRequest<>(
