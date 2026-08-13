@@ -44,9 +44,21 @@ class DraftGenerationOutputValidatorTest {
     }
 
     @Test
-    void rejectsUnknownDuplicateEvidenceAndMissingUnresolvedGap() {
+    void rejectsUnknownOptionalEvidence() {
         assertRejected(output(List.of(1L, 99L), List.of(11L, 12L), List.of(21L), List.of(12L)));
+        assertRejected(output(List.of(1L, 2L), List.of(11L, 99L), List.of(21L), List.of(12L)));
+        assertRejected(output(List.of(1L, 2L), List.of(11L, 12L), List.of(21L, 99L), List.of(12L)));
+    }
+
+    @Test
+    void rejectsDuplicateOptionalEvidence() {
         assertRejected(output(List.of(1L, 1L), List.of(11L, 12L), List.of(21L), List.of(12L)));
+        assertRejected(output(List.of(1L, 2L), List.of(11L, 11L), List.of(21L), List.of(12L)));
+        assertRejected(output(List.of(1L, 2L), List.of(11L, 12L), List.of(21L, 21L), List.of(12L)));
+    }
+
+    @Test
+    void rejectsMissingUnresolvedGap() {
         assertRejected(output(List.of(1L, 2L), List.of(11L, 12L), List.of(21L), List.of()));
     }
 
