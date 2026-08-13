@@ -36,10 +36,29 @@ class DraftGenerationOutputValidatorTest {
     }
 
     @Test
-    void rejectsUnknownMissingDuplicateEvidenceAndMissingUnresolvedGap() {
+    void acceptsMissingOptionalEvidenceBecausePersistenceUsesTheTrustedContext() {
+        assertThatCode(() -> validator.validate(
+                output(List.of(1L), List.of(11L), List.of(), List.of(12L)),
+                context
+        )).doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsUnknownOptionalEvidence() {
         assertRejected(output(List.of(1L, 99L), List.of(11L, 12L), List.of(21L), List.of(12L)));
-        assertRejected(output(List.of(1L), List.of(11L, 12L), List.of(21L), List.of(12L)));
+        assertRejected(output(List.of(1L, 2L), List.of(11L, 99L), List.of(21L), List.of(12L)));
+        assertRejected(output(List.of(1L, 2L), List.of(11L, 12L), List.of(21L, 99L), List.of(12L)));
+    }
+
+    @Test
+    void rejectsDuplicateOptionalEvidence() {
         assertRejected(output(List.of(1L, 1L), List.of(11L, 12L), List.of(21L), List.of(12L)));
+        assertRejected(output(List.of(1L, 2L), List.of(11L, 11L), List.of(21L), List.of(12L)));
+        assertRejected(output(List.of(1L, 2L), List.of(11L, 12L), List.of(21L, 21L), List.of(12L)));
+    }
+
+    @Test
+    void rejectsMissingUnresolvedGap() {
         assertRejected(output(List.of(1L, 2L), List.of(11L, 12L), List.of(21L), List.of()));
     }
 
