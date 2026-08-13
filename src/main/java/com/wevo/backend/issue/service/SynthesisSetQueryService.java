@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** 정리 결과 존재 여부와 AI 입력용 current set/GAP 답변을 공개하는 읽기 경계. */
@@ -69,6 +70,7 @@ public class SynthesisSetQueryService {
      *
      * <p>current set이나 참조 원본이 누락된 비정상 상태를 빈 값으로 바꾸지 않는다.
      */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public CurrentSynthesisContext getCurrentForAiContext(
             VerifiedSectionAccess sectionAccess
     ) {
@@ -88,6 +90,7 @@ public class SynthesisSetQueryService {
     }
 
     /** 초안 생성용 current set의 결정·GAP·aggregate 의견 근거까지 함께 반환한다. */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public CurrentSynthesisContext getCurrentForDraftGeneration(
             VerifiedSectionAccess sectionAccess
     ) {
