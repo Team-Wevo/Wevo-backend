@@ -5,7 +5,12 @@ import com.wevo.backend.ai.client.StructuredOutputDefinition;
 import com.wevo.backend.section.dto.request.SectionDraftSaveRequest;
 import org.springframework.stereotype.Component;
 
-/** 초안 생성 본문과 aggregate evidence ID의 엄격한 구조화 출력 스키마. */
+/**
+ * AI 초안 본문과 참조 ID echo 배열의 구조화 출력 스키마.
+ *
+ * <p>참조 배열은 Provider 응답의 구조만 검증하는 비권위 데이터다. 의미 검증과 근거 저장은
+ * 서버의 신뢰된 synthesis context를 기준으로 수행한다.
+ */
 @Component
 public class DraftGenerationOutputDefinition {
 

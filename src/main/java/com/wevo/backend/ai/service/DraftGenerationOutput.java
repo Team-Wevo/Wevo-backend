@@ -2,7 +2,10 @@ package com.wevo.backend.ai.service;
 
 import java.util.List;
 
-/** AI 초안 생성의 Provider 구조화 출력. API DTO와 영속 엔티티로 직접 사용하지 않는다. */
+/**
+ * AI 초안 생성의 Provider 구조화 출력. 참조 ID 배열은 비권위 echo이며, API DTO나 영속 근거로
+ * 직접 사용하지 않는다.
+ */
 public record DraftGenerationOutput(
         String content,
         List<Long> evidenceOpinionIds,
