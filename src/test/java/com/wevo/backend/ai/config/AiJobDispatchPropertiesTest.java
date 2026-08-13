@@ -28,6 +28,7 @@ class AiJobDispatchPropertiesTest {
         assertThat(properties.heartbeatInterval()).isEqualTo(Duration.ofSeconds(15));
         assertThat(properties.heartbeatTimeout()).isEqualTo(Duration.ofSeconds(60));
         assertThat(properties.recoveryInterval()).isEqualTo(Duration.ofSeconds(60));
+        assertThat(properties.applicationTimeout()).isEqualTo(Duration.ofMinutes(15));
     }
 
     @Test
@@ -43,6 +44,16 @@ class AiJobDispatchPropertiesTest {
         assertThatThrownBy(() -> of(10, 4, Duration.ofSeconds(60), Duration.ofSeconds(60)))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> of(10, 4, Duration.ofSeconds(90), Duration.ofSeconds(60)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("application-timeout이 heartbeat-timeout 이하이면 회수 사유 구분을 위해 거부한다")
+    void applicationTimeoutNotGreaterThanHeartbeatTimeout_rejected() {
+        assertThatThrownBy(() -> new AiJobDispatchProperties(
+                true, Duration.ofSeconds(2), 20, 8,
+                Duration.ofSeconds(15), Duration.ofSeconds(60), Duration.ofSeconds(60),
+                Duration.ofSeconds(60)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

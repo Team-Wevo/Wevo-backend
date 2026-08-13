@@ -97,7 +97,21 @@ class AiJobDispatchSchedulerTest {
         scheduler.recoverStalledRunning();
 
         verify(aiJobService).recoverIfHeartbeatStale(eq(stalled), any());
+        verify(aiJobService).findApplicationTimedOutRequestIds(any());
         verify(comparisonRecoveryService).recoverPendingComparisons(any(), eq(20));
+    }
+
+    @Test
+    @DisplayName("heartbeat가 살아 있어도 application timeout을 넘긴 RUNNING 작업을 회수한다")
+    void recoverStalledRunning_recoversApplicationTimedOutJob() {
+        UUID timedOut = UUID.randomUUID();
+        given(aiJobService.findHeartbeatTimedOutRequestIds(any())).willReturn(List.of());
+        given(aiJobService.findApplicationTimedOutRequestIds(any())).willReturn(List.of(timedOut));
+        given(aiJobService.recoverIfApplicationTimedOut(eq(timedOut), any())).willReturn(true);
+
+        scheduler.recoverStalledRunning();
+
+        verify(aiJobService).recoverIfApplicationTimedOut(eq(timedOut), any());
     }
 
     @Test
