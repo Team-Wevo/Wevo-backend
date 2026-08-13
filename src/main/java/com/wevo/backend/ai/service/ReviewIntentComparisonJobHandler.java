@@ -99,7 +99,7 @@ public class ReviewIntentComparisonJobHandler implements AiJobHandler {
             throw new AiProviderUnavailableException();
         }
         ReviewIntentComparisonOutput output = comparator.compare(job, context);
-        aiJobService.succeed(job.getRequestId(), () -> {
+        AiJobCompletionResult completion = aiJobService.succeed(job.getRequestId(), () -> {
             ReviewIntentComparisonInput locked = stateService.lockInput(submissionId);
             return snapshot(context(locked));
         }, () -> {
@@ -107,6 +107,9 @@ public class ReviewIntentComparisonJobHandler implements AiJobHandler {
             usageResultLinkService.linkSuccessfulInvocations(job.getId(), resultId);
             return resultId;
         });
+        if (completion.status() == AiJobStatus.STALE) {
+            stateService.fail(submissionId, ErrorCode.AI_JOB_INPUT_CHANGED.getCode());
+        }
     }
 
     private ReviewIntentComparisonContext context(ReviewIntentComparisonInput input) {
