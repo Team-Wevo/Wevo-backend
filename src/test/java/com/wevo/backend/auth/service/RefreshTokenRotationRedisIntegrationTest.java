@@ -165,4 +165,15 @@ class RefreshTokenRotationRedisIntegrationTest {
         assertThat(refreshTokenService.rotate(6L, "famB", "tokenB", "tokenB2", TTL_MS))
                 .isEqualTo(RefreshTokenService.RotationResult.ROTATED);
     }
+
+    @Test
+    @DisplayName("계보 도입 이전 형식(구분자 없는 레거시 값)으로 회전해도 500 없이 NOT_FOUND 로 강등한다 (#290)")
+    void legacyValueWithoutFamilyDelimiterDegradesToNotFound() {
+        // 배포 전환 창에 남은 계보 도입 이전 저장값(hash 만, familyId: 접두어 없음)을 직접 넣는다.
+        redisTemplate.opsForValue().set("refresh_token:7", "legacy-hash-without-delimiter");
+
+        // Lua string.find 가 nil 을 반환해도 산술 오류(500)로 터지지 않고 NOT_FOUND 로 강등해야 한다.
+        assertThat(refreshTokenService.rotate(7L, "famX", "any-token", "next", TTL_MS))
+                .isEqualTo(RefreshTokenService.RotationResult.NOT_FOUND);
+    }
 }

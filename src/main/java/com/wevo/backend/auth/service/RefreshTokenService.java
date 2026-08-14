@@ -40,13 +40,19 @@ public class RefreshTokenService {
      *       (RFC 9700 — 재사용 감지 시 토큰 패밀리 무효화)</li>
      * </ul>
      *
-     * <p>반환값: {@code 1} 회전 성공, {@code 0} 저장된 토큰 없음(만료·로그아웃·탈퇴 폐기),
+     * <p>배포 전환 창에서 계보 도입 이전 형식({@code familyId:} 접두어 없는 값)이 남아 있을 수 있다.
+     * 구분자가 없으면 회전할 수 없는 값이므로 {@code 0}(없음)으로 안전하게 강등해 재로그인을 유도한다 —
+     * Lua 산술 오류로 500 이 나가는 것을 막는다. (정상 흐름은 옛 토큰에 계보 클레임이 없어 파싱 단계에서
+     * 이미 걸러지므로 이 경로는 방어적 보루다.)
+     *
+     * <p>반환값: {@code 1} 회전 성공, {@code 0} 저장된 토큰 없음(만료·로그아웃·탈퇴 폐기·계보 이전 형식),
      * {@code -1} 재사용 감지(세션 폐기함), {@code 2} 다른 로그인에 밀려남(폐기 안 함).
      */
     private static final DefaultRedisScript<Long> ROTATE_SCRIPT = new DefaultRedisScript<>("""
             local stored = redis.call('GET', KEYS[1])
             if not stored then return 0 end
             local sep = string.find(stored, ':', 1, true)
+            if not sep then return 0 end
             local storedFamily = string.sub(stored, 1, sep - 1)
             local storedHash = string.sub(stored, sep + 1)
             if storedFamily ~= ARGV[1] then return 2 end
