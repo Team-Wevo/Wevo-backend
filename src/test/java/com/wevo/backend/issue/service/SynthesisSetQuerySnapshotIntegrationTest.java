@@ -30,6 +30,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -39,14 +40,18 @@ import org.springframework.transaction.support.TransactionTemplate;
         "spring.jpa.hibernate.ddl-auto=validate"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({PostgresTestContainerConfig.class, SynthesisSetQueryService.class})
+@Import({
+        PostgresTestContainerConfig.class,
+        SynthesisSetQueryService.class,
+        SynthesisSetQuerySnapshotIntegrationTest.ReadCommittedDraftGenerationCaller.class
+})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class SynthesisSetQuerySnapshotIntegrationTest {
 
     private static final long SECTION_ID = 10L;
     private static final long SET_ID = 20L;
 
-    @Autowired private SynthesisSetQueryService service;
+    @Autowired private ReadCommittedDraftGenerationCaller caller;
     @Autowired private JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
 
@@ -72,8 +77,8 @@ class SynthesisSetQuerySnapshotIntegrationTest {
     }
 
     @Test
-    @DisplayName("다중 쿼리 사이에 동시 커밋이 발생해도 초안 근거 조회는 첫 PostgreSQL snapshot을 유지한다")
-    void draftGenerationAssemblyKeepsOneSnapshotAcrossConcurrentCommit() throws Exception {
+    @DisplayName("READ_COMMITTED 사용자 요청 안에서도 초안 근거 조회는 독립 snapshot을 유지한다")
+    void nestedDraftGenerationAssemblyKeepsOneSnapshotAcrossConcurrentCommit() throws Exception {
         CountDownLatch firstQueryRead = new CountDownLatch(1);
         CountDownLatch concurrentCommitCompleted = new CountDownLatch(1);
         AtomicInteger firstValue = new AtomicInteger();
@@ -111,7 +116,7 @@ class SynthesisSetQuerySnapshotIntegrationTest {
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var resultFuture = executor.submit(
-                    () -> service.getCurrentForDraftGeneration(access));
+                    () -> caller.getCurrentForDraftGeneration(access));
             assertThat(firstQueryRead.await(5, TimeUnit.SECONDS)).isTrue();
 
             transactionTemplate.executeWithoutResult(status ->
@@ -141,6 +146,20 @@ class SynthesisSetQuerySnapshotIntegrationTest {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(message, exception);
+        }
+    }
+
+    static class ReadCommittedDraftGenerationCaller {
+
+        private final SynthesisSetQueryService service;
+
+        ReadCommittedDraftGenerationCaller(SynthesisSetQueryService service) {
+            this.service = service;
+        }
+
+        @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
+        public CurrentSynthesisContext getCurrentForDraftGeneration(VerifiedSectionAccess access) {
+            return service.getCurrentForDraftGeneration(access);
         }
     }
 }

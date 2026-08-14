@@ -36,6 +36,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @ExtendWith(MockitoExtension.class)
@@ -183,8 +184,9 @@ class SynthesisSetQueryServiceTest {
     }
 
     @Test
-    @DisplayName("AI current set 다중 조회는 메서드 경계에서 REPEATABLE_READ를 강제한다")
-    void currentSetAssembliesDeclareRepeatableReadIsolation() throws NoSuchMethodException {
+    @DisplayName("AI current set 다중 조회는 독립 REPEATABLE_READ 트랜잭션을 강제한다")
+    void currentSetAssembliesDeclareIndependentRepeatableReadTransaction()
+            throws NoSuchMethodException {
         for (String methodName : List.of(
                 "getCurrentForAiContext",
                 "getCurrentForDraftGeneration")) {
@@ -195,6 +197,7 @@ class SynthesisSetQueryServiceTest {
             assertThat(transactional).isNotNull();
             assertThat(transactional.readOnly()).isTrue();
             assertThat(transactional.isolation()).isEqualTo(Isolation.REPEATABLE_READ);
+            assertThat(transactional.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
         }
     }
 
