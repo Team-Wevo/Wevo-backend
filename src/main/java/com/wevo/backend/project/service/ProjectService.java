@@ -3,6 +3,7 @@ package com.wevo.backend.project.service;
 import com.wevo.backend.project.domain.InviteLink;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
+import com.wevo.backend.project.domain.ProjectCreatedEvent;
 import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.domain.ProjectStatus;
@@ -27,6 +28,7 @@ import com.wevo.backend.section.repository.SectionTemplateRepository;
 import com.wevo.backend.section.service.SectionConfirmationSummary;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.repository.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,19 +61,22 @@ public class ProjectService {
     private final ProjectSectionRepository projectSectionRepository;
     private final SectionTemplateRepository sectionTemplateRepository;
     private final InviteLinkRepository inviteLinkRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ProjectService(UserRepository userRepository,
                           ProjectRepository projectRepository,
                           ProjectMemberRepository projectMemberRepository,
                           ProjectSectionRepository projectSectionRepository,
                           SectionTemplateRepository sectionTemplateRepository,
-                          InviteLinkRepository inviteLinkRepository) {
+                          InviteLinkRepository inviteLinkRepository,
+                          ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.projectSectionRepository = projectSectionRepository;
         this.sectionTemplateRepository = sectionTemplateRepository;
         this.inviteLinkRepository = inviteLinkRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -94,9 +99,8 @@ public class ProjectService {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 
-        String title = (request.title() == null || request.title().isBlank())
-                ? DEFAULT_TITLE
-                : request.title().trim();
+        boolean titleAutoAssigned = request.title() == null || request.title().isBlank();
+        String title = titleAutoAssigned ? DEFAULT_TITLE : request.title().trim();
 
         Project project = projectRepository.save(Project.builder()
                 .owner(owner)
@@ -115,7 +119,32 @@ public class ProjectService {
                 .build());
 
         List<ProjectSection> sections = createFixedSections(project, request.resultType());
+
+        // 제목을 비워 기본값이 저장된 경우에만 AI 제목 제안을 트리거한다. AI 도메인이 이 이벤트를
+        // 받아(커밋 후) 비동기 job 을 요청하고, 완료되면 applyAiGeneratedTitle 로 되채운다. (순환
+        // 의존을 피하려 project 는 ai 를 직접 참조하지 않고 이벤트로만 알린다 — CLAUDE.md §6)
+        eventPublisher.publishEvent(
+                new ProjectCreatedEvent(project.getId(), owner.getId(), titleAutoAssigned));
+
         return ProjectCreateResponse.of(project, sections);
+    }
+
+    /**
+     * AI 가 생성한 제목을 되채운다. (제목 자동 생성 — AI 도메인 job 완료 시 호출)
+     *
+     * <p>여전히 서버 기본값({@link #DEFAULT_TITLE})일 때만 덮어쓴다 — job 이 도는 사이 사용자가
+     * 직접 제목을 바꿨으면 그 값을 존중한다. 보관(삭제)됐거나 사라진 프로젝트는 조용히 건너뛴다.
+     */
+    @Transactional
+    public void applyAiGeneratedTitle(Long projectId, String title) {
+        if (projectId == null || title == null || title.isBlank()) {
+            return;
+        }
+        Project project = projectRepository.findById(projectId).orElse(null);
+        if (project == null || project.isArchived() || !DEFAULT_TITLE.equals(project.getTitle())) {
+            return;
+        }
+        project.rename(title.strip());
     }
 
     /**
