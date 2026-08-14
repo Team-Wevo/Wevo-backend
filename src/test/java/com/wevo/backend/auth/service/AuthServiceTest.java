@@ -34,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -85,7 +86,7 @@ class AuthServiceTest {
         given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.GOOGLE, "google-123"))
                 .willReturn(Optional.of(account));
         given(jwtProvider.createAccessToken(userId)).willReturn("access");
-        given(jwtProvider.createRefreshToken(userId)).willReturn("refresh");
+        given(jwtProvider.createRefreshToken(eq(userId), anyString())).willReturn("refresh");
         given(jwtProvider.getRefreshTokenValidityMs()).willReturn(1_000L);
 
         TokenResponse response = authService.login(AuthProvider.GOOGLE, "code", "uri");
@@ -93,7 +94,7 @@ class AuthServiceTest {
         assertThat(response.accessToken()).isEqualTo("access");
         assertThat(response.refreshToken()).isEqualTo("refresh");
         verify(userRepository, never()).saveAndFlush(any());
-        verify(refreshTokenService).save(userId, "refresh", 1_000L);
+        verify(refreshTokenService).save(eq(userId), anyString(), eq("refresh"), eq(1_000L));
     }
 
     @Test
@@ -114,7 +115,7 @@ class AuthServiceTest {
             return saved;
         });
         given(jwtProvider.createAccessToken(newUserId)).willReturn("access");
-        given(jwtProvider.createRefreshToken(newUserId)).willReturn("refresh");
+        given(jwtProvider.createRefreshToken(eq(newUserId), anyString())).willReturn("refresh");
         given(jwtProvider.getRefreshTokenValidityMs()).willReturn(2_000L);
 
         TokenResponse response = authService.login(AuthProvider.KAKAO, "code", "uri");
@@ -130,7 +131,65 @@ class AuthServiceTest {
         verify(authAccountRepository).save(accountCaptor.capture());
         assertThat(accountCaptor.getValue().getProvider()).isEqualTo(AuthProvider.KAKAO);
         assertThat(accountCaptor.getValue().getProviderUserId()).isEqualTo("kakao-999");
-        verify(refreshTokenService).save(newUserId, "refresh", 2_000L);
+        verify(refreshTokenService).save(eq(newUserId), anyString(), eq("refresh"), eq(2_000L));
+    }
+
+    @Test
+    @DisplayName("제공자가 name 을 주지 않아도(이메일만) 신규 로그인이 실패하지 않고 이메일 앞부분을 표시명으로 저장한다")
+    void login_newAccount_nullName_withEmail_defaultsDisplayNameFromEmail() {
+        Long newUserId = 56L;
+        // Google 이 profile 스코프를 요청하지 않아 name 이 없는 케이스 (#289)
+        OAuthUserInfo userInfo =
+                new OAuthUserInfo(AuthProvider.GOOGLE, "google-noname", "hoseok@wevo.com", null, null);
+
+        given(oAuthClientRouter.getClient(AuthProvider.GOOGLE)).willReturn(oAuthClient);
+        given(oAuthClient.fetchUserInfo("code", "uri")).willReturn(userInfo);
+        given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.GOOGLE, "google-noname"))
+                .willReturn(Optional.empty());
+        given(userRepository.findByEmail("hoseok@wevo.com")).willReturn(Optional.empty());
+        given(userRepository.saveAndFlush(any(User.class))).willAnswer(invocation -> {
+            User saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", newUserId);
+            return saved;
+        });
+        given(jwtProvider.createAccessToken(newUserId)).willReturn("access");
+        given(jwtProvider.createRefreshToken(eq(newUserId), anyString())).willReturn("refresh");
+        given(jwtProvider.getRefreshTokenValidityMs()).willReturn(2_000L);
+
+        authService.login(AuthProvider.GOOGLE, "code", "uri");
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(userCaptor.capture());
+        assertThat(userCaptor.getValue().getName()).isEqualTo("hoseok");
+    }
+
+    @Test
+    @DisplayName("제공자가 name·email 을 모두 주지 않아도 기본 표시명으로 신규 로그인에 성공한다")
+    void login_newAccount_nullNameAndEmail_defaultsDisplayName() {
+        Long newUserId = 57L;
+        // Kakao 에서 이메일·닉네임 동의를 모두 거부한 케이스 — name 도 email 도 null (#289)
+        OAuthUserInfo userInfo =
+                new OAuthUserInfo(AuthProvider.KAKAO, "kakao-noname", null, null, null);
+
+        given(oAuthClientRouter.getClient(AuthProvider.KAKAO)).willReturn(oAuthClient);
+        given(oAuthClient.fetchUserInfo("code", "uri")).willReturn(userInfo);
+        given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.KAKAO, "kakao-noname"))
+                .willReturn(Optional.empty());
+        given(userRepository.saveAndFlush(any(User.class))).willAnswer(invocation -> {
+            User saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", newUserId);
+            return saved;
+        });
+        given(jwtProvider.createAccessToken(newUserId)).willReturn("access");
+        given(jwtProvider.createRefreshToken(eq(newUserId), anyString())).willReturn("refresh");
+        given(jwtProvider.getRefreshTokenValidityMs()).willReturn(2_000L);
+
+        authService.login(AuthProvider.KAKAO, "code", "uri");
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(userCaptor.capture());
+        assertThat(userCaptor.getValue().getName()).isEqualTo("사용자");
+        assertThat(userCaptor.getValue().getEmail()).isNull();
     }
 
     @Test
@@ -194,7 +253,7 @@ class AuthServiceTest {
             return saved;
         });
         given(jwtProvider.createAccessToken(newUserId)).willReturn("access");
-        given(jwtProvider.createRefreshToken(newUserId)).willReturn("refresh");
+        given(jwtProvider.createRefreshToken(eq(newUserId), anyString())).willReturn("refresh");
         given(jwtProvider.getRefreshTokenValidityMs()).willReturn(2_000L);
 
         authService.login(AuthProvider.GOOGLE, "code", "uri");
@@ -248,7 +307,7 @@ class AuthServiceTest {
         given(authAccountRepository.save(any(AuthAccount.class)))
                 .willThrow(new DataIntegrityViolationException("uk_auth_accounts_provider_user"));
         given(jwtProvider.createAccessToken(42L)).willReturn("access");
-        given(jwtProvider.createRefreshToken(42L)).willReturn("refresh");
+        given(jwtProvider.createRefreshToken(eq(42L), anyString())).willReturn("refresh");
         given(jwtProvider.getRefreshTokenValidityMs()).willReturn(1_000L);
 
         TokenResponse response = authService.login(AuthProvider.KAKAO, "code", "uri");
@@ -276,7 +335,7 @@ class AuthServiceTest {
         given(userRepository.saveAndFlush(any(User.class)))
                 .willThrow(new DataIntegrityViolationException("uk_users_email"));
         given(jwtProvider.createAccessToken(43L)).willReturn("access");
-        given(jwtProvider.createRefreshToken(43L)).willReturn("refresh");
+        given(jwtProvider.createRefreshToken(eq(43L), anyString())).willReturn("refresh");
         given(jwtProvider.getRefreshTokenValidityMs()).willReturn(1_000L);
 
         TokenResponse response = authService.login(AuthProvider.GOOGLE, "code", "uri");
@@ -336,9 +395,10 @@ class AuthServiceTest {
         givenActiveUser(3L);
         given(jwtProvider.parseUserId("refresh", TokenType.REFRESH)).willReturn(3L);
         given(jwtProvider.createAccessToken(3L)).willReturn("newAccess");
-        given(jwtProvider.createRefreshToken(3L)).willReturn("newRefresh");
+        given(jwtProvider.parseRefreshFamily("refresh")).willReturn("fam1");
+        given(jwtProvider.createRefreshToken(3L, "fam1")).willReturn("newRefresh");
         given(jwtProvider.getRefreshTokenValidityMs()).willReturn(1_000L);
-        given(refreshTokenService.rotate(3L, "refresh", "newRefresh", 1_000L))
+        given(refreshTokenService.rotate(3L, "fam1", "refresh", "newRefresh", 1_000L))
                 .willReturn(RefreshTokenService.RotationResult.ROTATED);
 
         TokenResponse response = authService.reissue("refresh");
@@ -346,7 +406,7 @@ class AuthServiceTest {
         assertThat(response.accessToken()).isEqualTo("newAccess");
         assertThat(response.refreshToken()).isEqualTo("newRefresh");
         // 검증과 저장이 rotate 한 번으로 원자 처리된다 — 별도 save 가 남아 있으면 경합 창이 생긴다.
-        verify(refreshTokenService, never()).save(anyLong(), anyString(), anyLong());
+        verify(refreshTokenService, never()).save(anyLong(), anyString(), anyString(), anyLong());
     }
 
     @Test
@@ -355,9 +415,10 @@ class AuthServiceTest {
         givenActiveUser(3L);
         given(jwtProvider.parseUserId("refresh", TokenType.REFRESH)).willReturn(3L);
         given(jwtProvider.createAccessToken(3L)).willReturn("newAccess");
-        given(jwtProvider.createRefreshToken(3L)).willReturn("newRefresh");
+        given(jwtProvider.parseRefreshFamily("refresh")).willReturn("fam1");
+        given(jwtProvider.createRefreshToken(3L, "fam1")).willReturn("newRefresh");
         given(jwtProvider.getRefreshTokenValidityMs()).willReturn(1_000L);
-        given(refreshTokenService.rotate(3L, "refresh", "newRefresh", 1_000L))
+        given(refreshTokenService.rotate(3L, "fam1", "refresh", "newRefresh", 1_000L))
                 .willReturn(RefreshTokenService.RotationResult.NOT_FOUND);
 
         BusinessException exception =
@@ -374,10 +435,30 @@ class AuthServiceTest {
         givenActiveUser(3L);
         given(jwtProvider.parseUserId("refresh", TokenType.REFRESH)).willReturn(3L);
         given(jwtProvider.createAccessToken(3L)).willReturn("newAccess");
-        given(jwtProvider.createRefreshToken(3L)).willReturn("newRefresh");
+        given(jwtProvider.parseRefreshFamily("refresh")).willReturn("fam1");
+        given(jwtProvider.createRefreshToken(3L, "fam1")).willReturn("newRefresh");
         given(jwtProvider.getRefreshTokenValidityMs()).willReturn(1_000L);
-        given(refreshTokenService.rotate(3L, "refresh", "newRefresh", 1_000L))
+        given(refreshTokenService.rotate(3L, "fam1", "refresh", "newRefresh", 1_000L))
                 .willReturn(RefreshTokenService.RotationResult.REUSE_DETECTED);
+
+        BusinessException exception =
+                assertThrows(BusinessException.class, () -> authService.reissue("refresh"));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
+    }
+
+    @Test
+    @DisplayName("다른 기기 로그인에 밀려난 토큰으로 재발급하면 재로그인을 요구한다 (세션 폐기 아님)")
+    void reissue_supersededToken_throwsInvalidRefreshToken() {
+        // 기기 A 토큰이 기기 B 로그인에 밀려난 경우. 폐기(REUSE_DETECTED)가 아니라 재로그인만 요구한다. (#290)
+        givenActiveUser(3L);
+        given(jwtProvider.parseUserId("refresh", TokenType.REFRESH)).willReturn(3L);
+        given(jwtProvider.parseRefreshFamily("refresh")).willReturn("fam1");
+        given(jwtProvider.createAccessToken(3L)).willReturn("newAccess");
+        given(jwtProvider.createRefreshToken(3L, "fam1")).willReturn("newRefresh");
+        given(jwtProvider.getRefreshTokenValidityMs()).willReturn(1_000L);
+        given(refreshTokenService.rotate(3L, "fam1", "refresh", "newRefresh", 1_000L))
+                .willReturn(RefreshTokenService.RotationResult.SUPERSEDED);
 
         BusinessException exception =
                 assertThrows(BusinessException.class, () -> authService.reissue("refresh"));
@@ -403,7 +484,7 @@ class AuthServiceTest {
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
         verify(refreshTokenService).delete(3L);
         verify(refreshTokenService, never())
-                .rotate(anyLong(), anyString(), anyString(), anyLong());
+                .rotate(anyLong(), anyString(), anyString(), anyString(), anyLong());
         verify(jwtProvider, never()).createAccessToken(anyLong());
     }
 
@@ -420,7 +501,7 @@ class AuthServiceTest {
         // 쓸 수 없는 계정의 키를 최대 14일 방치하지 않는다.
         verify(refreshTokenService).delete(3L);
         verify(refreshTokenService, never())
-                .rotate(anyLong(), anyString(), anyString(), anyLong());
+                .rotate(anyLong(), anyString(), anyString(), anyString(), anyLong());
     }
 
     private void givenActiveUser(Long userId) {

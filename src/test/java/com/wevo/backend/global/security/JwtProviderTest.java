@@ -32,15 +32,16 @@ class JwtProviderTest {
     void createRefreshToken_thenParseAsRefresh_returnsSameUserId() {
         Long userId = 7L;
 
-        String token = jwtProvider.createRefreshToken(userId);
+        String token = jwtProvider.createRefreshToken(userId, "fam-1");
 
         assertThat(jwtProvider.parseUserId(token, TokenType.REFRESH)).isEqualTo(userId);
+        assertThat(jwtProvider.parseRefreshFamily(token)).isEqualTo("fam-1");
     }
 
     @Test
     @DisplayName("Refresh Token 을 ACCESS 용도로 파싱하면 INVALID_TOKEN 예외를 던진다")
     void parseRefreshTokenAsAccess_throwsInvalidToken() {
-        String refreshToken = jwtProvider.createRefreshToken(1L);
+        String refreshToken = jwtProvider.createRefreshToken(1L, "fam-1");
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> jwtProvider.parseUserId(refreshToken, TokenType.ACCESS));
