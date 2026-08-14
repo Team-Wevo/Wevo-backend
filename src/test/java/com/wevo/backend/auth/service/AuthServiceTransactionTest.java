@@ -29,6 +29,8 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
@@ -81,7 +83,7 @@ class AuthServiceTransactionTest {
         given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.GOOGLE, "google-123"))
                 .willReturn(Optional.of(authAccount));
         given(jwtProvider.createAccessToken(userId)).willReturn("access");
-        given(jwtProvider.createRefreshToken(userId)).willReturn("refresh");
+        given(jwtProvider.createRefreshToken(eq(userId), anyString())).willReturn("refresh");
         given(jwtProvider.getRefreshTokenValidityMs()).willReturn(1_000L);
 
         authService.login(AuthProvider.GOOGLE, "code", "uri");

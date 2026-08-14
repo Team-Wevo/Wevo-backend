@@ -22,6 +22,8 @@ import java.util.Date;
 public class JwtProvider {
 
     private static final String TOKEN_TYPE_CLAIM = "type";
+    /** Refresh Token 의 세션 계보(패밀리) 식별자. 회전은 같은 값을 유지하고 로그인은 새로 발급한다. (#290) */
+    private static final String FAMILY_CLAIM = "fam";
 
     private final SecretKey secretKey;
     private final long accessTokenValidityMs;
@@ -34,11 +36,32 @@ public class JwtProvider {
     }
 
     public String createAccessToken(Long userId) {
-        return createToken(userId, accessTokenValidityMs, TokenType.ACCESS);
+        return createToken(userId, accessTokenValidityMs, TokenType.ACCESS, null);
     }
 
-    public String createRefreshToken(Long userId) {
-        return createToken(userId, refreshTokenValidityMs, TokenType.REFRESH);
+    /**
+     * Refresh Token 을 발급한다. {@code familyId} 는 세션 계보를 식별한다 — 로그인은 새 값을,
+     * 회전(재발급)은 기존 값을 그대로 넘겨 같은 계보를 잇는다. 저장소가 "밀려난 옛 계보"와
+     * "같은 계보에서 재사용된 토큰(탈취)"을 구분하는 근거다. (#290)
+     */
+    public String createRefreshToken(Long userId, String familyId) {
+        return createToken(userId, refreshTokenValidityMs, TokenType.REFRESH, familyId);
+    }
+
+    /**
+     * Refresh Token 을 검증하고 세션 계보(패밀리) 식별자를 반환한다. 용도가 REFRESH 가 아니거나
+     * 계보 클레임이 없으면(구버전 토큰 등) 무효로 본다.
+     */
+    public String parseRefreshFamily(String token) {
+        Claims claims = parseClaims(token);
+        if (!TokenType.REFRESH.name().equals(claims.get(TOKEN_TYPE_CLAIM, String.class))) {
+            throw new BusinessException(ErrorCode.INVALID_TOKEN);
+        }
+        String familyId = claims.get(FAMILY_CLAIM, String.class);
+        if (familyId == null || familyId.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_TOKEN);
+        }
+        return familyId;
     }
 
     public long getRefreshTokenValidityMs() {
@@ -63,16 +86,18 @@ public class JwtProvider {
         return Long.valueOf(claims.getSubject());
     }
 
-    private String createToken(Long userId, long validityMs, TokenType type) {
+    private String createToken(Long userId, long validityMs, TokenType type, String familyId) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + validityMs);
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(String.valueOf(userId))
                 .claim(TOKEN_TYPE_CLAIM, type.name())
                 .issuedAt(now)
-                .expiration(expiry)
-                .signWith(secretKey)
-                .compact();
+                .expiration(expiry);
+        if (familyId != null) {
+            builder.claim(FAMILY_CLAIM, familyId);
+        }
+        return builder.signWith(secretKey).compact();
     }
 
     private Claims parseClaims(String token) {
