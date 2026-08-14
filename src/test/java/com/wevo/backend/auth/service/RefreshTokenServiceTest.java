@@ -38,7 +38,7 @@ class RefreshTokenServiceTest {
         given(redisTemplate.opsForValue()).willReturn(valueOperations);
         RefreshTokenService refreshTokenService = new RefreshTokenService(redisTemplate);
 
-        refreshTokenService.save(1L, "plain-refresh-token", 1_000L);
+        refreshTokenService.save(1L, "fam-1", "plain-refresh-token", 1_000L);
 
         ArgumentCaptor<String> valueCaptor = ArgumentCaptor.forClass(String.class);
         verify(valueOperations).set(
@@ -47,9 +47,10 @@ class RefreshTokenServiceTest {
                 eq(java.time.Duration.ofMillis(1_000L))
         );
 
+        // 저장값은 familyId:hash 형태 — 원문 토큰은 남지 않는다.
         assertThat(valueCaptor.getValue())
-                .isEqualTo(hash("plain-refresh-token"))
-                .isNotEqualTo("plain-refresh-token");
+                .isEqualTo("fam-1:" + hash("plain-refresh-token"))
+                .doesNotContain("plain-refresh-token");
     }
 
     @Test

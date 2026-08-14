@@ -46,9 +46,10 @@ public class DevLoginService {
                         .build()));
 
         Long userId = user.getId();
+        String familyId = java.util.UUID.randomUUID().toString();
         String accessToken = jwtProvider.createAccessToken(userId);
-        String refreshToken = jwtProvider.createRefreshToken(userId);
-        refreshTokenService.save(userId, refreshToken, jwtProvider.getRefreshTokenValidityMs());
+        String refreshToken = jwtProvider.createRefreshToken(userId, familyId);
+        refreshTokenService.save(userId, familyId, refreshToken, jwtProvider.getRefreshTokenValidityMs());
         return new TokenResponse(accessToken, refreshToken);
     }
 }
