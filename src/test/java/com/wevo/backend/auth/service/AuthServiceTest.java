@@ -153,7 +153,7 @@ class AuthServiceTest {
             return saved;
         });
         given(jwtProvider.createAccessToken(newUserId)).willReturn("access");
-        given(jwtProvider.createRefreshToken(newUserId)).willReturn("refresh");
+        given(jwtProvider.createRefreshToken(eq(newUserId), anyString())).willReturn("refresh");
         given(jwtProvider.getRefreshTokenValidityMs()).willReturn(2_000L);
 
         authService.login(AuthProvider.GOOGLE, "code", "uri");
@@ -181,7 +181,7 @@ class AuthServiceTest {
             return saved;
         });
         given(jwtProvider.createAccessToken(newUserId)).willReturn("access");
-        given(jwtProvider.createRefreshToken(newUserId)).willReturn("refresh");
+        given(jwtProvider.createRefreshToken(eq(newUserId), anyString())).willReturn("refresh");
         given(jwtProvider.getRefreshTokenValidityMs()).willReturn(2_000L);
 
         authService.login(AuthProvider.KAKAO, "code", "uri");
