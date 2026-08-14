@@ -37,6 +37,8 @@ public class AuthService {
 
     /** users 테이블의 이메일 유니크 제약 이름. (V1 마이그레이션) 소문자 비교용. */
     private static final String EMAIL_UNIQUE_CONSTRAINT = "uk_users_email";
+    /** 제공자가 name·email 을 모두 주지 않을 때 쓰는 기본 표시 이름. (#289) */
+    private static final String DEFAULT_DISPLAY_NAME = "사용자";
 
     private final OAuthClientRouter oAuthClientRouter;
     private final UserRepository userRepository;
@@ -208,7 +210,7 @@ public class AuthService {
     private User saveNewUser(OAuthUserInfo info, String email) {
         try {
             return userRepository.saveAndFlush(User.builder()
-                    .name(info.name())
+                    .name(resolveDisplayName(info, email))
                     .email(email)
                     .profileImageUrl(info.profileImageUrl())
                     .status(UserStatus.ACTIVE)
@@ -219,6 +221,29 @@ public class AuthService {
             }
             throw exception;
         }
+    }
+
+    /**
+     * 신규 사용자의 표시 이름을 정한다. {@code User.name} 은 NOT NULL 이지만 제공자 프로필의 name 은
+     * 선택 필드다 — Google 이 profile 스코프 미요청이거나 Kakao 닉네임 동의를 거부하면 {@code null}
+     * 이 온다. 그대로 저장하면 NOT NULL 제약(23502)으로 정상 사용자의 가입 자체가 500 으로 막힌다.
+     *
+     * <p>로그인은 유일한 서비스 진입로이므로 4xx 로 막지 않고 표시 이름을 채워 가입을 완료한다.
+     * 사용자는 이후 프로필 수정(AUTH-08)으로 바꿀 수 있다. 이메일이 있으면 앞부분을, 그마저 없으면
+     * (Kakao 이메일·닉네임 모두 미제공) 고정 기본값을 쓴다. 이메일이 null 허용인 것과 대칭이다. (#289)
+     */
+    private String resolveDisplayName(OAuthUserInfo info, String email) {
+        if (info.name() != null && !info.name().isBlank()) {
+            return info.name().trim();
+        }
+        if (email != null && !email.isBlank()) {
+            int at = email.indexOf('@');
+            String local = at > 0 ? email.substring(0, at) : email;
+            if (!local.isBlank()) {
+                return local;
+            }
+        }
+        return DEFAULT_DISPLAY_NAME;
     }
 
     /**

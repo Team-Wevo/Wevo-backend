@@ -134,6 +134,64 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("제공자가 name 을 주지 않아도(이메일만) 신규 로그인이 실패하지 않고 이메일 앞부분을 표시명으로 저장한다")
+    void login_newAccount_nullName_withEmail_defaultsDisplayNameFromEmail() {
+        Long newUserId = 56L;
+        // Google 이 profile 스코프를 요청하지 않아 name 이 없는 케이스 (#289)
+        OAuthUserInfo userInfo =
+                new OAuthUserInfo(AuthProvider.GOOGLE, "google-noname", "hoseok@wevo.com", null, null);
+
+        given(oAuthClientRouter.getClient(AuthProvider.GOOGLE)).willReturn(oAuthClient);
+        given(oAuthClient.fetchUserInfo("code", "uri")).willReturn(userInfo);
+        given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.GOOGLE, "google-noname"))
+                .willReturn(Optional.empty());
+        given(userRepository.findByEmail("hoseok@wevo.com")).willReturn(Optional.empty());
+        given(userRepository.saveAndFlush(any(User.class))).willAnswer(invocation -> {
+            User saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", newUserId);
+            return saved;
+        });
+        given(jwtProvider.createAccessToken(newUserId)).willReturn("access");
+        given(jwtProvider.createRefreshToken(newUserId)).willReturn("refresh");
+        given(jwtProvider.getRefreshTokenValidityMs()).willReturn(2_000L);
+
+        authService.login(AuthProvider.GOOGLE, "code", "uri");
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(userCaptor.capture());
+        assertThat(userCaptor.getValue().getName()).isEqualTo("hoseok");
+    }
+
+    @Test
+    @DisplayName("제공자가 name·email 을 모두 주지 않아도 기본 표시명으로 신규 로그인에 성공한다")
+    void login_newAccount_nullNameAndEmail_defaultsDisplayName() {
+        Long newUserId = 57L;
+        // Kakao 에서 이메일·닉네임 동의를 모두 거부한 케이스 — name 도 email 도 null (#289)
+        OAuthUserInfo userInfo =
+                new OAuthUserInfo(AuthProvider.KAKAO, "kakao-noname", null, null, null);
+
+        given(oAuthClientRouter.getClient(AuthProvider.KAKAO)).willReturn(oAuthClient);
+        given(oAuthClient.fetchUserInfo("code", "uri")).willReturn(userInfo);
+        given(authAccountRepository.findByProviderAndProviderUserId(AuthProvider.KAKAO, "kakao-noname"))
+                .willReturn(Optional.empty());
+        given(userRepository.saveAndFlush(any(User.class))).willAnswer(invocation -> {
+            User saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", newUserId);
+            return saved;
+        });
+        given(jwtProvider.createAccessToken(newUserId)).willReturn("access");
+        given(jwtProvider.createRefreshToken(newUserId)).willReturn("refresh");
+        given(jwtProvider.getRefreshTokenValidityMs()).willReturn(2_000L);
+
+        authService.login(AuthProvider.KAKAO, "code", "uri");
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(userCaptor.capture());
+        assertThat(userCaptor.getValue().getName()).isEqualTo("사용자");
+        assertThat(userCaptor.getValue().getEmail()).isNull();
+    }
+
+    @Test
     @DisplayName("이미 가입된 이메일로 신규 소셜 계정이 로그인하면 DUPLICATE_EMAIL 예외를 던진다")
     void login_newAccountWithExistingEmail_throwsDuplicateEmail() {
         OAuthUserInfo userInfo =
