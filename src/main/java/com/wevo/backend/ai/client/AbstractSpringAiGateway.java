@@ -391,7 +391,10 @@ public abstract class AbstractSpringAiGateway implements AiProviderGateway {
     ) {
         Duration sleepDuration;
         if (lastException.getRetryAfter() != null) {
-            sleepDuration = lastException.getRetryAfter();
+            Duration retryAfter = lastException.getRetryAfter();
+            sleepDuration = retryAfter.compareTo(options.timeout()) > 0
+                    ? options.timeout()
+                    : retryAfter;
         } else {
             long backoffMillis;
             long multiplier = 1L << Math.min(attempts - 1, 30);

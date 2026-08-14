@@ -191,7 +191,7 @@ class AbstractSpringAiGatewayTest {
     }
 
     @Test
-    void honorsProviderRetryAfterBeyondConfiguredBackoffMaximum() {
+    void honorsProviderRetryAfterBeyondBackoffMaximumWithinTimeoutCeiling() {
         AtomicInteger attempts = new AtomicInteger();
         AtomicReference<Duration> slept = new AtomicReference<>();
         ChatModel model = prompt -> {
@@ -207,12 +207,37 @@ class AbstractSpringAiGatewayTest {
             }
         };
         AbstractSpringAiGateway gateway = gateway(
-                model, Duration.ofSeconds(1), 1, 2, sleeper
+                model, Duration.ofSeconds(60), 1, 2, sleeper
         );
 
         gateway.generate(new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", "user"));
 
         assertThat(slept.get()).isEqualTo(Duration.ofSeconds(30));
+    }
+
+    @Test
+    void capsProviderRetryAfterAtCallTimeout() {
+        AtomicInteger attempts = new AtomicInteger();
+        AtomicReference<Duration> slept = new AtomicReference<>();
+        ChatModel model = prompt -> {
+            if (attempts.incrementAndGet() == 1) {
+                throw new TestServiceException(429, "3600");
+            }
+            return response("recovered");
+        };
+        AiRetrySleeper sleeper = new AiRetrySleeper() {
+            @Override
+            public void sleep(Duration duration) {
+                slept.set(duration);
+            }
+        };
+        AbstractSpringAiGateway gateway = gateway(
+                model, Duration.ofSeconds(60), 1, 2, sleeper
+        );
+
+        gateway.generate(new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", "user"));
+
+        assertThat(slept.get()).isEqualTo(Duration.ofSeconds(60));
     }
 
     @Test
