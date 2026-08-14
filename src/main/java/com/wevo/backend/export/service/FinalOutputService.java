@@ -62,6 +62,11 @@ public class FinalOutputService {
      * <p>모든 섹션이 {@code CONFIRMED} 일 때만 본문을 조립한다. 하나라도 미확정이면
      * {@code ready=false} 와 진행도만 반환한다. (정책서 §2.3 )
      *
+     * <p><b>진행도와 확정본은 서로 다른 시점을 볼 수 있다</b> — 두 읽기는 같은 트랜잭션이지만 별개의
+     * SQL 이고, PostgreSQL 기본 격리(READ COMMITTED)에서는 그 사이에 커밋된 다른 트랜잭션이 보인다.
+     * 조회 도중 다른 사용자가 섹션 하나의 확정을 해제하면 확정본만 한 건 줄어든다. 이 어긋남을
+     * 어떻게 가르는지는 {@link #assembleConfirmed} 가 소유한다.
+     *
      * @throws BusinessException 프로젝트가 없거나 내가 멤버가 아니면 존재 숨김 규칙에 따라
      *                           {@link ErrorCode#PROJECT_NOT_FOUND}({@code P001})
      */
@@ -74,7 +79,7 @@ public class FinalOutputService {
             return FinalOutputResponse.notReady(project, summary);
         }
 
-        return FinalOutputResponse.ready(project, confirmedContents(access, summary.totalCount()));
+        return assembleConfirmed(access, project, summary);
     }
 
     /**
@@ -137,6 +142,10 @@ public class FinalOutputService {
      * <p>미확정을 {@code CONFLICT}({@code C003})로 두는 이유: FE 는 {@code final-output} 조회의
      * {@code ready}·진행도로 이미 복사·다운로드 버튼 활성 여부를 판단할 수 있어, 이 응답의 원인을
      * 따로 분기할 필요가 없다. 전용 코드를 만들지 않는다. (CLAUDE.md §5.8)
+     *
+     * <p>조립 도중 다른 사용자가 확정을 해제한 경우도 여기로 들어온다 — {@code ready=false} 로
+     * 되돌아오므로 같은 {@code 409} 다. 버튼을 누른 순간과 서버가 읽은 순간의 상태가 달랐다는
+     * 뜻이고, FE 는 조회를 갱신해 진행도를 다시 보여주면 된다. (§3.6.1)
      */
     private FinalOutputResponse requireReadyOutput(Long projectId, Long userId) {
         FinalOutputResponse output = getFinalOutput(projectId, userId);
@@ -147,23 +156,57 @@ public class FinalOutputService {
     }
 
     /**
-     * 각 섹션의 확정본을 섹션 순서대로 조립한다.
+     * 각 섹션의 확정본을 섹션 순서대로 조립한다. 확정본 수가 진행도와 어긋나면 그 원인을 가른다.
      *
-     * <p>확정된 섹션에는 {@code confirmedVersion} 에 해당하는 초안이 반드시 있어야 한다.
-     * 개수가 맞지 않으면 <b>서버 측 데이터 정합성이 깨진 상태</b>다 — 확정 처리와 초안 이력이
-     * 어긋났다는 뜻이며, 클라이언트가 요청을 바꿔 해결할 수 있는 상태 충돌(409)이 아니다.
-     * 따라서 {@code 500} 으로 실패시키고(일부가 빠진 결과물을 완성본으로 내보내지 않는다),
-     * 재시도 유도 문구만 노출한다.
+     * <p>확정본이 모자란 원인은 두 가지이고, <b>대응이 정반대</b>다.
+     *
+     * <ul>
+     *   <li><b>동시 확정 해제</b> — 진행도를 읽은 뒤 다른 사용자가 섹션의 확정을 해제하고 커밋했다.
+     *       조립 쿼리의 {@code status = CONFIRMED} 조건이 그 섹션을 제외해 한 건이 준다.
+     *       서버 데이터는 멀쩡하고 <b>클라이언트가 다시 조회하면 해소</b>되는 상태 변화이므로
+     *       {@code ready=false} 로 되돌린다 (복사·다운로드는 {@link #requireReadyOutput} 에서
+     *       {@code 409}). 이 경우까지 {@code 500} 으로 처리하면 정상 동시 편집이 서버 오류로 보이고
+     *       운영 알람이 울린다.</li>
+     *   <li><b>정합성 붕괴</b> — 섹션이 여전히 {@code CONFIRMED} 인데 {@code confirmedVersion} 에
+     *       해당하는 초안이 없다. 확정 처리와 초안 이력이 어긋났다는 뜻이라 재조회로 해소되지 않고,
+     *       클라이언트가 요청을 바꿔 풀 수 있는 상태 충돌도 아니다. {@code 500} 으로 실패시켜
+     *       일부가 빠진 결과물을 완성본으로 내보내지 않는다.</li>
+     * </ul>
+     *
+     * <p>둘을 가르는 방법은 <b>진행도를 다시 읽는 것</b>이다. 재확인에서도 전 섹션이 확정으로
+     * 보이는데 확정본만 모자라면 초안이 실제로 없는 것이고, 미확정 섹션이 보이면 그 사이에
+     * 해제가 일어난 것이다. 추가 조회는 어긋난 경우에만 나가므로 정상 경로의 비용은 그대로다.
+     *
+     * <p>재확인 진행도는 판정에만 쓰는 게 아니라 응답에도 그대로 싣는다 — 방금 읽은 최신 수치라
+     * FE 가 진행도를 되돌려 보여주지 않는다.
      */
-    private List<SectionOutput> confirmedContents(VerifiedProjectAccess access, int expectedCount) {
+    private FinalOutputResponse assembleConfirmed(VerifiedProjectAccess access,
+                                                  ProjectOutputHeader project,
+                                                  SectionConfirmationSummary summary) {
         List<ConfirmedSectionContent> contents =
                 sectionConfirmationQueryService.findConfirmedContents(access);
-        if (contents.size() != expectedCount) {
+        if (contents.size() == summary.totalCount()) {
+            return FinalOutputResponse.ready(project, sectionOutputs(contents));
+        }
+
+        SectionConfirmationSummary recheck =
+                sectionConfirmationQueryService.getConfirmationSummary(access);
+        if (!recheck.allConfirmed()) {
+            log.info("완성본 조립 중 확정 상태가 바뀌어 재조회로 되돌림 — 확정 {}/{} 건, 확정본 {} 건. projectId={}",
+                    recheck.confirmedCount(), recheck.totalCount(), contents.size(), access.projectId());
+            return FinalOutputResponse.notReady(project, recheck);
+        }
+        if (contents.size() != recheck.totalCount()) {
             log.error("최종 결과물 조립 실패 — 확정 섹션 {} 개 중 확정본 {} 건만 조회됨. projectId={}",
-                    expectedCount, contents.size(), access.projectId());
+                    recheck.totalCount(), contents.size(), access.projectId());
             throw new BusinessException(ErrorCode.FINAL_OUTPUT_ASSEMBLY_FAILED);
         }
 
+        // 섹션 수 자체가 바뀌었지만(추가·삭제) 최신 진행도와는 맞는 경우 — 온전한 완성본이다.
+        return FinalOutputResponse.ready(project, sectionOutputs(contents));
+    }
+
+    private List<SectionOutput> sectionOutputs(List<ConfirmedSectionContent> contents) {
         return contents.stream()
                 .map(content -> new SectionOutput(content.order(), content.title(), content.content()))
                 .toList();
