@@ -161,6 +161,24 @@ class InviteServiceTest {
     }
 
     @Test
+    @DisplayName("보관(삭제)된 프로젝트면 링크를 재발급하지 않고 PROJECT_NOT_FOUND (존재 숨김)")
+    void createInviteLink_archivedProject_throwsProjectNotFound() {
+        // 보관 후에도 OWNER 멤버십은 남으므로, 상태 검사 없이는 삭제한 프로젝트에 링크가 부활한다. (#280)
+        Project project = project();
+        project.archive();
+        User owner = user(OWNER_ID, "팀장");
+        given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, OWNER_ID))
+                .willReturn(Optional.of(member(project, owner, ProjectMemberRole.OWNER)));
+        given(projectRepository.findByIdForUpdate(PROJECT_ID)).willReturn(Optional.of(project));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> inviteService.createInviteLink(OWNER_ID, PROJECT_ID));
+
+        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.PROJECT_NOT_FOUND);
+        verify(inviteLinkRepository, never()).save(any(InviteLink.class));
+    }
+
+    @Test
     @DisplayName("멤버지만 OWNER가 아니면 FORBIDDEN")
     void createInviteLink_notOwner_throwsForbidden() {
         Project project = project();
@@ -258,6 +276,23 @@ class InviteServiceTest {
                 () -> inviteService.joinByToken(JOINER_ID, TOKEN));
 
         assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.PROJECT_MEMBER_LIMIT_EXCEEDED);
+        verify(projectMemberRepository, never()).save(any(ProjectMember.class));
+    }
+
+    @Test
+    @DisplayName("잠금 후 프로젝트가 보관 상태면 참여를 거부한다 (TOCTOU — INVITE_LINK_NOT_FOUND)")
+    void joinByToken_archivedProject_throwsInviteLinkNotFound() {
+        // 링크를 활성으로 읽은 직후 archive 가 커밋되는 경합. 잠근 뒤 보관 여부를 재확인해 막는다. (#280)
+        Project project = project();
+        project.archive();
+        given(inviteLinkRepository.findActiveWithProjectByTokenHash(tokenHasher.hash(TOKEN)))
+                .willReturn(Optional.of(InviteLink.issue(project, user(OWNER_ID, "팀장"), tokenHasher.hash(TOKEN))));
+        given(projectRepository.findByIdForUpdate(PROJECT_ID)).willReturn(Optional.of(project));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> inviteService.joinByToken(JOINER_ID, TOKEN));
+
+        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVITE_LINK_NOT_FOUND);
         verify(projectMemberRepository, never()).save(any(ProjectMember.class));
     }
 
