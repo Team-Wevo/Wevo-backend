@@ -89,14 +89,16 @@ public abstract class AbstractSpringAiGateway implements AiProviderGateway {
         AiProperties.ModelOptions options = options(request.feature(), request.executionPolicy());
         UsageAccumulator usageAccumulator = new UsageAccumulator();
         AttemptCounter attemptCounter = new AttemptCounter();
-        StructuredConversionFailure previousFailure = null;
+        StructuredConversionFailure previousConversionFailure = null;
+        StructuredOutputSemanticFailureReason previousSemanticFailure = null;
         int maxCorrectionRetries = properties.structuredOutput().maxCorrectionRetries();
         tokenBudgetEstimator.requireWithinBudget(
                 request.feature(),
                 StructuredPromptFormatter.tokenBudgetInput(request, maxCorrectionRetries > 0));
 
         for (int correctionAttempt = 0; correctionAttempt <= maxCorrectionRetries; correctionAttempt++) {
-            String userPrompt = StructuredPromptFormatter.userPrompt(request, previousFailure);
+            String userPrompt = StructuredPromptFormatter.userPrompt(
+                    request, previousConversionFailure, previousSemanticFailure);
             ProviderStructuredResponse<T> providerResponse = invokeStructuredWithProviderRetry(
                     request,
                     userPrompt,
@@ -120,23 +122,38 @@ public abstract class AbstractSpringAiGateway implements AiProviderGateway {
                 );
             }
             if (conversion.isSuccess()) {
-                validateSemantics(request, conversion.value(), usageAccumulator.snapshot(), attemptCounter.value());
-                return new StructuredAiProviderResponse<>(
-                        conversion.value(),
-                        request.prompt().id(),
-                        request.outputDefinition().schemaId(),
-                        usageAccumulator.snapshot(),
-                        providerResponse.finishReason(),
-                        attemptCounter.value(),
-                        Math.max(0, attemptCounter.value() - correctionAttempt - 1),
-                        correctionAttempt
-                );
+                StructuredOutputSemanticException semanticFailure = validateSemantics(
+                        request, conversion.value());
+                if (semanticFailure == null) {
+                    return new StructuredAiProviderResponse<>(
+                            conversion.value(),
+                            request.prompt().id(),
+                            request.outputDefinition().schemaId(),
+                            usageAccumulator.snapshot(),
+                            providerResponse.finishReason(),
+                            attemptCounter.value(),
+                            Math.max(0, attemptCounter.value() - correctionAttempt - 1),
+                            correctionAttempt
+                    );
+                }
+                if (correctionAttempt == maxCorrectionRetries) {
+                    throw new AiProviderException(
+                            ErrorCode.AI_STRUCTURED_OUTPUT_SEMANTIC_VALIDATION_FAILED,
+                            semanticFailure,
+                            usageAccumulator.snapshot(),
+                            attemptCounter.value()
+                    );
+                }
+                previousConversionFailure = null;
+                previousSemanticFailure = semanticFailure.getReason();
+                continue;
             }
 
-            previousFailure = conversion.failure();
+            previousConversionFailure = conversion.failure();
+            previousSemanticFailure = null;
             if (correctionAttempt == maxCorrectionRetries) {
                 throw structuredException(
-                        errorCodeFor(previousFailure),
+                        errorCodeFor(previousConversionFailure),
                         usageAccumulator.snapshot(),
                         attemptCounter.value()
                 );
@@ -269,21 +286,15 @@ public abstract class AbstractSpringAiGateway implements AiProviderGateway {
         return new ProviderStructuredResponse<>(responseEntity.entity(), usage, finishReason, contentEmpty);
     }
 
-    private <T> void validateSemantics(
+    private <T> StructuredOutputSemanticException validateSemantics(
             StructuredAiProviderRequest<T> request,
-            T value,
-            AiUsageMetadata usage,
-            int attempts
+            T value
     ) {
         try {
             request.outputDefinition().validator().validate(value, request.validationContext());
+            return null;
         } catch (StructuredOutputSemanticException exception) {
-            throw new AiProviderException(
-                    ErrorCode.AI_STRUCTURED_OUTPUT_SEMANTIC_VALIDATION_FAILED,
-                    exception.withExecutionContext(request.executionContext()),
-                    usage,
-                    attempts
-            );
+            return exception.withExecutionContext(request.executionContext());
         }
     }
 
