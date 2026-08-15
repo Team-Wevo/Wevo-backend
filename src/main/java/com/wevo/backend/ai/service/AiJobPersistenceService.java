@@ -140,6 +140,27 @@ public class AiJobPersistenceService {
         return true;
     }
 
+    /** 조회 뒤 완료되는 경합에서 terminal 작업을 덮지 않도록 잠금 안에서 시작 시각을 재확인한다. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean failIfApplicationTimedOut(
+            UUID requestId,
+            LocalDateTime threshold,
+            LocalDateTime failedAt
+    ) {
+        AiJob job = findForUpdate(requestId);
+        if (job.getStatus() != AiJobStatus.RUNNING
+                || job.getStartedAt() == null
+                || !job.getStartedAt().isBefore(threshold)) {
+            return false;
+        }
+        job.fail(
+                AiErrorType.APPLICATION_TIMEOUT,
+                "AI 작업의 애플리케이션 제한 시간이 초과되었습니다.",
+                failedAt
+        );
+        return true;
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void fail(
             UUID requestId,
