@@ -60,6 +60,19 @@ class OAuthClientErrorStatusTest {
         }
     }
 
+    @Test
+    @DisplayName("Kakao 토큰 교환이 500(제공자 장애)이면 A007(500)을 유지한다 — 클라이언트 오류와 구분")
+    void kakaoTokenExchange_500_keepsProviderError() throws IOException {
+        try (TestServer server = new TestServer(500, "{\"error\":\"server_error\"}")) {
+            KakaoOAuthClient client = new KakaoOAuthClient(kakaoProperties(server));
+
+            assertThatThrownBy(() -> client.fetchUserInfo("code", "http://localhost/callback"))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.OAUTH_PROVIDER_ERROR);
+        }
+    }
+
     private OAuthProperties googleProperties(TestServer server) {
         return new OAuthProperties(
                 new OAuthProperties.Provider(
