@@ -23,7 +23,7 @@ public class ProjectTitleOutputDefinition {
                   "type": "string",
                   "minLength": 1,
                   "maxLength": %d,
-                  "pattern": "^[^\\\\r\\\\n]*\\\\S[^\\\\r\\\\n]*$"
+                  "pattern": "^\\\\S(?:[^\\\\r\\\\n]*\\\\S)?$"
                 }
               }
             }

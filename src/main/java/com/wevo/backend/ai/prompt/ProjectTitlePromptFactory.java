@@ -48,7 +48,8 @@ public class ProjectTitlePromptFactory {
         }
         RenderedPrompt prompt = promptRenderer.render(
                 promptRegistry.get(PROMPT_ID, promptVersion),
-                Map.of("projectInput", serialize(context)));
+                Map.of("projectInput", serialize(new PromptPayload(
+                        context.ideaText(), context.resultType(), context.audience()))));
         return new StructuredAiProviderRequest<>(
                 AiFeature.PROJECT_TITLE_SUGGESTION,
                 prompt,
@@ -60,5 +61,12 @@ public class ProjectTitlePromptFactory {
         return new String(
                 snapshotHasher.canonicalSnapshot(value).canonicalBytes(),
                 StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 프롬프트에 싣는 값만 담는다 — 제목 생성에 필요 없는 {@code projectId} 등 내부 식별자는
+     * AI provider 에 보내지 않는다. (CLAUDE.md §7 — 필요한 데이터만)
+     */
+    private record PromptPayload(String ideaText, String resultType, String audience) {
     }
 }

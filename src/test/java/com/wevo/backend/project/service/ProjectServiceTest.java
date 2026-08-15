@@ -164,15 +164,23 @@ class ProjectServiceTest {
     void applyAiGeneratedTitle_overridesOnlyWhenStillDefault() {
         Project stillDefault = Project.builder().title(ProjectService.DEFAULT_TITLE).build();
         ReflectionTestUtils.setField(stillDefault, "id", 100L);
-        given(projectRepository.findById(100L)).willReturn(Optional.of(stillDefault));
+        given(projectRepository.findByIdForUpdate(100L)).willReturn(Optional.of(stillDefault));
         projectService.applyAiGeneratedTitle(100L, "  AI가 지은 제목  ");
         assertThat(stillDefault.getTitle()).isEqualTo("AI가 지은 제목");
 
         Project userRenamed = Project.builder().title("사용자가 바꾼 제목").build();
         ReflectionTestUtils.setField(userRenamed, "id", 101L);
-        given(projectRepository.findById(101L)).willReturn(Optional.of(userRenamed));
+        given(projectRepository.findByIdForUpdate(101L)).willReturn(Optional.of(userRenamed));
         projectService.applyAiGeneratedTitle(101L, "AI 제목");
         assertThat(userRenamed.getTitle()).isEqualTo("사용자가 바꾼 제목");
+
+        // 보관(삭제)된 프로젝트는 기본값이어도 건너뛴다 — 되살아난 것처럼 보이는 제목을 남기지 않는다.
+        Project archived = Project.builder().title(ProjectService.DEFAULT_TITLE)
+                .status(ProjectStatus.ARCHIVED).build();
+        ReflectionTestUtils.setField(archived, "id", 102L);
+        given(projectRepository.findByIdForUpdate(102L)).willReturn(Optional.of(archived));
+        projectService.applyAiGeneratedTitle(102L, "AI 제목");
+        assertThat(archived.getTitle()).isEqualTo(ProjectService.DEFAULT_TITLE);
     }
 
     @Test

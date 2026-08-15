@@ -134,13 +134,17 @@ public class ProjectService {
      *
      * <p>여전히 서버 기본값({@link #DEFAULT_TITLE})일 때만 덮어쓴다 — job 이 도는 사이 사용자가
      * 직접 제목을 바꿨으면 그 값을 존중한다. 보관(삭제)됐거나 사라진 프로젝트는 조용히 건너뛴다.
+     *
+     * <p>행을 배타 잠금으로 읽는다 — 잠그지 않으면 "기본값 확인"과 "덮어쓰기" 사이에 사용자의
+     * 이름 변경이 커밋될 수 있고, 낡은 스냅샷으로 판정한 이 메서드가 사용자 제목을 AI 제목으로
+     * 되돌린다(lost update). 잠금 안에서 현재 제목을 다시 읽어 사용자 변경 뒤엔 no-op 이 되게 한다.
      */
     @Transactional
     public void applyAiGeneratedTitle(Long projectId, String title) {
         if (projectId == null || title == null || title.isBlank()) {
             return;
         }
-        Project project = projectRepository.findById(projectId).orElse(null);
+        Project project = projectRepository.findByIdForUpdate(projectId).orElse(null);
         if (project == null || project.isArchived() || !DEFAULT_TITLE.equals(project.getTitle())) {
             return;
         }
