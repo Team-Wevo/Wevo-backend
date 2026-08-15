@@ -3,6 +3,7 @@ package com.wevo.backend.project.service;
 import com.wevo.backend.project.domain.InviteLink;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.project.domain.Project;
+import com.wevo.backend.project.domain.ProjectArchivedEvent;
 import com.wevo.backend.project.domain.ProjectMember;
 import com.wevo.backend.project.domain.ProjectMemberRole;
 import com.wevo.backend.project.domain.ProjectStatus;
@@ -27,6 +28,7 @@ import com.wevo.backend.section.repository.SectionTemplateRepository;
 import com.wevo.backend.section.service.SectionConfirmationSummary;
 import com.wevo.backend.user.domain.User;
 import com.wevo.backend.user.repository.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,19 +61,22 @@ public class ProjectService {
     private final ProjectSectionRepository projectSectionRepository;
     private final SectionTemplateRepository sectionTemplateRepository;
     private final InviteLinkRepository inviteLinkRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ProjectService(UserRepository userRepository,
                           ProjectRepository projectRepository,
                           ProjectMemberRepository projectMemberRepository,
                           ProjectSectionRepository projectSectionRepository,
                           SectionTemplateRepository sectionTemplateRepository,
-                          InviteLinkRepository inviteLinkRepository) {
+                          InviteLinkRepository inviteLinkRepository,
+                          ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.projectSectionRepository = projectSectionRepository;
         this.sectionTemplateRepository = sectionTemplateRepository;
         this.inviteLinkRepository = inviteLinkRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -273,6 +278,11 @@ public class ProjectService {
         project.archive();
         inviteLinkRepository.findAllByProjectIdAndIsActiveTrue(projectId)
                 .forEach(InviteLink::deactivate);
+
+        // 외부 검토 링크(ReviewLink)도 함께 닫는다. review 도메인의 것이라 직접 만지지 않고 이벤트로
+        // 알린다 — review 리스너가 같은 트랜잭션에서 활성 링크를 종료해, 보관 후 외부 검토자가 계속
+        // 열람·제출하는 것을 막는다. archive 가 InviteLink 만 끄던 누락을 메운다(§6 · 순환 방지). (#230)
+        eventPublisher.publishEvent(new ProjectArchivedEvent(projectId));
     }
 
     /**

@@ -64,4 +64,16 @@ public interface ReviewLinkRepository extends JpaRepository<ReviewLink, Long> {
     List<ReviewLink> findByProjectSection_IdAndStatusForUpdate(
             @Param("projectSectionId") Long projectSectionId,
             @Param("status") ReviewLinkStatus status);
+
+    /**
+     * 프로젝트에 걸린 특정 상태의 링크들을 <b>행에 쓰기 락</b>을 걸어 조회한다. (보관 시 일괄 종료용 — #230)
+     *
+     * <p>섹션이 아니라 프로젝트 단위로 훑는다 — 프로젝트의 모든 섹션에 걸린 활성 외부 검토 링크를
+     * 한 번에 닫아야 한다. 종료 직전에 제출이 끼어드는 경합을 막기 위해 제출 경로와 같은 링크 행을 잠근다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from ReviewLink l where l.projectSection.project.id = :projectId and l.status = :status")
+    List<ReviewLink> findByProjectIdAndStatusForUpdate(
+            @Param("projectId") Long projectId,
+            @Param("status") ReviewLinkStatus status);
 }
