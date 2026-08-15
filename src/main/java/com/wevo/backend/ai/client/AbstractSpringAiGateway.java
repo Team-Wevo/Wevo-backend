@@ -389,21 +389,26 @@ public abstract class AbstractSpringAiGateway implements AiProviderGateway {
             int attempts,
             AiProviderException lastException
     ) {
-        long backoffMillis;
+        Duration sleepDuration;
         if (lastException.getRetryAfter() != null) {
-            backoffMillis = lastException.getRetryAfter().toMillis();
+            Duration retryAfter = lastException.getRetryAfter();
+            sleepDuration = retryAfter.compareTo(options.timeout()) > 0
+                    ? options.timeout()
+                    : retryAfter;
         } else {
+            long backoffMillis;
             long multiplier = 1L << Math.min(attempts - 1, 30);
             try {
                 backoffMillis = Math.multiplyExact(options.initialBackoff().toMillis(), multiplier);
             } catch (ArithmeticException ignored) {
                 backoffMillis = Long.MAX_VALUE;
             }
+            sleepDuration = Duration.ofMillis(
+                    Math.min(backoffMillis, options.maxBackoff().toMillis()));
         }
-        long cappedMillis = Math.min(backoffMillis, options.maxBackoff().toMillis());
 
         try {
-            retrySleeper.sleep(Duration.ofMillis(cappedMillis));
+            retrySleeper.sleep(sleepDuration);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new AiProviderException(

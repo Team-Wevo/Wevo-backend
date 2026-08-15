@@ -28,6 +28,7 @@ import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -190,12 +191,12 @@ class AbstractSpringAiGatewayTest {
     }
 
     @Test
-    void prefersProviderRetryAfterWithinConfiguredBound() {
+    void honorsProviderRetryAfterBeyondBackoffMaximumWithinTimeoutCeiling() {
         AtomicInteger attempts = new AtomicInteger();
         AtomicReference<Duration> slept = new AtomicReference<>();
         ChatModel model = prompt -> {
             if (attempts.incrementAndGet() == 1) {
-                throw new TestServiceException(429, "2");
+                throw new TestServiceException(429, "30");
             }
             return response("recovered");
         };
@@ -206,12 +207,68 @@ class AbstractSpringAiGatewayTest {
             }
         };
         AbstractSpringAiGateway gateway = gateway(
-                model, Duration.ofSeconds(1), 1, 2, sleeper
+                model, Duration.ofSeconds(60), 1, 2, sleeper
         );
 
         gateway.generate(new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", "user"));
 
-        assertThat(slept.get()).isEqualTo(Duration.ofSeconds(2));
+        assertThat(slept.get()).isEqualTo(Duration.ofSeconds(30));
+    }
+
+    @Test
+    void capsProviderRetryAfterAtCallTimeout() {
+        AtomicInteger attempts = new AtomicInteger();
+        AtomicReference<Duration> slept = new AtomicReference<>();
+        ChatModel model = prompt -> {
+            if (attempts.incrementAndGet() == 1) {
+                throw new TestServiceException(429, "3600");
+            }
+            return response("recovered");
+        };
+        AiRetrySleeper sleeper = new AiRetrySleeper() {
+            @Override
+            public void sleep(Duration duration) {
+                slept.set(duration);
+            }
+        };
+        AbstractSpringAiGateway gateway = gateway(
+                model, Duration.ofSeconds(60), 1, 2, sleeper
+        );
+
+        gateway.generate(new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", "user"));
+
+        assertThat(slept.get()).isEqualTo(Duration.ofSeconds(60));
+    }
+
+    @Test
+    void capsOnlyExponentialBackoffAtConfiguredMaximum() {
+        AtomicInteger attempts = new AtomicInteger();
+        List<Duration> sleeps = new ArrayList<>();
+        ChatModel model = prompt -> {
+            if (attempts.incrementAndGet() <= 2) {
+                throw new TestServiceException(408);
+            }
+            return response("recovered");
+        };
+        AiRetrySleeper sleeper = new AiRetrySleeper() {
+            @Override
+            public void sleep(Duration duration) {
+                sleeps.add(duration);
+            }
+        };
+        AbstractSpringAiGateway gateway = gateway(
+                model,
+                Duration.ofSeconds(1),
+                2,
+                2,
+                100_000,
+                sleeper,
+                Duration.ofSeconds(5),
+                Duration.ofSeconds(8));
+
+        gateway.generate(new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", "user"));
+
+        assertThat(sleeps).containsExactly(Duration.ofSeconds(5), Duration.ofSeconds(8));
     }
 
     @Test
@@ -495,6 +552,27 @@ class AbstractSpringAiGatewayTest {
             int maxInputTokens,
             AiRetrySleeper retrySleeper
     ) {
+        return gateway(
+                chatModel,
+                timeout,
+                maxTransportRetries,
+                maxCorrectionRetries,
+                maxInputTokens,
+                retrySleeper,
+                Duration.ZERO,
+                Duration.ofSeconds(8));
+    }
+
+    private AbstractSpringAiGateway gateway(
+            ChatModel chatModel,
+            Duration timeout,
+            int maxTransportRetries,
+            int maxCorrectionRetries,
+            int maxInputTokens,
+            AiRetrySleeper retrySleeper,
+            Duration initialBackoff,
+            Duration maxBackoff
+    ) {
         AiProperties properties = new AiProperties(
                 "none",
                 new AiProperties.ModelOptions(
@@ -507,8 +585,8 @@ class AbstractSpringAiGatewayTest {
                         AiProperties.ModelOptions.CONSERVATIVE_CHAR_V1,
                         AiProperties.ModelOptions.REJECT_OVERSIZED_INPUT_V1,
                         maxTransportRetries,
-                        Duration.ZERO,
-                        Duration.ofSeconds(8)
+                        initialBackoff,
+                        maxBackoff
                 ),
                 Map.of(),
                 new AiProperties.StructuredOutputOptions(maxCorrectionRetries)
