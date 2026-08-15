@@ -79,6 +79,30 @@ class ProjectSectionTest {
     }
 
     @Test
+    @DisplayName("활동 없는 전이는 상태만 바꾸고 마지막 활동 시각은 건드리지 않는다 — AI·캐스케이드 전이용 (#292)")
+    void changeStatusWithoutActivity_doesNotRecordActivity() {
+        ProjectSection section = section();
+        LocalDateTime initial = section.getLastActivityAt();
+
+        section.changeStatusWithoutActivity(ProjectSectionStatus.SYNTHESIZING);
+
+        assertThat(section.getStatus()).isEqualTo(ProjectSectionStatus.SYNTHESIZING);
+        assertThat(section.getLastActivityAt())
+                .as("사람이 만지지 않은 전이라 마지막 활동 시각은 그대로여야 한다")
+                .isEqualTo(initial);
+    }
+
+    @Test
+    @DisplayName("활동 없는 전이도 거부 규칙은 동일하게 적용된다")
+    void changeStatusWithoutActivity_rejected_throws() {
+        ProjectSection section = section();
+
+        assertThatThrownBy(() ->
+                section.changeStatusWithoutActivity(ProjectSectionStatus.CONFIRMED))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
     @DisplayName("overlay 도입 전 레거시 행(컬럼 null)도 기본값으로 읽힌다")
     void legacyRow_readsAsDefaults() {
         ProjectSection section = section();

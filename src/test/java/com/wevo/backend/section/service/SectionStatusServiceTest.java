@@ -304,10 +304,13 @@ class SectionStatusServiceTest {
         User actorUser = user(OWNER_ID);
         ProjectSection section = section(ProjectSectionStatus.CONFIRMED);
         ProjectMember actor = member(actorUser, ProjectMemberRole.OWNER, section.getProject());
+        java.time.LocalDateTime activityBefore = section.getLastActivityAt();
 
         sectionStatusService.markReviewingAfterPrerequisiteChange(section, actor, 3);
 
         assertThat(section.getStatus()).isEqualTo(ProjectSectionStatus.REVIEWING);
+        // 상위 캐스케이드는 사람이 이 하위 섹션을 만진 게 아니므로 활동 시각을 끌어올리지 않는다. (#292)
+        assertThat(section.getLastActivityAt()).isEqualTo(activityBefore);
         ArgumentCaptor<SectionStatusHistory> captor =
                 ArgumentCaptor.forClass(SectionStatusHistory.class);
         verify(sectionStatusHistoryRepository).save(captor.capture());
