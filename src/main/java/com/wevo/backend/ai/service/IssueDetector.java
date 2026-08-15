@@ -1,6 +1,7 @@
 package com.wevo.backend.ai.service;
 
 import com.wevo.backend.ai.client.StructuredAiProviderRequest;
+import com.wevo.backend.ai.client.StructuredOutputExecutionContext;
 import com.wevo.backend.ai.context.AiOpinionContext;
 import com.wevo.backend.ai.context.AssembledAiContext;
 import com.wevo.backend.ai.context.ContextChunkPlan;
@@ -9,9 +10,12 @@ import com.wevo.backend.ai.context.IssueDetectionContext;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.dto.model.IssueDetectionOutput;
 import com.wevo.backend.ai.prompt.IssueDetectionPromptFactory;
+import com.wevo.backend.ai.service.IssueDetectionPromptContext.PartialIssueDetection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Service;
 
@@ -51,23 +55,78 @@ public class IssueDetector {
         ContextChunkPlan plan = chunkPlanner.plan(
                 AiFeature.ISSUE_DETECTION,
                 fullContext.opinions(),
-                opinions -> promptFactory.tokenBudgetInput(
-                        withOpinions(fullContext, opinions), usageStartCommand.promptVersion())
+                opinions -> {
+                    IssueDetectionPromptContext context = promptContext(
+                            IssueDetectionPromptContext.PARTIAL, fullContext, opinions, List.of());
+                    return promptFactory.tokenBudgetInput(
+                            context,
+                            opinionIds(opinions),
+                            usageStartCommand.promptVersion());
+                }
         );
 
-        List<IssueDetectionOutput> outputs = new ArrayList<>();
-        for (var chunk : plan.chunks()) {
-            StructuredAiProviderRequest<IssueDetectionOutput> request =
-                    promptFactory.providerRequest(
-                            withOpinions(fullContext, chunk.opinions()), usageStartCommand.promptVersion());
-            AiInvocationResult<IssueDetectionOutput> invocation = invocationService.invokeStructured(
+        if (plan.chunks().size() == 1) {
+            var chunk = plan.chunks().getFirst();
+            IssueDetectionOutput output = invoke(
                     usageStartCommand,
-                    request,
-                    response -> new AiProcessedResult<>(response.result(), null)
-            );
-            outputs.add(invocation.value());
+                    promptFactory.providerRequest(
+                            promptContext(
+                                    IssueDetectionPromptContext.DIRECT,
+                                    fullContext,
+                                    chunk.opinions(),
+                                    List.of()),
+                            opinionIds(chunk.opinions()),
+                            usageStartCommand.promptVersion()),
+                    IssueDetectionPromptContext.DIRECT,
+                    null);
+            return resultMerger.merge(plan, output);
         }
-        return resultMerger.merge(plan, outputs);
+
+        List<PartialIssueDetection> partials = new ArrayList<>();
+        for (var chunk : plan.chunks()) {
+            IssueDetectionOutput output = invoke(
+                    usageStartCommand,
+                    promptFactory.providerRequest(
+                            promptContext(
+                                    IssueDetectionPromptContext.PARTIAL,
+                                    fullContext,
+                                    chunk.opinions(),
+                                    List.of()),
+                            opinionIds(chunk.opinions()),
+                            usageStartCommand.promptVersion()),
+                    IssueDetectionPromptContext.PARTIAL,
+                    chunk.index());
+            partials.add(new PartialIssueDetection(
+                    chunk.index(), chunk.opinionIds(), output));
+        }
+
+        IssueDetectionOutput output = invoke(
+                usageStartCommand,
+                promptFactory.providerRequest(
+                        promptContext(
+                                IssueDetectionPromptContext.FINAL_MERGE,
+                                fullContext,
+                                List.of(),
+                                partials),
+                        Set.copyOf(plan.eligibleOpinionIds()),
+                        usageStartCommand.promptVersion()),
+                IssueDetectionPromptContext.FINAL_MERGE,
+                null);
+        return resultMerger.merge(plan, output);
+    }
+
+    private IssueDetectionOutput invoke(
+            AiUsageStartCommand usageStartCommand,
+            StructuredAiProviderRequest<IssueDetectionOutput> request,
+            String stage,
+            Integer chunkIndex
+    ) {
+        return invocationService.invokeStructured(
+                usageStartCommand,
+                request.withExecutionContext(
+                        new StructuredOutputExecutionContext(stage, chunkIndex)),
+                response -> new AiProcessedResult<>(response.result(), null)
+        ).value();
     }
 
     private void requireMatchingInvocation(
@@ -95,15 +154,24 @@ public class IssueDetector {
         }
     }
 
-    private IssueDetectionContext withOpinions(
+    private IssueDetectionPromptContext promptContext(
+            String mode,
             IssueDetectionContext context,
-            List<AiOpinionContext> opinions
+            List<AiOpinionContext> opinions,
+            List<PartialIssueDetection> partials
     ) {
-        return new IssueDetectionContext(
+        return new IssueDetectionPromptContext(
+                mode,
                 context.project(),
                 context.projectBrief(),
                 context.section(),
-                opinions
-        );
+                opinions,
+                partials);
+    }
+
+    private Set<Long> opinionIds(List<AiOpinionContext> opinions) {
+        return opinions.stream()
+                .map(AiOpinionContext::opinionId)
+                .collect(Collectors.toSet());
     }
 }

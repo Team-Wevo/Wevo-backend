@@ -10,8 +10,10 @@ import com.wevo.backend.ai.context.IssueDetectionContext;
 import com.wevo.backend.ai.domain.AiFeature;
 import com.wevo.backend.ai.dto.model.IssueDetectionOutput;
 import com.wevo.backend.ai.service.IssueDetectionOutputDefinition;
+import com.wevo.backend.ai.service.IssueDetectionPromptContext;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Component;
@@ -20,7 +22,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class IssueDetectionPromptFactory {
 
-    public static final PromptTemplateId PROMPT_ID = new PromptTemplateId("issue-detection", 1);
+    public static final PromptTemplateId PROMPT_ID = new PromptTemplateId("issue-detection", 2);
 
     private final PromptRegistry promptRegistry;
     private final PromptRenderer promptRenderer;
@@ -50,6 +52,20 @@ public class IssueDetectionPromptFactory {
             String promptVersion
     ) {
         Set<Long> allowedOpinionIds = allowedOpinionIds(context);
+        return providerRequest(
+                promptContext(IssueDetectionPromptContext.DIRECT, context),
+                allowedOpinionIds,
+                promptVersion);
+    }
+
+    public StructuredAiProviderRequest<IssueDetectionOutput> providerRequest(
+            IssueDetectionPromptContext context,
+            Set<Long> allowedOpinionIds,
+            String promptVersion
+    ) {
+        if (context == null || allowedOpinionIds == null) {
+            throw new IllegalArgumentException("쟁점 감지 prompt context와 허용 opinion ID는 필수입니다.");
+        }
         RenderedPrompt prompt = promptRenderer.render(
                 promptRegistry.get(PROMPT_ID, promptVersion),
                 Map.of("issueDetectionContext", serialize(context))
@@ -58,7 +74,7 @@ public class IssueDetectionPromptFactory {
                 AiFeature.ISSUE_DETECTION,
                 prompt,
                 outputDefinition.get(),
-                new StructuredOutputValidationContext(allowedOpinionIds)
+                new StructuredOutputValidationContext(Set.copyOf(allowedOpinionIds))
         );
     }
 
@@ -69,6 +85,28 @@ public class IssueDetectionPromptFactory {
     public AiTokenBudgetInput tokenBudgetInput(IssueDetectionContext context, String promptVersion) {
         StructuredAiProviderRequest<IssueDetectionOutput> request = providerRequest(context, promptVersion);
         return StructuredPromptFormatter.tokenBudgetInput(request, true);
+    }
+
+    public AiTokenBudgetInput tokenBudgetInput(
+            IssueDetectionPromptContext context,
+            Set<Long> allowedOpinionIds,
+            String promptVersion
+    ) {
+        return StructuredPromptFormatter.tokenBudgetInput(
+                providerRequest(context, allowedOpinionIds, promptVersion), true);
+    }
+
+    private IssueDetectionPromptContext promptContext(
+            String mode,
+            IssueDetectionContext context
+    ) {
+        return new IssueDetectionPromptContext(
+                mode,
+                context.project(),
+                context.projectBrief(),
+                context.section(),
+                context.opinions(),
+                List.of());
     }
 
     private Set<Long> allowedOpinionIds(IssueDetectionContext context) {
@@ -84,7 +122,7 @@ public class IssueDetectionPromptFactory {
         return Set.copyOf(opinionIds);
     }
 
-    private String serialize(IssueDetectionContext context) {
+    private String serialize(Object context) {
         return new String(
                 snapshotHasher.canonicalSnapshot(context).canonicalBytes(),
                 StandardCharsets.UTF_8
