@@ -157,6 +157,12 @@ public class InviteService {
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        // 탈퇴한 계정은 참여를 거부한다. 탈퇴 직후에도 Access Token 이 30분간 살아 있어 그 창에서
+        // join 이 들어올 수 있고, 막지 않으면 WITHDRAWN 계정에 dangling MEMBER 행이 생겨 소프트
+        // 삭제의 상태 일관성이 깨진다. 프로젝트 생성·프로필 수정과 같은 방어다(§3.3.3 — U001). (#291)
+        if (user.isWithdrawn()) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
 
         ProjectMember saved = projectMemberRepository.save(ProjectMember.builder()
                 .project(project)
