@@ -1,6 +1,7 @@
 package com.wevo.backend.ai.service;
 
 import com.wevo.backend.ai.client.StructuredAiProviderRequest;
+import com.wevo.backend.ai.client.StructuredOutputExecutionContext;
 import com.wevo.backend.ai.context.AiInputSnapshot;
 import com.wevo.backend.ai.context.AiInputSnapshotHasher;
 import com.wevo.backend.ai.context.AiOpinionContext;
@@ -45,28 +46,43 @@ import static org.mockito.Mockito.when;
 class IssueDetectorTest {
 
     @Test
-    void invokesEveryChunkAndMergesOnlyAfterAllSucceed() {
+    void invokesEveryChunkThenAiFinalMergeForCrossChunkIssue() {
         TestFixture fixture = fixture(List.of(
-                new IssueDetectionOutput(List.of(conflict("충돌", 1L))),
-                new IssueDetectionOutput(List.of(conflict("충돌", 2L)))
+                new IssueDetectionOutput(List.of(conflict("방향 A 후보", 1L))),
+                new IssueDetectionOutput(List.of(conflict("방향 B 후보", 2L))),
+                new IssueDetectionOutput(List.of(new IssueDetectionIssueOutput(
+                        IssueType.CONFLICT,
+                        "chunk 간 충돌",
+                        List.of(1L, 2L),
+                        "어느 방향을 선택할까요?",
+                        List.of("A", "B"))))
         ), -1);
 
         IssueDetectionResult result = fixture.detector().detect(fixture.assembled(), fixture.usage());
 
         assertThat(result.issues()).singleElement()
                 .satisfies(issue -> assertThat(issue.evidenceOpinionIds()).containsExactly(1L, 2L));
-        assertThat(fixture.invocationService().requests).hasSize(2);
+        assertThat(fixture.invocationService().requests).hasSize(3);
         assertThat(fixture.invocationService().requests.getFirst().validationContext().allowedResourceIds())
                 .containsExactly(1L);
         assertThat(fixture.invocationService().requests.get(1).validationContext().allowedResourceIds())
                 .containsExactly(2L);
+        assertThat(fixture.invocationService().requests.get(2).validationContext().allowedResourceIds())
+                .containsExactlyInAnyOrder(1L, 2L);
+        assertThat(fixture.invocationService().requests.getFirst().executionContext())
+                .isEqualTo(new StructuredOutputExecutionContext("PARTIAL", 1));
+        assertThat(fixture.invocationService().requests.get(2).executionContext())
+                .isEqualTo(new StructuredOutputExecutionContext("FINAL_MERGE", null));
+        assertThat(fixture.invocationService().requests.get(2).prompt().userPrompt())
+                .contains("FINAL_MERGE", "coveredOpinionIds", "chunkIndex");
     }
 
     @Test
     void propagatesAnyChunkFailureWithoutReturningPartialResult() {
         TestFixture fixture = fixture(List.of(
                 new IssueDetectionOutput(List.of(conflict("충돌", 1L))),
-                new IssueDetectionOutput(List.of(conflict("충돌", 2L)))
+                new IssueDetectionOutput(List.of(conflict("충돌", 2L))),
+                new IssueDetectionOutput(List.of())
         ), 2);
 
         assertThatThrownBy(() -> fixture.detector().detect(fixture.assembled(), fixture.usage()))
@@ -74,6 +90,57 @@ class IssueDetectorTest {
                 .extracting(exception -> ((AiProviderException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.AI_PROVIDER_TIMEOUT);
         assertThat(fixture.invocationService().requests).hasSize(2);
+    }
+
+    @Test
+    void propagatesFinalMergeFailureWithoutReturningConcatenatedPartials() {
+        TestFixture fixture = fixture(List.of(
+                new IssueDetectionOutput(List.of(conflict("충돌 A", 1L))),
+                new IssueDetectionOutput(List.of(conflict("충돌 B", 2L))),
+                new IssueDetectionOutput(List.of())
+        ), 3);
+
+        assertThatThrownBy(() -> fixture.detector().detect(fixture.assembled(), fixture.usage()))
+                .isInstanceOf(AiProviderException.class)
+                .extracting(exception -> ((AiProviderException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.AI_PROVIDER_TIMEOUT);
+        assertThat(fixture.invocationService().requests).hasSize(3);
+    }
+
+    @Test
+    void finalMergeAppliesGlobalLimitInsteadOfValidatingConcatenatedChunkCandidates() {
+        IssueDetectionOutput finalOutput = new IssueDetectionOutput(List.of(
+                conflict("최종 충돌", 1L),
+                gap("최종 공백", 2L)));
+        TestFixture fixture = fixture(List.of(
+                new IssueDetectionOutput(List.of(
+                        conflict("후보 충돌 1", 1L),
+                        conflict("후보 충돌 2", 1L),
+                        gap("후보 공백 1", 1L))),
+                new IssueDetectionOutput(List.of(
+                        conflict("후보 충돌 3", 2L),
+                        conflict("후보 충돌 4", 2L),
+                        gap("후보 공백 2", 2L))),
+                finalOutput
+        ), -1);
+
+        IssueDetectionResult result = fixture.detector().detect(fixture.assembled(), fixture.usage());
+
+        assertThat(result.issues()).isEqualTo(finalOutput.issues());
+        assertThat(fixture.invocationService().requests).hasSize(3);
+    }
+
+    @Test
+    void singleChunkUsesDirectAnalysisWithoutFinalMerge() {
+        IssueDetectionOutput direct = new IssueDetectionOutput(List.of(conflict("직접 충돌", 1L)));
+        TestFixture fixture = fixture(List.of(direct), -1, 1);
+
+        IssueDetectionResult result = fixture.detector().detect(fixture.assembled(), fixture.usage());
+
+        assertThat(result.issues()).isEqualTo(direct.issues());
+        assertThat(fixture.invocationService().requests).singleElement()
+                .satisfies(request -> assertThat(request.executionContext())
+                        .isEqualTo(new StructuredOutputExecutionContext("DIRECT", null)));
     }
 
     @Test
@@ -97,8 +164,16 @@ class IssueDetectorTest {
     }
 
     private TestFixture fixture(List<IssueDetectionOutput> outputs, int failureCall) {
+        return fixture(outputs, failureCall, 2);
+    }
+
+    private TestFixture fixture(
+            List<IssueDetectionOutput> outputs,
+            int failureCall,
+            int chunkCount
+    ) {
         IssueDetectionContext context = context();
-        ContextChunkPlan plan = plan(context.opinions());
+        ContextChunkPlan plan = plan(context.opinions(), chunkCount);
         ContextChunkPlanner planner = mock(ContextChunkPlanner.class);
         when(planner.plan(eq(AiFeature.ISSUE_DETECTION), anyList(), any())).thenReturn(plan);
 
@@ -134,7 +209,15 @@ class IssueDetectorTest {
         return new TestFixture(detector, invocationService, assembled, usage);
     }
 
-    private ContextChunkPlan plan(List<AiOpinionContext> opinions) {
+    private ContextChunkPlan plan(List<AiOpinionContext> opinions, int chunkCount) {
+        if (chunkCount == 1) {
+            return new ContextChunkPlan(
+                    List.of(new ContextChunk(
+                            1, opinions, List.of(1L, 2L), 100)),
+                    List.of(1L, 2L),
+                    List.of(1L, 2L),
+                    true);
+        }
         return new ContextChunkPlan(
                 List.of(
                         new ContextChunk(1, List.of(opinions.getFirst()), List.of(1L), 100),
@@ -173,6 +256,16 @@ class IssueDetectorTest {
                 List.of(evidenceId),
                 "질문",
                 List.of("A", "B")
+        );
+    }
+
+    private IssueDetectionIssueOutput gap(String description, Long evidenceId) {
+        return new IssueDetectionIssueOutput(
+                IssueType.GAP,
+                description,
+                List.of(evidenceId),
+                null,
+                List.of()
         );
     }
 

@@ -8,12 +8,17 @@ import com.wevo.backend.ai.context.AiProjectIdentity;
 import com.wevo.backend.ai.context.AiSectionContext;
 import com.wevo.backend.ai.context.AiTemplateContext;
 import com.wevo.backend.ai.context.IssueDetectionContext;
+import com.wevo.backend.ai.dto.model.IssueDetectionIssueOutput;
 import com.wevo.backend.ai.dto.model.IssueDetectionOutput;
 import com.wevo.backend.ai.service.IssueDetectionOutputDefinition;
 import com.wevo.backend.ai.service.IssueDetectionOutputValidator;
+import com.wevo.backend.ai.service.IssueDetectionPromptContext;
+import com.wevo.backend.ai.service.IssueDetectionPromptContext.PartialIssueDetection;
+import com.wevo.backend.issue.domain.IssueType;
 import com.wevo.backend.project.domain.OutputType;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,11 +37,12 @@ class IssueDetectionPromptFactoryTest {
     void rendersVersionedXmlDelimitedContextAndIndependentSchema() {
         StructuredAiProviderRequest<IssueDetectionOutput> request = factory.providerRequest(context());
 
-        assertThat(request.prompt().trackingVersion()).isEqualTo("issue-detection:v1");
+        assertThat(request.prompt().trackingVersion()).isEqualTo("issue-detection:v2");
         assertThat(request.outputDefinition().schemaId().trackingValue())
                 .isEqualTo("issue-detection-output:v1");
         assertThat(request.prompt().userPrompt())
                 .contains("<data name=\"issueDetectionContext\">")
+                .contains("&quot;mode&quot;:&quot;DIRECT&quot;")
                 .contains("&quot;opinionId&quot;:1")
                 .contains("목표 &amp; 일정")
                 .doesNotContain("authorReference")
@@ -59,6 +65,34 @@ class IssueDetectionPromptFactoryTest {
 
         assertThatThrownBy(() -> factory.providerRequest(duplicated))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rendersFinalMergePartialsWithGlobalValidationIds() {
+        IssueDetectionContext direct = context();
+        IssueDetectionOutput partialOutput = new IssueDetectionOutput(List.of(
+                new IssueDetectionIssueOutput(
+                        IssueType.GAP,
+                        "근거가 부족합니다.",
+                        List.of(1L),
+                        null,
+                        List.of())));
+        IssueDetectionPromptContext mergeContext = new IssueDetectionPromptContext(
+                IssueDetectionPromptContext.FINAL_MERGE,
+                direct.project(),
+                direct.projectBrief(),
+                direct.section(),
+                List.of(),
+                List.of(new PartialIssueDetection(1, List.of(1L), partialOutput)));
+
+        StructuredAiProviderRequest<IssueDetectionOutput> request = factory.providerRequest(
+                mergeContext,
+                Set.of(1L),
+                IssueDetectionPromptFactory.PROMPT_ID.trackingValue());
+
+        assertThat(request.prompt().userPrompt())
+                .contains("FINAL_MERGE", "partial", "coveredOpinionIds");
+        assertThat(request.validationContext().allowedResourceIds()).containsExactly(1L);
     }
 
     private IssueDetectionContext context() {

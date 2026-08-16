@@ -2,6 +2,7 @@ package com.wevo.backend.ai.config;
 
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -20,9 +21,24 @@ public record AiJobDispatchProperties(
         Integer maxConcurrentJobs,
         Duration heartbeatInterval,
         Duration heartbeatTimeout,
-        Duration recoveryInterval
+        Duration recoveryInterval,
+        Duration applicationTimeout
 ) {
 
+    public AiJobDispatchProperties(
+            Boolean dispatchEnabled,
+            Duration dispatchInterval,
+            Integer dispatchBatchSize,
+            Integer maxConcurrentJobs,
+            Duration heartbeatInterval,
+            Duration heartbeatTimeout,
+            Duration recoveryInterval
+    ) {
+        this(dispatchEnabled, dispatchInterval, dispatchBatchSize, maxConcurrentJobs,
+                heartbeatInterval, heartbeatTimeout, recoveryInterval, null);
+    }
+
+    @ConstructorBinding
     public AiJobDispatchProperties {
         dispatchEnabled = dispatchEnabled == null ? Boolean.TRUE : dispatchEnabled;
         dispatchInterval = defaulted(dispatchInterval, Duration.ofSeconds(2));
@@ -31,6 +47,7 @@ public record AiJobDispatchProperties(
         heartbeatInterval = defaulted(heartbeatInterval, Duration.ofSeconds(15));
         heartbeatTimeout = defaulted(heartbeatTimeout, Duration.ofSeconds(60));
         recoveryInterval = defaulted(recoveryInterval, Duration.ofSeconds(60));
+        applicationTimeout = defaulted(applicationTimeout, Duration.ofMinutes(15));
 
         requirePositive(dispatchBatchSize, "dispatch-batch-size");
         requirePositive(maxConcurrentJobs, "max-concurrent-jobs");
@@ -38,10 +55,16 @@ public record AiJobDispatchProperties(
         requirePositiveDuration(heartbeatInterval, "heartbeat-interval");
         requirePositiveDuration(heartbeatTimeout, "heartbeat-timeout");
         requirePositiveDuration(recoveryInterval, "recovery-interval");
+        requirePositiveDuration(applicationTimeout, "application-timeout");
         if (heartbeatInterval.compareTo(heartbeatTimeout) >= 0) {
             throw new IllegalArgumentException(
                     "wevo.ai.jobs.heartbeat-interval은 heartbeat-timeout보다 작아야 합니다. "
                             + "(작업이 첫 heartbeat 전에 회수되는 것을 막기 위함)");
+        }
+        if (applicationTimeout.compareTo(heartbeatTimeout) <= 0) {
+            throw new IllegalArgumentException(
+                    "wevo.ai.jobs.application-timeout은 heartbeat-timeout보다 커야 합니다. "
+                            + "(worker 사망 회수와 장기 실행 회수를 구분하기 위함)");
         }
     }
 
