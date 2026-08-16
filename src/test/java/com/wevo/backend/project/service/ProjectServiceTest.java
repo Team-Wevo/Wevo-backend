@@ -272,6 +272,9 @@ class ProjectServiceTest {
 
         assertThat(project.getStatus()).isEqualTo(ProjectStatus.ARCHIVED);
         assertThat(activeLink.getIsActive()).isFalse();
+        // 외부 검토 링크 종료를 위해 보관 이벤트를 발행한다 — review 리스너가 같은 트랜잭션에서 처리. (#230)
+        verify(eventPublisher).publishEvent(
+                new com.wevo.backend.project.domain.ProjectArchivedEvent(100L));
     }
 
     @Test
