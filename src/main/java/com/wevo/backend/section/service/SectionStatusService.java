@@ -113,7 +113,8 @@ public class SectionStatusService {
         ProjectSection section = requireSection(sectionId);
         ProjectMember actor = requireOwner(section, actorUserId);
         ProjectSectionStatus from = section.getStatus();
-        section.changeStatus(ProjectSectionStatus.DRAFTING, LocalDateTime.now(KST));
+        // AI 초안 생성 전이는 사람이 이 섹션을 만진 게 아니다 — 활동으로 기록하지 않는다. (#292)
+        section.changeStatusWithoutActivity(ProjectSectionStatus.DRAFTING);
         sectionStatusHistoryRepository.save(SectionStatusHistory.builder()
                 .projectSection(section)
                 .actor(actor.getUser())
@@ -167,8 +168,10 @@ public class SectionStatusService {
             ProjectMember actor,
             int contentVersion
     ) {
+        // 사용자가 이 섹션 본문을 직접 고쳐 REVIEWING 으로 복귀하는 경로 — 사람 활동으로 기록한다.
+        // (본문 저장 시 saveDraft 가 이미 기록하므로 중복이지만 같은 사람 액션이라 계약과 일치)
         markReviewingAfterChange(
-                section, actor, contentVersion, "CONFIRMED_CONTENT_CHANGED");
+                section, actor, contentVersion, "CONFIRMED_CONTENT_CHANGED", true);
     }
 
     /**
@@ -180,15 +183,18 @@ public class SectionStatusService {
             ProjectMember actor,
             int contentVersion
     ) {
+        // 상위 섹션 변경으로 인한 하위 캐스케이드 — 사람이 이 하위 섹션을 만진 게 아니므로 활동으로
+        // 기록하지 않는다. 안 그러면 만진 적 없는 섹션이 "마지막 활동 섹션"으로 뽑힌다. (#292)
         markReviewingAfterChange(
-                section, actor, contentVersion, "PREREQUISITE_CHANGED");
+                section, actor, contentVersion, "PREREQUISITE_CHANGED", false);
     }
 
     private void markReviewingAfterChange(
             ProjectSection section,
             ProjectMember actor,
             int contentVersion,
-            String eventType
+            String eventType,
+            boolean recordActivity
     ) {
         if (section == null || actor == null
                 || !section.getProject().getId().equals(actor.getProject().getId())
@@ -198,7 +204,8 @@ public class SectionStatusService {
         if (section.getStatus() != ProjectSectionStatus.CONFIRMED) {
             throw new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
         }
-        applyTransition(section, actor, ProjectSectionStatus.REVIEWING, eventType, contentVersion);
+        applyTransition(section, actor, ProjectSectionStatus.REVIEWING, eventType, contentVersion,
+                recordActivity);
     }
 
     /**
@@ -216,14 +223,21 @@ public class SectionStatusService {
      */
     private ProjectSection applyTransition(ProjectSection section, ProjectMember actor,
                                            ProjectSectionStatus target, String eventType) {
-        return applyTransition(section, actor, target, eventType, null);
+        return applyTransition(section, actor, target, eventType, null, true);
     }
 
     private ProjectSection applyTransition(ProjectSection section, ProjectMember actor,
                                            ProjectSectionStatus target, String eventType,
-                                           Integer contentVersion) {
+                                           Integer contentVersion, boolean recordActivity) {
         ProjectSectionStatus from = section.getStatus();
-        section.changeStatus(target, LocalDateTime.now(KST)); // 허용되지 않은 전이면 INVALID_SECTION_STATUS_TRANSITION
+        // 허용되지 않은 전이면 INVALID_SECTION_STATUS_TRANSITION.
+        // recordActivity=false 는 사람이 만지지 않은 전이(상위 드리프트 캐스케이드) — lastActivityAt 을
+        // 끌어올리지 않는다. (#292)
+        if (recordActivity) {
+            section.changeStatus(target, LocalDateTime.now(KST));
+        } else {
+            section.changeStatusWithoutActivity(target);
+        }
 
         // version(본문 버전)은 초안 이후 전이에서만 의미가 있다. COLLECTING→SYNTHESIZING 시점엔
         // 초안이 없어 null이 정상이며, 초안 단계 전이(DRAFTING→…) 구현 시 contentVersion을 채운다.
