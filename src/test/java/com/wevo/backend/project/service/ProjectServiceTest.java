@@ -64,6 +64,8 @@ class ProjectServiceTest {
     private SectionTemplateRepository sectionTemplateRepository;
     @Mock
     private InviteLinkRepository inviteLinkRepository;
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private ProjectService projectService;
@@ -127,6 +129,58 @@ class ProjectServiceTest {
         ArgumentCaptor<Project> projectCaptor = ArgumentCaptor.forClass(Project.class);
         verify(projectRepository).save(projectCaptor.capture());
         assertThat(projectCaptor.getValue().getTitle()).isEqualTo(ProjectService.DEFAULT_TITLE);
+        // 제목을 비웠으므로 AI 제목 제안 트리거 이벤트를 titleAutoAssigned=true 로 발행한다.
+        verify(eventPublisher).publishEvent(
+                new com.wevo.backend.project.domain.ProjectCreatedEvent(100L, userId, true));
+    }
+
+    @Test
+    @DisplayName("title 을 직접 넣으면 생성 이벤트를 titleAutoAssigned=false 로 발행한다 (AI 제목 제안 안 함)")
+    void create_withTitle_publishesEventWithoutAutoAssign() {
+        Long userId = 1L;
+        User owner = User.builder().name("Wevo").status(UserStatus.ACTIVE).build();
+        ReflectionTestUtils.setField(owner, "id", userId);
+        ProjectCreateRequest request = new ProjectCreateRequest(
+                "내가 정한 제목", "우리 팀 아이디어 발표를 준비합니다.", OutputType.PRESENTATION, "심사위원");
+
+        given(userRepository.findByIdForUpdate(userId)).willReturn(Optional.of(owner));
+        given(projectRepository.save(any(Project.class))).willAnswer(invocation -> {
+            Project project = invocation.getArgument(0);
+            ReflectionTestUtils.setField(project, "id", 100L);
+            return project;
+        });
+        given(sectionTemplateRepository.findByResultTypeOrderByOrderNo(OutputType.PRESENTATION))
+                .willReturn(sixTemplates());
+        given(projectSectionRepository.saveAll(anyList())).willAnswer(invocation -> invocation.getArgument(0));
+
+        projectService.create(userId, request);
+
+        verify(eventPublisher).publishEvent(
+                new com.wevo.backend.project.domain.ProjectCreatedEvent(100L, userId, false));
+    }
+
+    @Test
+    @DisplayName("AI 생성 제목은 여전히 기본값일 때만 덮어쓰고, 사용자가 바꿨거나 보관됐으면 건너뛴다")
+    void applyAiGeneratedTitle_overridesOnlyWhenStillDefault() {
+        Project stillDefault = Project.builder().title(ProjectService.DEFAULT_TITLE).build();
+        ReflectionTestUtils.setField(stillDefault, "id", 100L);
+        given(projectRepository.findByIdForUpdate(100L)).willReturn(Optional.of(stillDefault));
+        projectService.applyAiGeneratedTitle(100L, "  AI가 지은 제목  ");
+        assertThat(stillDefault.getTitle()).isEqualTo("AI가 지은 제목");
+
+        Project userRenamed = Project.builder().title("사용자가 바꾼 제목").build();
+        ReflectionTestUtils.setField(userRenamed, "id", 101L);
+        given(projectRepository.findByIdForUpdate(101L)).willReturn(Optional.of(userRenamed));
+        projectService.applyAiGeneratedTitle(101L, "AI 제목");
+        assertThat(userRenamed.getTitle()).isEqualTo("사용자가 바꾼 제목");
+
+        // 보관(삭제)된 프로젝트는 기본값이어도 건너뛴다 — 되살아난 것처럼 보이는 제목을 남기지 않는다.
+        Project archived = Project.builder().title(ProjectService.DEFAULT_TITLE)
+                .status(ProjectStatus.ARCHIVED).build();
+        ReflectionTestUtils.setField(archived, "id", 102L);
+        given(projectRepository.findByIdForUpdate(102L)).willReturn(Optional.of(archived));
+        projectService.applyAiGeneratedTitle(102L, "AI 제목");
+        assertThat(archived.getTitle()).isEqualTo(ProjectService.DEFAULT_TITLE);
     }
 
     @Test
