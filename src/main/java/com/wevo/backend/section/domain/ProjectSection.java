@@ -154,6 +154,22 @@ public class ProjectSection extends BaseTimeEntity {
     }
 
     /**
+     * 상태만 전이하고 <b>활동으로 기록하지 않는다.</b> AI가 돌린 전이(초안 생성 완료)나 상위 섹션
+     * 변경으로 인한 하위 드리프트 캐스케이드처럼 <b>사람이 이 섹션을 직접 만지지 않은</b> 전이에 쓴다.
+     * {@code lastActivityAt} 은 "사람이 마지막으로 만진 지점"이라, 이런 전이로 끌어올리면 목록의
+     * "마지막 활동 섹션"·정렬이 사용자 기대와 어긋난다. (#292)
+     *
+     * @throws BusinessException 현재 상태에서 {@code target} 으로 전이가 불가능한 경우
+     *                           ({@code INVALID_SECTION_STATUS_TRANSITION})
+     */
+    public void changeStatusWithoutActivity(ProjectSectionStatus target) {
+        if (!this.status.canTransitionTo(target)) {
+            throw new BusinessException(ErrorCode.INVALID_SECTION_STATUS_TRANSITION);
+        }
+        this.status = target;
+    }
+
+    /**
      * 상태 전이를 동반하지 않는 활동을 기록한다. (초안 저장, 의견 제출 등)
      *
      * <p>이미 더 나중 시각이 기록돼 있으면 되돌리지 않는다 — 같은 트랜잭션에서 여러 활동이
