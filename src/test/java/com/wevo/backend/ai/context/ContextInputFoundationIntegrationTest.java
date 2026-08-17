@@ -59,6 +59,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -299,6 +301,8 @@ class ContextInputFoundationIntegrationTest {
     }
 
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
     void currentSynthesisCombinesDirectAndInheritedGapAnswersOnceInStableOrder() {
         ProjectSection target = section("problem-definition");
         SynthesisSet previous = synthesisSetRepository.saveAndFlush(synthesis(target, 0, "이전 정리"));
@@ -332,6 +336,8 @@ class ContextInputFoundationIntegrationTest {
     }
 
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
     void currentSynthesisRejectsInheritedAnswerFromAnotherSection() {
         ProjectSection target = section("problem-definition");
         SynthesisSet foreignSet = synthesisSetRepository.saveAndFlush(

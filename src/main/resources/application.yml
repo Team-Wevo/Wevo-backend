@@ -83,6 +83,7 @@ wevo:
         batch-size: 100
     jobs:
       max-executions-per-key: ${AI_JOB_MAX_EXECUTIONS_PER_KEY:3}
+      application-timeout: ${AI_JOB_APPLICATION_TIMEOUT:15m}
     pricing:
       version: ${AI_PRICING_VERSION:openai-2026-07-31-standard}
       models:

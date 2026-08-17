@@ -41,23 +41,42 @@ public final class StructuredPromptFormatter {
             StructuredAiProviderRequest<?> request,
             StructuredConversionFailure previousFailure
     ) {
+        return userPrompt(request, previousFailure, null);
+    }
+
+    static String userPrompt(
+            StructuredAiProviderRequest<?> request,
+            StructuredConversionFailure previousConversionFailure,
+            StructuredOutputSemanticFailureReason previousSemanticFailure
+    ) {
         StringBuilder prompt = new StringBuilder(request.prompt().userPrompt())
                 .append("\n\n<output_contract>\n")
                 .append("Return only one complete JSON object matching this JSON Schema:\n")
                 .append(request.outputDefinition().jsonSchema())
                 .append("\n</output_contract>");
-        if (previousFailure != null) {
-            prompt.append(correctionBlock(previousFailure));
+        if (previousConversionFailure != null) {
+            prompt.append(correctionBlock(previousConversionFailure));
+        } else if (previousSemanticFailure != null) {
+            prompt.append(correctionBlock(previousSemanticFailure));
         }
         return prompt.toString();
     }
 
     private static String correctionReserve() {
-        return Arrays.stream(StructuredConversionFailure.values())
+        String conversionReserve = Arrays.stream(StructuredConversionFailure.values())
                 .map(StructuredPromptFormatter::correctionBlock)
                 .max(java.util.Comparator.comparingInt(
                         value -> value.getBytes(StandardCharsets.UTF_8).length))
                 .orElseThrow();
+        String semanticReserve = Arrays.stream(StructuredOutputSemanticFailureReason.values())
+                .map(StructuredPromptFormatter::correctionBlock)
+                .max(java.util.Comparator.comparingInt(
+                        value -> value.getBytes(StandardCharsets.UTF_8).length))
+                .orElseThrow();
+        return conversionReserve.getBytes(StandardCharsets.UTF_8).length
+                >= semanticReserve.getBytes(StandardCharsets.UTF_8).length
+                ? conversionReserve
+                : semanticReserve;
     }
 
     private static String correctionBlock(StructuredConversionFailure failure) {
@@ -70,6 +89,15 @@ public final class StructuredPromptFormatter {
         return "\n\n<output_correction>\n"
                 + reason
                 + " Return a corrected JSON object only."
+                + "\n</output_correction>";
+    }
+
+    private static String correctionBlock(StructuredOutputSemanticFailureReason failure) {
+        return "\n\n<output_correction>\n"
+                + "The previous output failed semantic validation ("
+                + failure.name()
+                + "). Re-check references, uniqueness, collection limits, and coverage against "
+                + "the provided input. Return a corrected JSON object only."
                 + "\n</output_correction>";
     }
 }
