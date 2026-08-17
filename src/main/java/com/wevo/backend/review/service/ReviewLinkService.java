@@ -26,11 +26,10 @@ import com.wevo.backend.user.repository.UserRepository;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * 외부 검토 링크(보조 검토) 관련 로직. (제품 정책서 §1.3, §6.2)
@@ -72,7 +71,6 @@ import org.slf4j.LoggerFactory;
 @Transactional(readOnly = true)
 public class ReviewLinkService {
 
-    private static final Logger log = LoggerFactory.getLogger(ReviewLinkService.class);
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final SectionAccessGuard sectionAccessGuard;
@@ -83,7 +81,7 @@ public class ReviewLinkService {
     private final UserRepository userRepository;
     private final TokenHasher tokenHasher;
     private final SectionAuthorIntentQueryService authorIntentQueryService;
-    private final ReviewIntentComparisonCoordinator comparisonCoordinator;
+    private final ApplicationEventPublisher eventPublisher;
     private final PublicSubmissionRateLimiter rateLimiter;
 
     public ReviewLinkService(SectionAccessGuard sectionAccessGuard,
@@ -94,7 +92,7 @@ public class ReviewLinkService {
                              UserRepository userRepository,
                              TokenHasher tokenHasher,
                              SectionAuthorIntentQueryService authorIntentQueryService,
-                             ReviewIntentComparisonCoordinator comparisonCoordinator,
+                             ApplicationEventPublisher eventPublisher,
                              PublicSubmissionRateLimiter rateLimiter) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.projectAccessGuard = projectAccessGuard;
@@ -104,7 +102,7 @@ public class ReviewLinkService {
         this.userRepository = userRepository;
         this.tokenHasher = tokenHasher;
         this.authorIntentQueryService = authorIntentQueryService;
-        this.comparisonCoordinator = comparisonCoordinator;
+        this.eventPublisher = eventPublisher;
         this.rateLimiter = rateLimiter;
     }
 
@@ -225,6 +223,13 @@ public class ReviewLinkService {
      *
      * <p>카운터 키는 토큰이나 그 해시가 아니라 <b>링크 ID</b>다 — 링크를 열 수 있는 값에서 파생된
      * 무엇도 카운터 저장소에 남기지 않고, 이미 조회한 행의 식별자를 그대로 쓴다.
+     *
+     * <p><b>부가 작업은 커밋 이후로 미룬다</b> — 의도 비교(REV-04) 준비는 이 트랜잭션에서 하지 않고
+     * {@link ExternalReviewSubmittedEvent} 로 넘겨 커밋 뒤에 별도 트랜잭션으로 실행한다
+     * ({@link ExternalReviewSubmittedEventListener}). 같은 트랜잭션에서 준비하면 그 실패가
+     * 트랜잭션을 rollback-only 로 표시해, 여기서 예외를 잡아도 커밋 시점에 <b>제출까지 함께</b>
+     * 롤백된다. 공개 제출은 검토자에게 다시 요청할 수 없는 1회성 입력이라 이 되돌림을 허용하지
+     * 않는다. 대신 비교 준비는 커밋 직후에 실행되며, 실패하면 비교만 생기지 않는다.
      */
     @Transactional
     public ReviewSubmissionResponse submitExternalReview(String token, String anonymousReviewerId,
@@ -255,14 +260,8 @@ public class ReviewLinkService {
             throw new BusinessException(ErrorCode.REVIEW_ALREADY_SUBMITTED);
         }
 
-        try {
-            comparisonCoordinator.prepare(submission);
-        } catch (RuntimeException exception) {
-            // 비교 준비 실패가 정상 저장된 공개 제출을 롤백하지 않도록 마지막 방어선으로 격리한다.
-            // 원문·summary가 예외 메시지에 섞일 수 있으므로 타입만 기록한다.
-            log.warn("검토 의도 비교 준비 실패 submissionId={}, exceptionType={}",
-                    submission.getId(), exception.getClass().getSimpleName());
-        }
+        // 비교 준비는 이 트랜잭션이 커밋된 뒤에 실행된다 — 제출은 여기서 이미 끝난다.
+        eventPublisher.publishEvent(new ExternalReviewSubmittedEvent(submission.getId()));
 
         return ReviewSubmissionResponse.from(submission);
     }

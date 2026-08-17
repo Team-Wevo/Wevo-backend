@@ -19,6 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -46,7 +47,7 @@ class ReviewLinkSubmissionOrderTest {
     @Mock private UserRepository userRepository;
     @Mock private TokenHasher tokenHasher;
     @Mock private SectionAuthorIntentQueryService authorIntentQueryService;
-    @Mock private ReviewIntentComparisonCoordinator comparisonCoordinator;
+    @Mock private ApplicationEventPublisher eventPublisher;
     @Mock private PublicSubmissionRateLimiter rateLimiter;
 
     @InjectMocks
