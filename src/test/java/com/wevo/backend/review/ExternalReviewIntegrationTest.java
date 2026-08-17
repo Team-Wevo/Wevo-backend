@@ -22,12 +22,10 @@ import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.review.domain.ReviewLinkStatus;
 import com.wevo.backend.review.domain.ReviewSubmission;
 import com.wevo.backend.review.domain.ReviewIntentComparison;
-import com.wevo.backend.review.domain.ReviewIntentComparisonStatus;
 import com.wevo.backend.review.domain.UnderstandingSignal;
 import com.wevo.backend.review.repository.ReviewSubmissionRepository;
 import com.wevo.backend.review.domain.ReviewLink;
 import com.wevo.backend.review.repository.ReviewLinkRepository;
-import com.wevo.backend.review.repository.ReviewIntentComparisonRepository;
 import com.wevo.backend.review.service.ReviewLinkService;
 import com.wevo.backend.global.security.TokenHasher;
 import com.wevo.backend.section.domain.ProjectSection;
@@ -57,6 +55,11 @@ import org.springframework.transaction.annotation.Transactional;
  * 외부 검토 링크 전 경로(발급 → 열람 → 제출)를 실제 PostgreSQL 컨텍스트로 실행 검증한다.
  *
  * <p>프로젝트/섹션/멤버 생성 API가 아직 없어 EntityManager 로 직접 시드한다.
+ *
+ * <p><b>커밋 이후 작업은 여기서 실행되지 않는다</b> — 이 테스트는 {@code @Transactional} 로
+ * 롤백되므로 제출 트랜잭션이 커밋되지 않고, 커밋 이후에 도는 의도 비교 준비
+ * ({@code ExternalReviewSubmittedEventListener})도 돌지 않는다. 비교 상태가 실제로 저장되는지는
+ * 커밋까지 진행하는 {@code ExternalReviewComparisonPreparationIntegrationTest} 가 검증한다.
  */
 @SpringBootTest(properties = {
         "spring.flyway.enabled=true",
@@ -71,6 +74,8 @@ class ExternalReviewIntegrationTest {
 
     private static final String DRAFT_CONTENT = "우리가 해결하려는 문제는 정보가 흩어져 있다는 점이다.";
     private static final String REVIEWER_ID_HEADER = "X-Anonymous-Reviewer-Id";
+    /** 비교 행을 직접 시드할 때 쓰는 형식만 맞춘 SHA-256 자리 값. */
+    private static final String HASH = "a".repeat(64);
     /** 유효 기간 판정 기준 시간대 — 서비스와 같은 KST 로 맞춘다. (CLAUDE.md §5.4) */
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
@@ -94,8 +99,6 @@ class ExternalReviewIntegrationTest {
     private ReviewLinkRepository reviewLinkRepository;
     @Autowired
     private ReviewLinkService reviewLinkService;
-    @Autowired
-    private ReviewIntentComparisonRepository comparisonRepository;
     @Autowired
     private TokenHasher tokenHasher;
 
@@ -321,7 +324,9 @@ class ExternalReviewIntegrationTest {
                 .andExpect(jsonPath("$.data.items[0].summary").exists())
                 .andExpect(jsonPath("$.data.items[0].authorIntent")
                         .value("정보가 흩어진 문제를 해결하는 것이 핵심이다."))
-                .andExpect(jsonPath("$.data.items[0].comparison.status").value("PENDING"));
+                // 비교는 제출 커밋 이후에 준비되므로(롤백되는 이 테스트에서는 미실행) 아직 행이 없다.
+                // 행이 없어도 status 는 항상 실려야 FE 가 분기할 수 있다.
+                .andExpect(jsonPath("$.data.items[0].comparison.status").value("NOT_AVAILABLE"));
     }
 
     @Test
@@ -759,7 +764,7 @@ class ExternalReviewIntegrationTest {
     }
 
     @Test
-    @DisplayName("이해 어려움은 summary 없이 제출할 수 있고 비교는 NOT_AVAILABLE 로 남는다")
+    @DisplayName("이해 어려움은 summary 없이 제출할 수 있다")
     void summaryStaysOptionalForUnclearSignal() throws Exception {
         User owner = persistUser("owner-unclear-summary@wevo.com", "팀장");
         ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
@@ -767,37 +772,30 @@ class ExternalReviewIntegrationTest {
         em.flush();
         String token = issueLink(section.getId(), owner);
 
-        // "이해하지 못했다"는 답 자체가 신호라 문장을 강제하지 않는다. 대신 대조할 이해가 없으므로
-        // 의도 vs 이해 비교(REV-04)는 성립하지 않는다.
+        // "이해하지 못했다"는 답 자체가 신호라 문장을 강제하지 않는다. 대조할 이해가 없어 의도 vs
+        // 이해 비교(REV-04)가 성립하지 않는 것은 커밋 이후 준비 단계에서 NOT_AVAILABLE 로 남는다
+        // (ExternalReviewComparisonPreparationIntegrationTest).
         submitWithoutSummary(token, "UNCLEAR", "browser-unclear")
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.understandingSignal").value("UNCLEAR"));
-
-        assertThat(comparisonRepository.findAll())
-                .hasSize(1)
-                .allMatch(comparison -> comparison.getStatus()
-                        == ReviewIntentComparisonStatus.NOT_AVAILABLE);
     }
 
     @Test
-    @DisplayName("의도와 summary가 있는 제출은 공개 응답을 기다리게 하지 않고 PENDING 비교를 저장한다")
-    void comparableSubmissionIsSavedAsPendingWithoutPublicAiDetails() throws Exception {
+    @DisplayName("의도와 summary가 있어도 공개 응답에는 AI 비교 상세를 싣지 않는다")
+    void comparableSubmissionDoesNotExposeAiDetailsInPublicResponse() throws Exception {
         User owner = persistUser("owner-pending@wevo.com", "팀장");
         ProjectSection section = persistSectionWithDraft(persistProject(owner), owner);
         persistMember(section.getProject(), owner, ProjectMemberRole.OWNER);
         em.flush();
         String token = issueLink(section.getId(), owner);
 
+        // 검토자는 AI 결과를 기다리지 않는다 — 비교는 커밋 이후에 준비되고, 결과는 팀장 화면에만
+        // 노출된다. (PENDING 저장 검증은 ExternalReviewComparisonPreparationIntegrationTest)
         submitAsReviewer(token, "PARTIAL", "browser-pending")
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.requestId").doesNotExist())
                 .andExpect(jsonPath("$.data.authorIntent").doesNotExist())
                 .andExpect(jsonPath("$.data.comparison").doesNotExist());
-
-        ReviewIntentComparison comparison = comparisonRepository.findAll().get(0);
-        assertThat(comparison.getStatus()).isEqualTo(ReviewIntentComparisonStatus.PENDING);
-        assertThat(comparison.getIntentSnapshotHash()).matches("[0-9a-f]{64}");
-        assertThat(comparison.getReviewerSummaryHash()).matches("[0-9a-f]{64}");
     }
 
     @Test
@@ -827,15 +825,16 @@ class ExternalReviewIntegrationTest {
         submitAsReviewer(token, "PARTIAL", "browser-unique-comparison")
                 .andExpect(status().isCreated());
 
-        ReviewIntentComparison saved = comparisonRepository.findAll().get(0);
+        // 준비는 커밋 이후라 이 트랜잭션에는 비교가 없다 — 제출 1건당 비교 1건이라는 불변식이
+        // 애플리케이션 검사가 아니라 DB 제약으로 지켜지는지 보는 테스트이므로 직접 시드한다.
+        ReviewSubmission submission = reviewSubmissionRepository.findAll().get(0);
+        em.persist(ReviewIntentComparison.pending(
+                submission, HASH, HASH, "prompt-v1", "schema-v1", "test-model"));
+        em.flush();
+
         assertThatThrownBy(() -> {
             em.persist(ReviewIntentComparison.pending(
-                    saved.getReviewSubmission(),
-                    saved.getIntentSnapshotHash(),
-                    saved.getReviewerSummaryHash(),
-                    saved.getPromptVersion(),
-                    saved.getSchemaVersion(),
-                    saved.getModelId()));
+                    submission, HASH, HASH, "prompt-v1", "schema-v1", "test-model"));
             em.flush();
         })
                 .isInstanceOf(org.hibernate.exception.ConstraintViolationException.class);

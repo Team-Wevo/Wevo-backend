@@ -222,6 +222,15 @@ public class AiJobService {
         guardrailLifecycleService.reconcileQuietly(requestId);
     }
 
+    public boolean recoverIfApplicationTimedOut(UUID requestId, LocalDateTime threshold) {
+        Objects.requireNonNull(threshold, "threshold는 필수입니다.");
+        boolean recovered = persistenceService.failIfApplicationTimedOut(requestId, threshold, now());
+        if (recovered) {
+            guardrailLifecycleService.reconcileQuietly(requestId);
+        }
+        return recovered;
+    }
+
     /**
      * heartbeat가 끊긴 RUNNING 작업을 <b>실패 직전에 조건을 원자적으로 재확인</b>하고 회수한다.
      * 조회 이후 heartbeat가 갱신된 살아 있는 작업은 회수하지 않는다(오회수 방지 — 결과·비용 유실 방지).

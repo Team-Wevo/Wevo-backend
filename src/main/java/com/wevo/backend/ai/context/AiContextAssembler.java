@@ -449,6 +449,25 @@ public class AiContextAssembler {
         }
     }
 
+    /**
+     * 프로젝트 제목 자동 생성 입력을 조립한다. 섹션이 없는 프로젝트 단위 기능이라 생성 시 입력한
+     * 아이디어·결과물 유형·전달 대상만 담는다. (개인 식별정보 제외 — §7)
+     */
+    public AssembledAiContext<ProjectTitleContext> assembleProjectTitle(VerifiedProjectAccess access) {
+        if (access == null) {
+            throw new IllegalArgumentException("프로젝트 접근 검증 결과는 필수입니다.");
+        }
+        return safely(() -> {
+            ProjectAiContext project = projectQueryService.getProjectContext(access);
+            ProjectTitleContext context = new ProjectTitleContext(
+                    project.projectId(),
+                    project.ideaText(),
+                    project.outputType() == null ? null : project.outputType().name(),
+                    project.audience());
+            return assembled(context);
+        });
+    }
+
     private <T extends AiFeatureContext> AssembledAiContext<T> assembled(T context) {
         return new AssembledAiContext<>(
                 context,

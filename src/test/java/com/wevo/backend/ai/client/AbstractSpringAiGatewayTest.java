@@ -28,6 +28,7 @@ import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -190,12 +191,12 @@ class AbstractSpringAiGatewayTest {
     }
 
     @Test
-    void prefersProviderRetryAfterWithinConfiguredBound() {
+    void honorsProviderRetryAfterBeyondBackoffMaximumWithinTimeoutCeiling() {
         AtomicInteger attempts = new AtomicInteger();
         AtomicReference<Duration> slept = new AtomicReference<>();
         ChatModel model = prompt -> {
             if (attempts.incrementAndGet() == 1) {
-                throw new TestServiceException(429, "2");
+                throw new TestServiceException(429, "30");
             }
             return response("recovered");
         };
@@ -206,12 +207,68 @@ class AbstractSpringAiGatewayTest {
             }
         };
         AbstractSpringAiGateway gateway = gateway(
-                model, Duration.ofSeconds(1), 1, 2, sleeper
+                model, Duration.ofSeconds(60), 1, 2, sleeper
         );
 
         gateway.generate(new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", "user"));
 
-        assertThat(slept.get()).isEqualTo(Duration.ofSeconds(2));
+        assertThat(slept.get()).isEqualTo(Duration.ofSeconds(30));
+    }
+
+    @Test
+    void capsProviderRetryAfterAtCallTimeout() {
+        AtomicInteger attempts = new AtomicInteger();
+        AtomicReference<Duration> slept = new AtomicReference<>();
+        ChatModel model = prompt -> {
+            if (attempts.incrementAndGet() == 1) {
+                throw new TestServiceException(429, "3600");
+            }
+            return response("recovered");
+        };
+        AiRetrySleeper sleeper = new AiRetrySleeper() {
+            @Override
+            public void sleep(Duration duration) {
+                slept.set(duration);
+            }
+        };
+        AbstractSpringAiGateway gateway = gateway(
+                model, Duration.ofSeconds(60), 1, 2, sleeper
+        );
+
+        gateway.generate(new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", "user"));
+
+        assertThat(slept.get()).isEqualTo(Duration.ofSeconds(60));
+    }
+
+    @Test
+    void capsOnlyExponentialBackoffAtConfiguredMaximum() {
+        AtomicInteger attempts = new AtomicInteger();
+        List<Duration> sleeps = new ArrayList<>();
+        ChatModel model = prompt -> {
+            if (attempts.incrementAndGet() <= 2) {
+                throw new TestServiceException(408);
+            }
+            return response("recovered");
+        };
+        AiRetrySleeper sleeper = new AiRetrySleeper() {
+            @Override
+            public void sleep(Duration duration) {
+                sleeps.add(duration);
+            }
+        };
+        AbstractSpringAiGateway gateway = gateway(
+                model,
+                Duration.ofSeconds(1),
+                2,
+                2,
+                100_000,
+                sleeper,
+                Duration.ofSeconds(5),
+                Duration.ofSeconds(8));
+
+        gateway.generate(new AiProviderRequest(AiFeature.DRAFT_REVIEW, "system", "user"));
+
+        assertThat(sleeps).containsExactly(Duration.ofSeconds(5), Duration.ofSeconds(8));
     }
 
     @Test
@@ -330,7 +387,7 @@ class AbstractSpringAiGatewayTest {
     }
 
     @Test
-    void classifiesFinalStructuredFailuresAndDoesNotRetrySemanticFailure() {
+    void classifiesFinalStructuredFailuresAfterCorrectionRetries() {
         AbstractSpringAiGateway malformedGateway = gateway(
                 prompt -> response("not-json"), Duration.ofSeconds(1), 0, 0
         );
@@ -359,7 +416,31 @@ class AbstractSpringAiGatewayTest {
                 structuredRequest(Set.of(8L)),
                 ErrorCode.AI_STRUCTURED_OUTPUT_SEMANTIC_VALIDATION_FAILED
         );
-        assertThat(semanticCalls).hasValue(1);
+        assertThat(semanticCalls).hasValue(3);
+    }
+
+    @Test
+    void semanticFailureUsesSafeReasonForCorrectionAndCanRecover() {
+        AtomicInteger calls = new AtomicInteger();
+        AtomicReference<Prompt> correctionPrompt = new AtomicReference<>();
+        AbstractSpringAiGateway gateway = gateway(prompt -> {
+            if (calls.incrementAndGet() == 1) {
+                return response("{\"resourceId\":7,\"signal\":\"CLEAR\"}");
+            }
+            correctionPrompt.set(prompt);
+            return response("{\"resourceId\":8,\"signal\":\"CLEAR\"}");
+        }, Duration.ofSeconds(1), 0, 2);
+        StructuredAiProviderRequest<TestOutput> request = semanticReasonRequest(
+                Set.of(8L), 7L);
+
+        StructuredAiProviderResponse<TestOutput> response = gateway.generateStructured(request);
+
+        assertThat(calls).hasValue(2);
+        assertThat(response.result()).isEqualTo(new TestOutput(8L, TestSignal.CLEAR));
+        assertThat(response.correctionRetryCount()).isEqualTo(1);
+        assertThat(correctionPrompt.get().getInstructions().get(1).getText())
+                .contains("REFERENCE_NOT_ALLOWED")
+                .doesNotContain("resourceId=7", "offendingResourceId", "field=resourceId");
     }
 
     @Test
@@ -471,6 +552,27 @@ class AbstractSpringAiGatewayTest {
             int maxInputTokens,
             AiRetrySleeper retrySleeper
     ) {
+        return gateway(
+                chatModel,
+                timeout,
+                maxTransportRetries,
+                maxCorrectionRetries,
+                maxInputTokens,
+                retrySleeper,
+                Duration.ZERO,
+                Duration.ofSeconds(8));
+    }
+
+    private AbstractSpringAiGateway gateway(
+            ChatModel chatModel,
+            Duration timeout,
+            int maxTransportRetries,
+            int maxCorrectionRetries,
+            int maxInputTokens,
+            AiRetrySleeper retrySleeper,
+            Duration initialBackoff,
+            Duration maxBackoff
+    ) {
         AiProperties properties = new AiProperties(
                 "none",
                 new AiProperties.ModelOptions(
@@ -483,8 +585,8 @@ class AbstractSpringAiGatewayTest {
                         AiProperties.ModelOptions.CONSERVATIVE_CHAR_V1,
                         AiProperties.ModelOptions.REJECT_OVERSIZED_INPUT_V1,
                         maxTransportRetries,
-                        Duration.ZERO,
-                        Duration.ofSeconds(8)
+                        initialBackoff,
+                        maxBackoff
                 ),
                 Map.of(),
                 new AiProperties.StructuredOutputOptions(maxCorrectionRetries)
@@ -534,6 +636,35 @@ class AbstractSpringAiGatewayTest {
         StructuredOutputValidator<TestOutput> validator = (value, context) -> {
             if (!context.allowedResourceIds().contains(value.resourceId())) {
                 throw new StructuredOutputSemanticException();
+            }
+        };
+        return new StructuredAiProviderRequest<>(
+                AiFeature.DRAFT_REVIEW,
+                new RenderedPrompt(
+                        new PromptTemplateId("contract-summary", 1),
+                        "system",
+                        "user"
+                ),
+                StructuredOutputDefinition.of(
+                        new OutputSchemaId("test-output", 1),
+                        TestOutput.class,
+                        validator
+                ),
+                new StructuredOutputValidationContext(allowedResourceIds)
+        );
+    }
+
+    private StructuredAiProviderRequest<TestOutput> semanticReasonRequest(
+            Set<Long> allowedResourceIds,
+            long offendingResourceId
+    ) {
+        StructuredOutputValidator<TestOutput> validator = (value, context) -> {
+            if (!context.allowedResourceIds().contains(value.resourceId())) {
+                throw new StructuredOutputSemanticException(
+                        StructuredOutputSemanticFailureReason.REFERENCE_NOT_ALLOWED,
+                        "resourceId",
+                        offendingResourceId
+                );
             }
         };
         return new StructuredAiProviderRequest<>(

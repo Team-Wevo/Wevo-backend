@@ -3,6 +3,7 @@ package com.wevo.backend.ai.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.wevo.backend.ai.domain.AiFeature;
+import com.wevo.backend.ai.domain.AiErrorType;
 import com.wevo.backend.ai.domain.AiJob;
 import com.wevo.backend.ai.domain.AiJobStatus;
 import com.wevo.backend.ai.repository.AiJobRepository;
@@ -99,5 +100,30 @@ class AiJobHeartbeatRecoveryIntegrationTest {
         assertThat(recovered).isFalse();
         assertThat(aiJobRepository.findByRequestId(requestId)).get()
                 .satisfies(job -> assertThat(job.getStatus()).isEqualTo(AiJobStatus.RUNNING));
+    }
+
+    @Test
+    @DisplayName("heartbeat가 최신이어도 startedAt이 application threshold보다 오래되면 회수한다")
+    void recoversApplicationTimeoutDespiteFreshHeartbeat() {
+        aiJobService.heartbeat(requestId);
+
+        boolean recovered = aiJobService.recoverIfApplicationTimedOut(requestId, THRESHOLD);
+
+        assertThat(recovered).isTrue();
+        assertThat(aiJobRepository.findByRequestId(requestId)).get()
+                .satisfies(job -> {
+                    assertThat(job.getStatus()).isEqualTo(AiJobStatus.FAILED);
+                    assertThat(job.getFinalErrorType()).isEqualTo(AiErrorType.APPLICATION_TIMEOUT);
+                });
+    }
+
+    @Test
+    @DisplayName("조회 뒤 작업이 terminal이 되면 application timeout 재확인은 건너뛴다")
+    void applicationTimeoutRecheckSkipsTerminalJob() {
+        aiJobService.markApplicationTimedOut(requestId);
+
+        boolean recovered = aiJobService.recoverIfApplicationTimedOut(requestId, THRESHOLD);
+
+        assertThat(recovered).isFalse();
     }
 }

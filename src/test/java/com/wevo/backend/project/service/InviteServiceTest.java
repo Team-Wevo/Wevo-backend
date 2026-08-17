@@ -297,6 +297,28 @@ class InviteServiceTest {
     }
 
     @Test
+    @DisplayName("탈퇴한 계정은 초대 링크로 참여할 수 없다 — USER_NOT_FOUND (탈퇴 창 방어)")
+    void joinByToken_withdrawnUser_throwsUserNotFound() {
+        // 탈퇴 직후 30분간 살아 있는 Access Token 으로 join 이 들어오는 경로. 막지 않으면 WITHDRAWN
+        // 계정에 dangling MEMBER 행이 생긴다. (#291)
+        Project project = project();
+        User withdrawn = user(JOINER_ID, "탈퇴자");
+        withdrawn.withdraw();
+        given(inviteLinkRepository.findActiveWithProjectByTokenHash(tokenHasher.hash(TOKEN)))
+                .willReturn(Optional.of(InviteLink.issue(project, user(OWNER_ID, "팀장"), tokenHasher.hash(TOKEN))));
+        given(projectRepository.findByIdForUpdate(PROJECT_ID)).willReturn(Optional.of(project));
+        given(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, JOINER_ID)).willReturn(Optional.empty());
+        given(projectMemberRepository.countActiveByProjectId(PROJECT_ID)).willReturn(2L);
+        given(userRepository.findById(JOINER_ID)).willReturn(Optional.of(withdrawn));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> inviteService.joinByToken(JOINER_ID, TOKEN));
+
+        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.USER_NOT_FOUND);
+        verify(projectMemberRepository, never()).save(any(ProjectMember.class));
+    }
+
+    @Test
     @DisplayName("무효/비활성 토큰으로 참여하면 INVITE_LINK_NOT_FOUND")
     void joinByToken_invalidToken_throws() {
         given(inviteLinkRepository.findActiveWithProjectByTokenHash(tokenHasher.hash("bad"))).willReturn(Optional.empty());

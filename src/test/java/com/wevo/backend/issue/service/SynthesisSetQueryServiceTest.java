@@ -25,6 +25,7 @@ import com.wevo.backend.issue.repository.SynthesisConsensusEvidenceRepository;
 import com.wevo.backend.issue.repository.SynthesisInheritedGapAnswerRepository;
 import com.wevo.backend.issue.repository.SynthesisSetRepository;
 import com.wevo.backend.project.service.VerifiedSectionAccess;
+import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -34,6 +35,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 @ExtendWith(MockitoExtension.class)
 class SynthesisSetQueryServiceTest {
@@ -177,6 +181,24 @@ class SynthesisSetQueryServiceTest {
                 .satisfies(item -> assertThat(item.opinionId()).isEqualTo(51L));
         verify(issueRelatedOpinionRepository, times(1))
                 .findAllWithIssueBySynthesisSetId(SET_ID);
+    }
+
+    @Test
+    @DisplayName("AI current set 다중 조회는 독립 REPEATABLE_READ 트랜잭션을 강제한다")
+    void currentSetAssembliesDeclareIndependentRepeatableReadTransaction()
+            throws NoSuchMethodException {
+        for (String methodName : List.of(
+                "getCurrentForAiContext",
+                "getCurrentForDraftGeneration")) {
+            Method method = SynthesisSetQueryService.class
+                    .getMethod(methodName, VerifiedSectionAccess.class);
+            Transactional transactional = method.getAnnotation(Transactional.class);
+
+            assertThat(transactional).isNotNull();
+            assertThat(transactional.readOnly()).isTrue();
+            assertThat(transactional.isolation()).isEqualTo(Isolation.REPEATABLE_READ);
+            assertThat(transactional.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
+        }
     }
 
     private void givenCurrentSet() {

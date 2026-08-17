@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * AI 작업의 <b>DB 기반 실행 드라이버</b>. 실행 가능한(핸들러 등록된) 기능의 QUEUED 작업을 가용 실행
- * 슬롯만큼 뽑아 실행하고, heartbeat가 끊긴 RUNNING 작업을 회수한다.
+ * 슬롯만큼 뽑아 실행하고, heartbeat가 끊기거나 application timeout을 넘긴 RUNNING 작업을 회수한다.
  *
  * <p>인메모리 제출에 의존하지 않으므로 프로세스 종료·재배포·인스턴스 재시작에도 QUEUED 작업이
  * 유실되지 않는다. 작업 claim은 {@link AiJobService#start}의 원자적 전이가 담당하므로 여러 인스턴스가
@@ -90,6 +90,24 @@ public class AiJobDispatchScheduler {
                 }
             } catch (RuntimeException exception) {
                 log.warn("RUNNING AI 작업 회수 실패·건너뜀. requestId={}, exceptionType={}",
+                        requestId, exception.getClass().getSimpleName());
+            }
+        }
+        LocalDateTime applicationThreshold =
+                LocalDateTime.now(clock).minus(properties.applicationTimeout());
+        for (UUID requestId : aiJobService.findApplicationTimedOutRequestIds(applicationThreshold)) {
+            try {
+                boolean recovered =
+                        aiJobService.recoverIfApplicationTimedOut(requestId, applicationThreshold);
+                if (recovered) {
+                    log.warn("RUNNING AI 작업 application timeout 회수 requestId={} "
+                                    + "threshold={} applicationTimeoutMs={}",
+                            requestId, applicationThreshold,
+                            properties.applicationTimeout().toMillis());
+                }
+            } catch (RuntimeException exception) {
+                log.warn("RUNNING AI 작업 application timeout 회수 실패·건너뜀. "
+                                + "requestId={}, exceptionType={}",
                         requestId, exception.getClass().getSimpleName());
             }
         }

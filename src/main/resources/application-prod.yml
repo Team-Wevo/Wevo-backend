@@ -55,7 +55,7 @@ wevo:
         issue-detection:
           per-minute: ${AI_QUOTA_ISSUE_DETECTION_PER_MINUTE:200}
           per-day: ${AI_QUOTA_ISSUE_DETECTION_PER_DAY:100000}
-          max-provider-requests: ${AI_ISSUE_DETECTION_MAX_PROVIDER_REQUESTS:10}
+          max-provider-requests: ${AI_ISSUE_DETECTION_MAX_PROVIDER_REQUESTS:11}
         opinion-synthesis:
           per-minute: ${AI_QUOTA_OPINION_SYNTHESIS_PER_MINUTE:200}
           per-day: ${AI_QUOTA_OPINION_SYNTHESIS_PER_DAY:100000}

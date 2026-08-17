@@ -7,6 +7,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -83,6 +84,10 @@ public class GoogleOAuthClient implements OAuthClient {
                 throw new BusinessException(ErrorCode.OAUTH_PROVIDER_ERROR);
             }
             return (String) response.get("access_token");
+        } catch (HttpClientErrorException e) {
+            // 제공자가 4xx(예: 만료·재사용된 code 의 400 invalid_grant)를 준 것 = 클라이언트 오류.
+            // 제공자 장애(5xx)·타임아웃·연결오류와 구분해 4xx 로 내린다. (모니터링 500 노이즈·FE 오분기 방지)
+            throw new BusinessException(ErrorCode.OAUTH_INVALID_AUTHORIZATION_CODE);
         } catch (RestClientException e) {
             throw new BusinessException(ErrorCode.OAUTH_PROVIDER_ERROR);
         }
