@@ -69,17 +69,33 @@ class OpinionContentGuardrailServiceTest {
     }
 
     @Test
-    @DisplayName("거부 판정이면 OPINION_CONTENT_REJECTED 로 제출을 막는다")
-    void unacceptableVerdict_rejects() {
+    @DisplayName("GIBBERISH 거부 판정이면 O005 + content 필드에 사유(GIBBERISH)를 담아 막는다")
+    void unacceptableVerdict_gibberish_rejects() {
+        assertRejectedWithReason("GIBBERISH");
+    }
+
+    @Test
+    @DisplayName("OFF_TOPIC 거부 판정이면 O005 + content 필드에 사유(OFF_TOPIC)를 담아 막는다")
+    void unacceptableVerdict_offTopic_rejects() {
+        assertRejectedWithReason("OFF_TOPIC");
+    }
+
+    private void assertRejectedWithReason(String reason) {
         given(classifierProvider.getIfAvailable()).willReturn(classifier);
         given(userService.getUserReference(USER_ID)).willReturn(userRef());
         given(classifier.classify(any(), any(), any(), any()))
-                .willReturn(new OpinionGuardrailVerdict(false, "GIBBERISH"));
+                .willReturn(new OpinionGuardrailVerdict(false, reason));
 
         BusinessException ex = (BusinessException) org.junit.jupiter.api.Assertions.assertThrows(
                 BusinessException.class,
                 () -> guardrailService.requireAcceptable(section(), USER_ID, CONTENT));
+
         assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.OPINION_CONTENT_REJECTED);
+        // 거부 사유는 content 필드에 사유 코드로 담겨 내려간다. (§5.4 field·reason 계약)
+        assertThat(ex.getErrors()).singleElement().satisfies(error -> {
+            assertThat(error.getField()).isEqualTo("content");
+            assertThat(error.getReason()).isEqualTo(reason);
+        });
     }
 
     @Test

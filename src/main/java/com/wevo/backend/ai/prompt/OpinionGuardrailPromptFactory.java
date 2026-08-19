@@ -48,8 +48,8 @@ public class OpinionGuardrailPromptFactory {
         }
         RenderedPrompt prompt = promptRenderer.render(
                 promptRegistry.get(PROMPT_ID, promptVersion),
-                Map.of("guardrailInput", serialize(new PromptPayload(
-                        context.sectionTitle(), context.sectionGuide(), context.content()))));
+                Map.of("guardrailInput", xmlEscape(serialize(new PromptPayload(
+                        context.sectionTitle(), context.sectionGuide(), context.content())))));
         return new StructuredAiProviderRequest<>(
                 AiFeature.OPINION_CONTENT_GUARDRAIL,
                 prompt,
@@ -61,6 +61,18 @@ public class OpinionGuardrailPromptFactory {
         return new String(
                 snapshotHasher.canonicalSnapshot(value).canonicalBytes(),
                 StandardCharsets.UTF_8);
+    }
+
+    /**
+     * {@code <data>} 경계 안에 들어가는 값의 XML 특수문자를 이스케이프한다. 사용자 입력(content 등)에
+     * {@code </data>}가 있으면 신뢰 불가 데이터 경계가 끊겨 프롬프트 인젝션이 가능하므로,
+     * {@code &}·{@code <}·{@code >}를 엔티티로 치환해 경계를 종료할 수 없게 한다.
+     */
+    private static String xmlEscape(String value) {
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
     }
 
     /**
