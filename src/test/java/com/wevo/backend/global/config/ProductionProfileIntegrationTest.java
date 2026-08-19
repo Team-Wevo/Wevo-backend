@@ -1,6 +1,9 @@
 package com.wevo.backend.global.config;
 
+import com.wevo.backend.ai.config.AiGuardrailProperties;
+import com.wevo.backend.ai.domain.AiFeature;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalManagementPort;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -12,6 +15,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Arrays;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -37,6 +41,8 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "app.invite.token-secret=test-invite-token-secret-that-is-long-enough-000000",
                 // 운영 프로파일은 누락을 허용하지 않는다. 이 테스트는 의도적 AI 비활성 상태다.
                 "wevo.ai.provider=none",
+                // provider가 꺼져 있어도 운영 quota 설정 자체는 모든 AiFeature를 포함해야 한다.
+                "wevo.ai.guardrails.enabled=true",
                 "wevo.ai.audit.recovery-enabled=false"
         })
 class ProductionProfileIntegrationTest {
@@ -50,6 +56,17 @@ class ProductionProfileIntegrationTest {
 
     @LocalManagementPort
     private int managementPort;
+
+    @Autowired
+    private AiGuardrailProperties guardrailProperties;
+
+    @Test
+    void productionProfileDefinesGuardrailsForEveryAiFeature() {
+        assertThat(guardrailProperties.features())
+                .containsOnlyKeys(Arrays.stream(AiFeature.values())
+                        .map(AiFeature::configKey)
+                        .toArray(String[]::new));
+    }
 
     @Test
     void productionProfileDisablesOpenApiDocuments() throws Exception {

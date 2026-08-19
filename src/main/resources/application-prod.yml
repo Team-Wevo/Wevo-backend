@@ -84,6 +84,10 @@ wevo:
           per-minute: ${AI_QUOTA_PROJECT_FLOW_REVIEW_PER_MINUTE:200}
           per-day: ${AI_QUOTA_PROJECT_FLOW_REVIEW_PER_DAY:100000}
           max-provider-requests: ${AI_PROJECT_FLOW_REVIEW_MAX_PROVIDER_REQUESTS:36}
+        project-title-suggestion:
+          per-minute: ${AI_QUOTA_PROJECT_TITLE_PER_MINUTE:200}
+          per-day: ${AI_QUOTA_PROJECT_TITLE_PER_DAY:100000}
+          max-provider-requests: ${AI_PROJECT_TITLE_MAX_PROVIDER_REQUESTS:1}
       cost:
         daily-budget-usd: ${AI_PROJECT_DAILY_COST_BUDGET_USD:50.000000}
         monthly-budget-usd: ${AI_PROJECT_MONTHLY_COST_BUDGET_USD:1000.000000}
