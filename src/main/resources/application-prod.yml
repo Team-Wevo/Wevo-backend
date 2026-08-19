@@ -88,6 +88,12 @@ wevo:
           per-minute: ${AI_QUOTA_PROJECT_TITLE_PER_MINUTE:200}
           per-day: ${AI_QUOTA_PROJECT_TITLE_PER_DAY:100000}
           max-provider-requests: ${AI_PROJECT_TITLE_MAX_PROVIDER_REQUESTS:1}
+        # 의견 제출마다 동기로 도는 가드레일이라 호출량이 많다 — quota 를 넉넉히 둔다.
+        # (fail-closed 라 quota 소진 시 정상 제출도 막히므로 여유가 필요)
+        opinion-content-guardrail:
+          per-minute: ${AI_QUOTA_OPINION_GUARDRAIL_PER_MINUTE:600}
+          per-day: ${AI_QUOTA_OPINION_GUARDRAIL_PER_DAY:200000}
+          max-provider-requests: ${AI_OPINION_GUARDRAIL_MAX_PROVIDER_REQUESTS:3}
       cost:
         daily-budget-usd: ${AI_PROJECT_DAILY_COST_BUDGET_USD:50.000000}
         monthly-budget-usd: ${AI_PROJECT_MONTHLY_COST_BUDGET_USD:1000.000000}

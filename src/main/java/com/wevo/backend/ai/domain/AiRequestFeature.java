@@ -9,7 +9,8 @@ public enum AiRequestFeature {
     REVIEW_INTENT_COMPARISON,
     OPINION_CLUSTERING,
     PROJECT_FLOW_REVIEW,
-    PROJECT_TITLE_SUGGESTION;
+    PROJECT_TITLE_SUGGESTION,
+    OPINION_CONTENT_GUARDRAIL;
 
     public static AiRequestFeature from(AiFeature feature) {
         return switch (feature) {
@@ -21,6 +22,7 @@ public enum AiRequestFeature {
             case OPINION_CLUSTERING -> OPINION_CLUSTERING;
             case PROJECT_FLOW_REVIEW -> PROJECT_FLOW_REVIEW;
             case PROJECT_TITLE_SUGGESTION -> PROJECT_TITLE_SUGGESTION;
+            case OPINION_CONTENT_GUARDRAIL -> OPINION_CONTENT_GUARDRAIL;
         };
     }
 }

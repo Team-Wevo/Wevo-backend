@@ -52,6 +52,9 @@ public enum ErrorCode {
     OPINION_NOT_FOUND(HttpStatus.NOT_FOUND, "O001", "의견을 찾을 수 없습니다."),
     OPINION_COLLECTION_CLOSED(HttpStatus.CONFLICT, "O003", "의견 수집이 마감되었습니다."),
     NO_SUBMITTED_OPINION(HttpStatus.CONFLICT, "O004", "제출된 의견이 없습니다."),
+    OPINION_CONTENT_REJECTED(HttpStatus.UNPROCESSABLE_ENTITY, "O005", "제출할 수 없는 의견 내용입니다."),
+    OPINION_GUARDRAIL_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "O006",
+            "의견 내용을 확인할 수 없어 제출하지 못했습니다. 잠시 후 다시 시도해주세요."),
 
     // Issue
     ISSUE_NOT_FOUND(HttpStatus.NOT_FOUND, "I001", "쟁점을 찾을 수 없습니다."),

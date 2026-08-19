@@ -72,6 +72,8 @@ class OpinionServiceTest {
     private UserRepository userRepository;
     @Mock
     private ProjectMemberRosterQueryService memberRosterQueryService;
+    @Mock
+    private com.wevo.backend.ai.service.OpinionContentGuardrailService contentGuardrailService;
 
     @InjectMocks
     private OpinionService opinionService;
@@ -405,6 +407,26 @@ class OpinionServiceTest {
         assertThat(opinion.getStatus()).isEqualTo(OpinionStatus.SUBMITTED);
         assertThat(opinion.getSubmittedContentOrLegacy()).isEqualTo(CONTENT);
         assertThat(opinion.getSubmittedAt()).isEqualTo(response.submittedAt());
+    }
+
+    @Test
+    @DisplayName("가드레일이 내용을 거부하면 제출을 막고 의견은 DRAFT 그대로 둔다")
+    void submitMyOpinion_guardrailRejects_doesNotSubmit() {
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        Opinion opinion = opinion(section, OpinionStatus.DRAFT, CONTENT, null);
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, USER_ID))
+                .willReturn(section);
+        given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
+                .willReturn(Optional.of(opinion));
+        org.mockito.BDDMockito.willThrow(new BusinessException(ErrorCode.OPINION_CONTENT_REJECTED))
+                .given(contentGuardrailService).requireAcceptable(section, USER_ID, CONTENT);
+
+        BusinessException ex = org.junit.jupiter.api.Assertions.assertThrows(BusinessException.class,
+                () -> opinionService.submitMyOpinion(SECTION_ID, USER_ID));
+
+        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.OPINION_CONTENT_REJECTED);
+        // 거부됐으므로 제출 상태로 넘어가지 않는다.
+        assertThat(opinion.getStatus()).isEqualTo(OpinionStatus.DRAFT);
     }
 
     @Test

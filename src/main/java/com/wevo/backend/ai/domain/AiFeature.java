@@ -11,7 +11,8 @@ public enum AiFeature {
     REVIEW_INTENT_COMPARISON,
     OPINION_CLUSTERING,
     PROJECT_FLOW_REVIEW,
-    PROJECT_TITLE_SUGGESTION;
+    PROJECT_TITLE_SUGGESTION,
+    OPINION_CONTENT_GUARDRAIL;
 
     public String configKey() {
         return name().toLowerCase(Locale.ROOT).replace('_', '-');

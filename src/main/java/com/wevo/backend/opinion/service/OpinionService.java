@@ -1,5 +1,6 @@
 package com.wevo.backend.opinion.service;
 
+import com.wevo.backend.ai.service.OpinionContentGuardrailService;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.global.response.FieldError;
@@ -65,19 +66,22 @@ public class OpinionService {
     private final SectionStatusService sectionStatusService;
     private final UserRepository userRepository;
     private final ProjectMemberRosterQueryService memberRosterQueryService;
+    private final OpinionContentGuardrailService contentGuardrailService;
 
     public OpinionService(SectionAccessGuard sectionAccessGuard,
                           OpinionRepository opinionRepository,
                           DraftLeaseService draftLeaseService,
                           SectionStatusService sectionStatusService,
                           UserRepository userRepository,
-                          ProjectMemberRosterQueryService memberRosterQueryService) {
+                          ProjectMemberRosterQueryService memberRosterQueryService,
+                          OpinionContentGuardrailService contentGuardrailService) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.opinionRepository = opinionRepository;
         this.draftLeaseService = draftLeaseService;
         this.sectionStatusService = sectionStatusService;
         this.userRepository = userRepository;
         this.memberRosterQueryService = memberRosterQueryService;
+        this.contentGuardrailService = contentGuardrailService;
     }
 
     /**
@@ -215,6 +219,9 @@ public class OpinionService {
                         ))
                 ));
         validateContentForSubmit(opinion.getContent());
+        // 길이 검증을 통과한 본문을 AI 가드레일로 검사한다 — 알아들을 수 없는 글·딴 주제는 하드 리젝.
+        // (판정 실패 시 fail-closed: O006 로 제출 차단 — OpinionContentGuardrailService 참고)
+        contentGuardrailService.requireAcceptable(section, userId, opinion.getContent());
         LocalDateTime submittedAt = LocalDateTime.now(KST);
         opinion.submit(submittedAt);
         // 의견 수집 단계에서 유일하게 사람이 남기는 흔적이라, 이걸 빼면 수집 기간 내내
