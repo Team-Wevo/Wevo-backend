@@ -2,6 +2,7 @@ package com.wevo.backend.ai.service;
 
 import com.wevo.backend.ai.context.OpinionGuardrailContext;
 import com.wevo.backend.ai.dto.model.OpinionGuardrailVerdict;
+import com.wevo.backend.ai.exception.AiGuardrailExceededException;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.global.response.FieldError;
@@ -68,8 +69,16 @@ public class OpinionContentGuardrailService {
         OpinionGuardrailVerdict verdict;
         try {
             verdict = classifier.classify(context, section.getProject(), section, requestedBy);
+        } catch (AiGuardrailExceededException exception) {
+            // AI 요청·비용 한도 소진은 콘텐츠 문제가 아니라 시스템 부하 조건이다. 의견 가드레일은 보안이
+            // 아니라 품질 검사이므로, 이때는 제출(사용자 핵심 행위)을 막지 않고 검사를 건너뛴다(fail-open).
+            // 공통 quota 가 다른 AI 기능에 소진돼도 의견 제출이 O006 으로 차단되지 않게 한다.
+            log.info("AI 사용 한도 소진으로 의견 가드레일을 건너뜁니다(fail-open). sectionId={}, code={}",
+                    section.getId(), exception.getErrorCode().getCode());
+            return;
         } catch (RuntimeException exception) {
-            // AI 는 구성됐으나 판정 실패 — fail-closed. 원문·개인정보는 로그에 남기지 않는다(§7).
+            // 제공자 장애·한도 확인 불가 등 진짜 판정 불가는 fail-closed 유지 — 알 수 없는 내용을 통과시키지
+            // 않는다. 원문·개인정보는 로그에 남기지 않는다(§7).
             log.warn("의견 가드레일 판정 실패로 제출을 차단합니다(fail-closed). sectionId={}, exceptionType={}",
                     section.getId(), exception.getClass().getSimpleName());
             throw new BusinessException(ErrorCode.OPINION_GUARDRAIL_UNAVAILABLE);

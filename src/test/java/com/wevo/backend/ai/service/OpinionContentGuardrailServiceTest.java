@@ -112,6 +112,19 @@ class OpinionContentGuardrailServiceTest {
                 .isEqualTo(ErrorCode.OPINION_GUARDRAIL_UNAVAILABLE);
     }
 
+    @Test
+    @DisplayName("AI 사용 한도 소진(quota)이면 제출을 막지 않고 가드레일을 건너뛴다 (fail-open)")
+    void classifierQuotaExceeded_failsOpen() {
+        given(classifierProvider.getIfAvailable()).willReturn(classifier);
+        given(userService.getUserReference(USER_ID)).willReturn(userRef());
+        given(classifier.classify(any(), any(), any(), any()))
+                .willThrow(new com.wevo.backend.ai.exception.AiGuardrailExceededException(
+                        ErrorCode.AI_REQUEST_QUOTA_EXCEEDED, 60L));
+
+        assertThatCode(() -> guardrailService.requireAcceptable(section(), USER_ID, CONTENT))
+                .doesNotThrowAnyException();
+    }
+
     private ProjectSection section() {
         Project project = Project.builder()
                 .title("p").resultType(OutputType.PRESENTATION).status(ProjectStatus.ACTIVE).build();
