@@ -5,6 +5,7 @@ import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.project.domain.Project;
 import com.wevo.backend.project.domain.ProjectStatus;
 import com.wevo.backend.project.service.SectionAccessGuard;
+import com.wevo.backend.section.domain.AiCheckStatus;
 import com.wevo.backend.section.domain.ProjectSection;
 import com.wevo.backend.section.domain.ProjectSectionStatus;
 import com.wevo.backend.section.dto.response.SectionReviewRequestResponse;
@@ -124,6 +125,24 @@ class SectionReviewRequestServiceTest {
     }
 
     @Test
+    @DisplayName("AI 사전 검토가 최신이 아니면 S006 으로 거부한다 (확정 불가 상태 진입 방지)")
+    void request_aiCheckNotCurrent_throws() {
+        ProjectSection section = section(ProjectSectionStatus.DRAFTING);
+        ReflectionTestUtils.setField(section, "aiCheckStatus", AiCheckStatus.OUTDATED);
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, USER_ID))
+                .willReturn(section);
+        given(sectionDraftRepository.existsByProjectSection_Id(SECTION_ID)).willReturn(true);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> sectionReviewRequestService.request(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SECTION_AI_PRECHECK_REQUIRED);
+        // 거부됐으므로 lease 정리도 전이도 일어나지 않는다.
+        verify(draftLeaseService, never()).releaseOwnLeaseOrRejectOther(anyLong(), anyLong());
+        verify(sectionStatusService, never()).markReviewing(anyLong(), anyLong());
+    }
+
+    @Test
     @DisplayName("초안이 없으면 S003 으로 거부한다")
     void request_withoutDraft_throws() {
         ProjectSection section = section(ProjectSectionStatus.DRAFTING);
@@ -161,6 +180,8 @@ class SectionReviewRequestServiceTest {
                 .status(status)
                 .build();
         ReflectionTestUtils.setField(section, "id", SECTION_ID);
+        // 검토 요청 진입 조건상 AI 사전 검토가 최신이어야 하므로 픽스처 기본값을 CURRENT 로 둔다. (#324)
+        ReflectionTestUtils.setField(section, "aiCheckStatus", AiCheckStatus.CURRENT);
         return section;
     }
 
