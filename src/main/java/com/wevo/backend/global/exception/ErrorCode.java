@@ -47,6 +47,8 @@ public enum ErrorCode {
     SECTION_DRAFT_NOT_FOUND(HttpStatus.NOT_FOUND, "S003", "초안이 없습니다."),
     DRAFT_LEASE_HELD_BY_OTHER(HttpStatus.CONFLICT, "S004", "다른 사용자가 편집 중입니다."),
     DRAFT_LEASE_NOT_HELD(HttpStatus.CONFLICT, "S005", "편집권이 없습니다."),
+    SECTION_AI_PRECHECK_REQUIRED(HttpStatus.CONFLICT, "S006",
+            "AI 사전 검토를 먼저 완료해야 검토를 요청할 수 있습니다."),
 
     // Opinion
     OPINION_NOT_FOUND(HttpStatus.NOT_FOUND, "O001", "의견을 찾을 수 없습니다."),

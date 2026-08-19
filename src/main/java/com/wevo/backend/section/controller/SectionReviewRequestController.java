@@ -42,7 +42,7 @@ public class SectionReviewRequestController {
                     description = "S001 — 섹션 없음 또는 비멤버 (존재 숨김) / S003 — 초안 없음"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409",
-                    description = "S002 — DRAFTING 아님 / S004 — 타인이 편집 중")
+                    description = "S002 — DRAFTING 아님 / S006 — AI 사전 검토 미완료 / S004 — 타인이 편집 중")
     })
     @PostMapping("/{sectionId}/review-request")
     public ResponseEntity<ApiResponse<SectionReviewRequestResponse>> requestReview(
