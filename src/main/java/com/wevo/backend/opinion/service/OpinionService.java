@@ -1,5 +1,6 @@
 package com.wevo.backend.opinion.service;
 
+import com.wevo.backend.ai.service.OpinionContentGuardrailService;
 import com.wevo.backend.global.exception.BusinessException;
 import com.wevo.backend.global.exception.ErrorCode;
 import com.wevo.backend.global.response.FieldError;
@@ -31,7 +32,9 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 의견(my-opinion) 관련 로직. (제품 정책서 §4·§5)
@@ -65,19 +68,25 @@ public class OpinionService {
     private final SectionStatusService sectionStatusService;
     private final UserRepository userRepository;
     private final ProjectMemberRosterQueryService memberRosterQueryService;
+    private final OpinionContentGuardrailService contentGuardrailService;
+    private final TransactionTemplate transactionTemplate;
 
     public OpinionService(SectionAccessGuard sectionAccessGuard,
                           OpinionRepository opinionRepository,
                           DraftLeaseService draftLeaseService,
                           SectionStatusService sectionStatusService,
                           UserRepository userRepository,
-                          ProjectMemberRosterQueryService memberRosterQueryService) {
+                          ProjectMemberRosterQueryService memberRosterQueryService,
+                          OpinionContentGuardrailService contentGuardrailService,
+                          TransactionTemplate transactionTemplate) {
         this.sectionAccessGuard = sectionAccessGuard;
         this.opinionRepository = opinionRepository;
         this.draftLeaseService = draftLeaseService;
         this.sectionStatusService = sectionStatusService;
         this.userRepository = userRepository;
         this.memberRosterQueryService = memberRosterQueryService;
+        this.contentGuardrailService = contentGuardrailService;
+        this.transactionTemplate = transactionTemplate;
     }
 
     /**
@@ -189,8 +198,32 @@ public class OpinionService {
      * <b>작업본 변경 없이 다시 호출하면</b> 수집 마감 이후라도 최초 제출 시각을 유지한 채
      * 멱등 성공으로 응답한다. 작업본이 바뀐 재제출은 게이트가 열려 있어야 한다(§4.4).
      */
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public OpinionSubmitResponse submitMyOpinion(Long projectSectionId, Long userId) {
+        // ① 짧은 읽기로 멱등·게이트·길이 검사 후 가드레일 검사 대상 본문을 확정한다.
+        SubmitPreparation prepared =
+                transactionTemplate.execute(status -> prepareSubmit(projectSectionId, userId));
+        if (prepared.completed() != null) {
+            return prepared.completed();
+        }
+        // ② 섹션 잠금·트랜잭션 밖에서 AI 가드레일 판정 — 외부 provider 호출이 섹션 잠금을 쥐고
+        //    다른 임시저장·제출·마감을 대기시키지 않게 한다. (판정 실패 시 fail-closed: O006)
+        contentGuardrailService.requireAcceptable(prepared.section(), userId, prepared.content());
+        // ③ 짧은 쓰기로 섹션을 다시 잠그고 게이트·본문 불변 재확인 후 제출을 반영한다.
+        return transactionTemplate.execute(
+                status -> finalizeSubmit(projectSectionId, userId, prepared.content()));
+    }
+
+    /**
+     * 제출 ① 단계 — 짧은 읽기. 멱등·게이트·길이를 검사하고 가드레일이 판정할 본문을 확정한다.
+     * 이미 제출됐고 작업본 변경이 없으면 AI 호출 없이 응답을 반환한다({@code completed}).
+     *
+     * <p>섹션 행을 배타 잠금으로 잡아 본문 스냅샷을 임시저장·마감과 직렬화하되, 이 트랜잭션은
+     * <b>짧게 끝나 잠금이 ② 가드레일(외부 호출) 전에 풀린다</b> — 잠금이 AI 호출을 가로지르지 않는다.
+     * 반환한 섹션은 트랜잭션 종료 후 detached 되므로, ② 단계 가드레일이 읽을 연관(project·template)을
+     * 이 트랜잭션 안에서 초기화해 둔다 — 잠금 밖 지연로딩을 피한다.
+     */
+    private SubmitPreparation prepareSubmit(Long projectSectionId, Long userId) {
         ProjectSection section =
                 sectionAccessGuard.requireParticipantSectionForUpdate(projectSectionId, userId);
         Optional<Opinion> opinionOptional = opinionRepository
@@ -199,28 +232,66 @@ public class OpinionService {
         if (opinionOptional.isPresent()
                 && opinionOptional.get().getStatus() == OpinionStatus.SUBMITTED
                 && !opinionOptional.get().hasUnsubmittedChanges()) {
-            return OpinionSubmitResponse.from(opinionOptional.get());
+            return SubmitPreparation.completed(OpinionSubmitResponse.from(opinionOptional.get()));
         }
-
         if (section.getStatus() != ProjectSectionStatus.COLLECTING) {
             throw new BusinessException(ErrorCode.OPINION_COLLECTION_CLOSED);
         }
-
         Opinion opinion = opinionOptional.orElseThrow(() ->
-                new BusinessException(
-                        ErrorCode.OPINION_NOT_FOUND,
-                        List.of(new FieldError(
-                                "sectionId",
-                                "no draft opinion to submit"
-                        ))
-                ));
+                new BusinessException(ErrorCode.OPINION_NOT_FOUND,
+                        List.of(new FieldError("sectionId", "no draft opinion to submit"))));
         validateContentForSubmit(opinion.getContent());
+        // 잠금 밖(가드레일)에서 읽을 연관을 미리 초기화한다.
+        section.getProject().getId();
+        if (section.getTemplate() != null) {
+            section.getTemplate().getGuideText();
+        }
+        return SubmitPreparation.pending(section, opinion.getContent());
+    }
+
+    /**
+     * 제출 ③ 단계 — 짧은 쓰기. 섹션을 다시 잠그고 게이트·본문 불변을 재확인한 뒤 제출을 반영한다.
+     * ① 이후 본문이 바뀌었으면(작성자가 그 사이 임시저장을 커밋) 가드레일 판정이 낡았으므로
+     * {@code CONFLICT}(C003)로 되돌려 재제출을 유도한다.
+     */
+    private OpinionSubmitResponse finalizeSubmit(
+            Long projectSectionId, Long userId, String checkedContent) {
+        ProjectSection section =
+                sectionAccessGuard.requireParticipantSectionForUpdate(projectSectionId, userId);
+        Opinion opinion = opinionRepository
+                .findByProjectSection_IdAndAuthor_Id(projectSectionId, userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.OPINION_NOT_FOUND,
+                        List.of(new FieldError("sectionId", "no draft opinion to submit"))));
+
+        if (opinion.getStatus() == OpinionStatus.SUBMITTED && !opinion.hasUnsubmittedChanges()) {
+            return OpinionSubmitResponse.from(opinion);
+        }
+        if (section.getStatus() != ProjectSectionStatus.COLLECTING) {
+            throw new BusinessException(ErrorCode.OPINION_COLLECTION_CLOSED);
+        }
+        // 가드레일이 검사한 본문과 지금 제출할 본문이 달라졌으면 판정이 낡았다 — 재제출을 유도한다.
+        if (!checkedContent.equals(opinion.getContent())) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    List.of(new FieldError("content", "본문이 수정되었습니다. 다시 제출해주세요.")));
+        }
         LocalDateTime submittedAt = LocalDateTime.now(KST);
         opinion.submit(submittedAt);
         // 의견 수집 단계에서 유일하게 사람이 남기는 흔적이라, 이걸 빼면 수집 기간 내내
         // 목록 카드의 "마지막 작업" 지점이 프로젝트 생성 시각에 멈춘다. (API_SPEC §3.2.2)
         section.recordActivity(submittedAt);
         return OpinionSubmitResponse.from(opinion);
+    }
+
+    /** 제출 준비 결과 — {@code completed}가 있으면 AI 없이 즉시 응답, 없으면 가드레일·확정으로 진행. */
+    private record SubmitPreparation(
+            OpinionSubmitResponse completed, ProjectSection section, String content) {
+        static SubmitPreparation completed(OpinionSubmitResponse response) {
+            return new SubmitPreparation(response, null, null);
+        }
+
+        static SubmitPreparation pending(ProjectSection section, String content) {
+            return new SubmitPreparation(null, section, content);
+        }
     }
 
     /**

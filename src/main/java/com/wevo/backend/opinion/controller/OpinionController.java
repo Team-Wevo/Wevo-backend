@@ -168,7 +168,10 @@ public class OpinionController {
                     content = @Content(examples = @ExampleObject(
                             name = "C003", ref = ApiExampleRefs.CONFLICT))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "422", description = "C002 — 제출 기준(20자) 미달")
+                    responseCode = "422",
+                    description = "C002 — 제출 기준(20자) 미달 / O005 — AI 가드레일이 제출할 수 없는 내용으로 판정"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "503", description = "O006 — AI 가드레일 확인 불가 (fail-closed)")
     })
     @PostMapping("/{sectionId}/my-opinion/submit")
     public ResponseEntity<ApiResponse<OpinionSubmitResponse>> submitMyOpinion(

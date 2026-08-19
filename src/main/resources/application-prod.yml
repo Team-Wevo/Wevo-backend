@@ -88,6 +88,14 @@ wevo:
           per-minute: ${AI_QUOTA_PROJECT_TITLE_PER_MINUTE:200}
           per-day: ${AI_QUOTA_PROJECT_TITLE_PER_DAY:100000}
           max-provider-requests: ${AI_PROJECT_TITLE_MAX_PROVIDER_REQUESTS:1}
+        # 의견 제출마다 동기로 도는 가드레일이라 호출량이 많다. 공통 user/project quota 는 모든 AI
+        # 기능이 공유하므로(정리·초안 등이 소진하면 제출이 막힐 수 있음), quota·비용 한도 초과 시 이
+        # 가드레일은 fail-open 으로 검사를 건너뛴다(제출 허용 — OpinionContentGuardrailService).
+        # 제공자 장애 등 진짜 판정 불가만 fail-closed(O006)로 막는다. feature quota 는 자체 상한이다.
+        opinion-content-guardrail:
+          per-minute: ${AI_QUOTA_OPINION_GUARDRAIL_PER_MINUTE:600}
+          per-day: ${AI_QUOTA_OPINION_GUARDRAIL_PER_DAY:200000}
+          max-provider-requests: ${AI_OPINION_GUARDRAIL_MAX_PROVIDER_REQUESTS:3}
       cost:
         daily-budget-usd: ${AI_PROJECT_DAILY_COST_BUDGET_USD:50.000000}
         monthly-budget-usd: ${AI_PROJECT_MONTHLY_COST_BUDGET_USD:1000.000000}
