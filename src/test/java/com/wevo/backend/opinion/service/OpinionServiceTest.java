@@ -74,9 +74,24 @@ class OpinionServiceTest {
     private ProjectMemberRosterQueryService memberRosterQueryService;
     @Mock
     private com.wevo.backend.ai.service.OpinionContentGuardrailService contentGuardrailService;
+    @Mock
+    private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
     @InjectMocks
     private OpinionService opinionService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void stubTransactionTemplate() {
+        // TransactionTemplate.execute 는 콜백을 그대로 실행하도록 스텁한다 — 제출 흐름의 읽기·쓰기
+        // 단계가 단위 테스트에서 순차 실행되게 한다. (제출 외 테스트는 호출하지 않아 lenient)
+        org.mockito.Mockito.lenient()
+                .when(transactionTemplate.execute(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation ->
+                        ((org.springframework.transaction.support.TransactionCallback<?>)
+                                invocation.getArgument(0))
+                                .doInTransaction(org.mockito.Mockito.mock(
+                                        org.springframework.transaction.TransactionStatus.class)));
+    }
 
     @Test
     @DisplayName("수집 현황은 멤버 로스터를 분모로 제출·작성중·미착수를 나눠 센다")
@@ -407,6 +422,25 @@ class OpinionServiceTest {
         assertThat(opinion.getStatus()).isEqualTo(OpinionStatus.SUBMITTED);
         assertThat(opinion.getSubmittedContentOrLegacy()).isEqualTo(CONTENT);
         assertThat(opinion.getSubmittedAt()).isEqualTo(response.submittedAt());
+    }
+
+    @Test
+    @DisplayName("가드레일 판정 후 본문이 바뀌면 낡은 판정으로 제출하지 않고 CONFLICT 로 재제출을 유도한다")
+    void submitMyOpinion_contentChangedAfterGuardrail_throwsConflict() {
+        ProjectSection section = section(ProjectSectionStatus.COLLECTING);
+        // ① 준비 단계가 보는 본문과 ③ 확정 단계가 보는 본문이 다르다(작성자가 그 사이 임시저장).
+        Opinion checked = opinion(section, OpinionStatus.DRAFT, CONTENT, null);
+        Opinion changed = opinion(section, OpinionStatus.DRAFT, REVISED_CONTENT, null);
+        given(sectionAccessGuard.requireParticipantSectionForUpdate(SECTION_ID, USER_ID))
+                .willReturn(section);
+        given(opinionRepository.findByProjectSection_IdAndAuthor_Id(SECTION_ID, USER_ID))
+                .willReturn(Optional.of(checked), Optional.of(changed));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> opinionService.submitMyOpinion(SECTION_ID, USER_ID));
+
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CONFLICT);
+        assertThat(changed.getStatus()).isEqualTo(OpinionStatus.DRAFT);
     }
 
     @Test
