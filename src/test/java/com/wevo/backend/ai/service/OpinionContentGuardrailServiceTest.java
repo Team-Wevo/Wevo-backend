@@ -2,7 +2,6 @@ package com.wevo.backend.ai.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 
@@ -99,17 +98,15 @@ class OpinionContentGuardrailServiceTest {
     }
 
     @Test
-    @DisplayName("AI 는 구성됐으나 판정에 실패하면 fail-closed — OPINION_GUARDRAIL_UNAVAILABLE 로 막는다")
-    void classifierThrows_failClosed() {
+    @DisplayName("AI 는 구성됐으나 판정에 실패(제공자 장애 등)하면 제출을 막지 않고 건너뛴다 (fail-open)")
+    void classifierThrows_failsOpen() {
         given(classifierProvider.getIfAvailable()).willReturn(classifier);
         given(userService.getUserReference(USER_ID)).willReturn(userRef());
         given(classifier.classify(any(), any(), any(), any()))
                 .willThrow(new RuntimeException("provider down"));
 
-        assertThatThrownBy(() -> guardrailService.requireAcceptable(section(), USER_ID, CONTENT))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.OPINION_GUARDRAIL_UNAVAILABLE);
+        assertThatCode(() -> guardrailService.requireAcceptable(section(), USER_ID, CONTENT))
+                .doesNotThrowAnyException();
     }
 
     @Test

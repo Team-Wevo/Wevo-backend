@@ -23,14 +23,11 @@ import org.springframework.stereotype.Service;
  * <p>opinion 이 AI 도메인 구현을 직접 참조하지 않도록 이 서비스만 공개한다. (CLAUDE.md §6)
  * 판정은 동기라 제출을 블록한다 — 하드 리젝이 성립하려면 판정을 기다려야 한다.
  *
- * <p><b>가용성 정책 (fail-closed, 팀 결정)</b>:
- * <ul>
- *   <li>AI 가 <b>아예 구성되지 않은</b> 환경(local 등, classifier 빈 부재)에서는 판정할 AI 자체가
- *       없으므로 가드레일을 <b>건너뛴다</b>(제출 허용) — 판정 불가로 전 제출을 막지 않는다.</li>
- *   <li>AI 는 구성됐으나 <b>판정에 실패</b>(장애·타임아웃·quota 초과·검증 실패)하면 <b>제출을 막고</b>
- *       재시도를 안내한다({@link ErrorCode#OPINION_GUARDRAIL_UNAVAILABLE}). 나쁜 입력이 검증을
- *       우회해 저장되는 것을 허용하지 않는다.</li>
- * </ul>
+ * <p><b>가용성 정책 (fail-open — 팀 결정, #329)</b>: 의견 가드레일은 품질 검사이지 보안 게이트가
+ * 아니다. 판정을 <b>할 수 없을 때</b>(AI 미구성, 제공자 장애·타임아웃·한도 소진·AI 킬스위치·서킷
+ * open·검증 실패)는 제출을 막지 않고 가드레일을 <b>건너뛴다</b> — 제출(사용자 핵심 행위)을 AI 가용성에
+ * 종속시켜 provider 장애 시 서비스 핵심 플로우가 통째로 멈추는 것을 막는다. 오직 판정이 <b>성립하고
+ * 내용이 거부</b>된 경우(GIBBERISH/OFF_TOPIC)만 하드 리젝한다({@link ErrorCode#OPINION_CONTENT_REJECTED}).
  */
 @Service
 public class OpinionContentGuardrailService {
@@ -51,9 +48,9 @@ public class OpinionContentGuardrailService {
     /**
      * 제출 직전 본문을 검사한다. 통과가 아니면 예외를 던져 제출을 막는다.
      *
-     * @throws BusinessException 내용 거부 시 {@link ErrorCode#OPINION_CONTENT_REJECTED}(사유는
-     *                           {@code content} 필드에 GIBBERISH/OFF_TOPIC), 판정 실패 시
-     *                           {@link ErrorCode#OPINION_GUARDRAIL_UNAVAILABLE}
+     * @throws BusinessException 판정이 성립하고 내용이 거부된 경우에만
+     *                           {@link ErrorCode#OPINION_CONTENT_REJECTED}(사유는 {@code content}
+     *                           필드에 GIBBERISH/OFF_TOPIC). 판정 불가는 예외 없이 제출을 허용한다(fail-open).
      */
     public void requireAcceptable(ProjectSection section, Long userId, String content) {
         OpinionGuardrailClassifier classifier = classifierProvider.getIfAvailable();
@@ -77,11 +74,13 @@ public class OpinionContentGuardrailService {
                     section.getId(), exception.getErrorCode().getCode());
             return;
         } catch (RuntimeException exception) {
-            // 제공자 장애·한도 확인 불가 등 진짜 판정 불가는 fail-closed 유지 — 알 수 없는 내용을 통과시키지
-            // 않는다. 원문·개인정보는 로그에 남기지 않는다(§7).
-            log.warn("의견 가드레일 판정 실패로 제출을 차단합니다(fail-closed). sectionId={}, exceptionType={}",
+            // 판정 자체가 불가능한 경우(제공자 장애·타임아웃·AI 킬스위치·서킷 open·검증 실패 등)는 fail-open
+            // — 제출(사용자 핵심 행위)을 막지 않고 가드레일만 건너뛴다. 제출을 AI 가용성에 종속시키면
+            // provider 장애 시 서비스 핵심 플로우가 통째로 멈춘다(#329). 내용 거부(아래 verdict 판정)만
+            // 하드 리젝한다. 원문·개인정보는 로그에 남기지 않는다(§7).
+            log.warn("의견 가드레일 판정 실패로 검사를 건너뜁니다(fail-open). sectionId={}, exceptionType={}",
                     section.getId(), exception.getClass().getSimpleName());
-            throw new BusinessException(ErrorCode.OPINION_GUARDRAIL_UNAVAILABLE);
+            return;
         }
 
         if (!verdict.acceptable()) {
