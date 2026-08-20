@@ -132,7 +132,7 @@ public class DraftGenerationJobHandler implements AiJobHandler {
         return new AiSectionDraftCreateCommand(
                 job.getProjectSection().getId(),
                 job.getRequestedBy().getId(),
-                output.content(),
+                DraftGenerationContract.renderUnresolvedGapMarkersAsBold(output.content()),
                 context.baseDraft().version(),
                 context.synthesis().synthesisSetId(),
                 context.synthesis().opinionGateGeneration(),
