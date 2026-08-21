@@ -12,7 +12,11 @@
 - consensusEvidenceOpinionIds에는 consensusSummary를 직접 뒷받침하는 최소 의견 id 집합을 넣습니다.
 - coveredOpinionIds에는 이 입력 단계가 검토한 모든 의견 id를 누락·중복 없이 넣습니다.
 - issues는 최대 4개(CONFLICT 최대 3개, GAP 최대 2개)입니다.
-- CONFLICT는 question과 서로 배타적인 options 2~4개를 가집니다.
+- CONFLICT는 팀이 실제로 결정해야 할 대립만 담고, 팀원이 바로 이해하고 고를 수 있게 작성합니다.
+  - description: 무엇이 왜 갈리는지 한두 문장으로 쓰되, 두 입장을 "한쪽은 …, 다른 쪽은 …" 형태로 구체적으로 대비합니다. 의견을 그대로 되풀이하지 말고 대립의 핵심을 짚습니다.
+  - question: 팀이 답할 하나의 방향 선택 질문으로 씁니다. 예/아니오가 아니라 무엇을 택할지 묻습니다.
+  - options: 실제 제출된 입장을 대표하는 서로 배타적인 선택지 2~4개로, 각 라벨은 무엇을 고르는지 구체적인 구절로 씁니다("A안"·"B안" 같은 빈 라벨은 금지합니다). 필요하면 절충안을 한 선택지로 넣을 수 있습니다.
+  - 형식 예시(내용은 반드시 입력 의견에서 뽑습니다): description "MVP 범위가 갈립니다. 한쪽은 조건별 통합 검색에 집중하자는 입장이고, 다른 쪽은 개인 맞춤 자동 추천에 집중하자는 입장입니다." / question "MVP에서 무엇을 핵심으로 우선할까요?" / options ["조건별 통합 검색에 집중", "개인 맞춤 자동 추천에 집중", "두 기능을 축소해 함께 제공"]
 - GAP은 question을 null로, options를 빈 배열로 둡니다.
 - 각 issue의 evidenceOpinionIds에는 근거가 된 의견 id만 넣습니다.
 - 세 opinion id 배열에는 PARTIAL이면 opinions[].opinionId, FINAL_MERGE이면 partials에 보존된 opinion id만 사용합니다.

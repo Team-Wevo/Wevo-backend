@@ -14,9 +14,12 @@ public final class SynthesisContract {
     /**
      * 프롬프트 버전 — 렌더링된 프롬프트의 tracking version({@code promptName:vN})과 <b>정확히</b>
      * 일치해야 한다({@code AiInvocationService.invokeStructured}가 검증). 프롬프트 리소스가
-     * {@code prompts/ai/opinion-synthesis/v2/}이므로 값도 그에 맞춘다.
+     * {@code prompts/ai/opinion-synthesis/v3/}이므로 값도 그에 맞춘다.
+     *
+     * <p>v3 은 CONFLICT 쟁점의 description·question·options 작성 품질 지침을 담아, 상충 의견이
+     * 엉성한 문구로 정리되던 문제를 개선한 버전이다. 출력 스키마는 v2 와 동일하다({@link #SCHEMA_VERSION}).
      */
-    public static final String PROMPT_VERSION = "opinion-synthesis:v2";
+    public static final String PROMPT_VERSION = "opinion-synthesis:v3";
 
     /** 구조화 출력 스키마 버전 — {@code OutputSchemaId}의 tracking value와 맞춘다. */
     public static final String SCHEMA_VERSION = "opinion-synthesis-output:v2";

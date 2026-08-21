@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class SynthesisPromptFactory {
 
-    /** 평가 대상 최신 prompt. production 기본 계약은 승인 전까지 SynthesisContract의 v2를 유지한다. */
+    /** production 기본 계약(SynthesisContract)이 v3 으로 승격됨 — CONFLICT 작성 품질 지침 반영. */
     public static final PromptTemplateId PROMPT_ID = new PromptTemplateId("opinion-synthesis", 3);
 
     private final PromptRegistry promptRegistry;
